@@ -114,7 +114,13 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 						continue;
 					}
 					ranges.push(Decoration.mark({
-						class: `side-mark side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`,
+						class: [
+							"side-mark",
+							`side-mark--${mark.mark.kind}`,
+							`side-mark--${mark.mark.color}`,
+							`side-mark--text-${mark.mark.textColor}`,
+							`side-mark--background-${mark.mark.backgroundColor}`
+						].join(" "),
 						attributes: {
 							"data-side-mark-id": mark.id,
 							title: mark.note.content || "FloatMark"
@@ -137,7 +143,9 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 					return;
 				}
 				event.preventDefault();
-				void plugin.focusMark(markId);
+				plugin.setActiveEditorView(this.view);
+				const rect = markEl.getBoundingClientRect();
+				void plugin.openMark(markId, rect);
 			}
 
 			private handleMouseMove(event: MouseEvent): void {

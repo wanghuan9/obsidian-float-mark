@@ -31,7 +31,8 @@ const baseMark = {
 	},
 	mark: {
 		kind: "highlight",
-		color: "green"
+		color: "green",
+		style: "background"
 	},
 	note: {
 		content: "",

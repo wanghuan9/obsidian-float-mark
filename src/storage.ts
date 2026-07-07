@@ -1,7 +1,7 @@
 import { App, normalizePath } from "obsidian";
 import { createHash } from "crypto";
 import { createTextAnchor, relocateAnchor } from "./anchors";
-import { DEFAULT_SETTINGS, type CommentReply, type MarkColor, type MarkKind, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type MarkColor, type MarkKind, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 
 export class SideMarkStore {
 	constructor(private readonly app: App, private settings: SideMarkSettings) {
@@ -49,6 +49,8 @@ export class SideMarkStore {
 		endOffset: number;
 		kind: MarkKind;
 		color: MarkColor;
+		textColor?: MarkTextColor;
+		backgroundColor?: MarkBackgroundColor;
 		noteContent?: string;
 	}): Promise<SideMarkDocument> {
 		const anchor = createTextAnchor(input.source, input.startOffset, input.endOffset);
@@ -64,7 +66,9 @@ export class SideMarkStore {
 			anchor,
 			mark: {
 				kind: input.kind,
-				color: input.color
+				color: input.color,
+				textColor: input.textColor || "default",
+				backgroundColor: input.backgroundColor || "none"
 			},
 			note: {
 				content: input.noteContent || "",

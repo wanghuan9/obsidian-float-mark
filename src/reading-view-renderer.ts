@@ -10,8 +10,9 @@ export function renderReadingMarks(
 	container: HTMLElement,
 	source: string,
 	marks: SideMark[],
-	onClick: (markId: string) => void
+	onClick: (markId: string, rect: DOMRect) => void
 ): void {
+	clearReadingMarks(container);
 	const activeMarks = marks
 		.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText)
 		.map((mark) => ({ mark }));
@@ -21,10 +22,18 @@ export function renderReadingMarks(
 	}
 }
 
+function clearReadingMarks(container: HTMLElement): void {
+	const wrappers = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading"));
+	for (const wrapper of wrappers) {
+		wrapper.replaceWith(...Array.from(wrapper.childNodes));
+	}
+	container.normalize();
+}
+
 function wrapReadingMark(
 	container: HTMLElement,
 	mark: SideMark,
-	onClick: (markId: string) => void
+	onClick: (markId: string, rect: DOMRect) => void
 ): void {
 	const ranges = collectTextNodes(container);
 	const fullText = ranges.map((range) => range.node.data).join("");
@@ -44,13 +53,20 @@ function wrapReadingMark(
 	domRange.setStart(startRange.node, start - startRange.start);
 	domRange.setEnd(endRange.node, end - endRange.start);
 	const wrapper = document.createElement("span");
-	wrapper.className = `side-mark side-mark-reading side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`;
+	wrapper.className = [
+		"side-mark",
+		"side-mark-reading",
+		`side-mark--${mark.mark.kind}`,
+		`side-mark--${mark.mark.color}`,
+		`side-mark--text-${mark.mark.textColor}`,
+		`side-mark--background-${mark.mark.backgroundColor}`
+	].join(" ");
 	wrapper.dataset.sideMarkReadingId = mark.id;
 	wrapper.title = mark.note.content || "FloatMark";
 	wrapper.addEventListener("click", (event) => {
 		event.preventDefault();
 		event.stopPropagation();
-		onClick(mark.id);
+		onClick(mark.id, wrapper.getBoundingClientRect());
 	});
 
 	try {

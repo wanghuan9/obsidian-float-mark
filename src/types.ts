@@ -2,6 +2,23 @@ export const DATA_DIR = ".obsidian-float-marks";
 
 export type MarkKind = "highlight" | "underline" | "comment";
 export type MarkColor = "yellow" | "blue" | "green" | "red";
+export type MarkTextColor = "default" | "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
+export type MarkBackgroundColor =
+	| "none"
+	| "gray-light"
+	| "red-light"
+	| "orange-light"
+	| "yellow-light"
+	| "green-light"
+	| "blue-light"
+	| "purple-light"
+	| "gray"
+	| "red"
+	| "orange"
+	| "yellow"
+	| "green"
+	| "blue"
+	| "purple";
 export type MarkStatus = "active" | "resolved" | "orphaned";
 export type RemoteSyncStatus = "pending" | "synced" | "failed";
 
@@ -46,6 +63,8 @@ export interface SideMark {
 	mark: {
 		kind: MarkKind;
 		color: MarkColor;
+		textColor: MarkTextColor;
+		backgroundColor: MarkBackgroundColor;
 	};
 	note: {
 		content: string;

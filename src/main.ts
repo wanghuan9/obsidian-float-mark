@@ -3,10 +3,11 @@ import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
+import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type ToolbarAction } from "./selection-toolbar";
 import { SideMarkStore } from "./storage";
-import { DEFAULT_SETTINGS, type MarkColor, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { DEFAULT_SETTINGS, type MarkBackgroundColor, type MarkColor, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
 import { getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";
@@ -20,6 +21,7 @@ export default class SideMarkPlugin extends Plugin {
 	private readingToolbar!: ReadingSelectionToolbar;
 	private blockToolbar!: HoverBlockToolbar;
 	private commentPopover!: CommentPopover;
+	private markStylePopover!: MarkStylePopover;
 	private activeEditorView: EditorView | null = null;
 	private readingSelection: {
 		file: TFile;
@@ -38,6 +40,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
 		this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target));
 		this.commentPopover = new CommentPopover();
+		this.markStylePopover = new MarkStylePopover();
 
 		this.registerEditorExtension(createSideMarkEditorExtension(this));
 		this.registerMarkdownPostProcessor((element, context) => {
@@ -71,6 +74,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.readingToolbar?.destroy();
 		this.blockToolbar?.destroy();
 		this.commentPopover?.destroy();
+		this.markStylePopover?.destroy();
 	}
 
 	async loadSettings(): Promise<void> {
@@ -104,6 +108,10 @@ export default class SideMarkPlugin extends Plugin {
 		this.activeEditorView = view;
 		this.blockToolbar.hide();
 		this.toolbar.show(rect, boundary);
+	}
+
+	setActiveEditorView(view: EditorView): void {
+		this.activeEditorView = view;
 	}
 
 	hideSelectionToolbar(): void {
@@ -174,7 +182,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
 			status: mark.status === "resolved" ? "active" : "resolved"
 		});
-		await this.refreshSidebar();
+		await this.refreshMarkViews(file.path);
 	}
 
 	async updateMarkColor(markId: string, color: MarkColor): Promise<void> {
@@ -187,15 +195,46 @@ export default class SideMarkPlugin extends Plugin {
 				color
 			}
 		});
-		this.activeEditorView?.dispatch({ effects: [] });
-		await this.refreshSidebar();
+		await this.refreshMarkViews(file.path);
+	}
+
+	async updateMarkAppearance(markId: string, choice: MarkStyleChoice): Promise<void> {
+		const file = this.getActiveMarkdownFile();
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
+		if (!file || !mark) return;
+		this.currentDocument = await this.store.updateMark(file.path, markId, {
+			mark: {
+				...mark.mark,
+				textColor: choice.textColor,
+				backgroundColor: choice.backgroundColor
+			}
+		});
+		await this.refreshMarkViews(file.path);
+	}
+
+	async openMark(markId: string, rect: DOMRect): Promise<void> {
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
+		if (!mark) return;
+		if (mark.mark.kind !== "highlight") {
+			await this.focusMark(markId);
+			return;
+		}
+		this.markStylePopover.show(rect, {
+			textColor: mark.mark.textColor,
+			backgroundColor: mark.mark.backgroundColor
+		}, (choice) => {
+			void this.updateMarkAppearance(mark.id, choice);
+		}, () => {
+			void this.deleteMark(mark.id);
+		});
 	}
 
 	async deleteMark(markId: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
 		if (!file) return;
 		this.currentDocument = await this.store.deleteMark(file.path, markId);
-		await this.refreshSidebar();
+		this.markStylePopover.hide();
+		await this.refreshMarkViews(file.path);
 	}
 
 	async jumpToMark(markId: string): Promise<void> {
@@ -248,7 +287,7 @@ export default class SideMarkPlugin extends Plugin {
 		const view = this.activeEditorView;
 		if (!view) return;
 		if (action === "highlight") {
-			await this.createMarkFromView(view, "highlight", "");
+			this.showMarkStylePopoverForView(view);
 			return;
 		}
 		if (action === "comment") {
@@ -294,8 +333,8 @@ export default class SideMarkPlugin extends Plugin {
 			this.readingToolbar.hide();
 			return;
 		}
-		const rect = range.getBoundingClientRect();
-		if (rect.width === 0 && rect.height === 0) {
+		const rect = getReadingSelectionRect(range);
+		if (!rect) {
 			this.readingSelection = null;
 			this.readingToolbar.hide();
 			return;
@@ -326,7 +365,7 @@ export default class SideMarkPlugin extends Plugin {
 			return;
 		}
 		if (action === "highlight") {
-			await this.createReadingMark(selection, "highlight", "");
+			this.showMarkStylePopoverForReadingSelection(selection);
 			return;
 		}
 		this.commentPopover.show(selection.rect, (content) => {
@@ -472,6 +511,76 @@ export default class SideMarkPlugin extends Plugin {
 		});
 	}
 
+	private showMarkStylePopoverForView(view: EditorView): void {
+		const selection = view.state.selection.main;
+		const rect = view.coordsAtPos(selection.to);
+		if (!rect || selection.empty) return;
+		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+		let markId = "";
+		let createPromise: Promise<SideMark | null> | null = null;
+		this.markStylePopover.show(popoverRect, defaultHighlightAppearance(), (choice) => {
+			void (async () => {
+				if (!markId) {
+					if (!createPromise) {
+						createPromise = this.createMarkFromOffsets(
+							view,
+							selection.from,
+							selection.to,
+							"highlight",
+							"",
+							choice,
+							false
+						);
+					}
+					const createdMark = await createPromise;
+					markId = createdMark?.id || "";
+					if (markId) {
+						await this.updateMarkAppearance(markId, choice);
+					}
+					return;
+				}
+				await this.updateMarkAppearance(markId, choice);
+			})();
+		}, () => {
+			if (markId) {
+				void this.deleteMark(markId);
+			}
+		});
+	}
+
+	private showMarkStylePopoverForReadingSelection(
+		selection: NonNullable<SideMarkPlugin["readingSelection"]>
+	): void {
+		let markId = "";
+		let createPromise: Promise<SideMark | null> | null = null;
+		this.markStylePopover.show(selection.rect, defaultHighlightAppearance(), (choice) => {
+			void (async () => {
+				if (!markId) {
+					if (!createPromise) {
+						createPromise = this.createReadingMark(
+							selection,
+							"highlight",
+							"",
+							choice,
+							false
+						);
+					}
+					const createdMark = await createPromise;
+					markId = createdMark?.id || "";
+					if (markId) {
+						await this.updateMarkAppearance(markId, choice);
+					}
+					return;
+				}
+				await this.updateMarkAppearance(markId, choice);
+			})();
+		}, () => {
+			if (markId) {
+				void this.deleteMark(markId);
+			}
+		});
+	}
+
 	private async createCommentFromActiveSelection(noteContent: string): Promise<void> {
 		const view = this.activeEditorView;
 		if (!view) {
@@ -481,20 +590,22 @@ export default class SideMarkPlugin extends Plugin {
 		await this.createMarkFromView(view, "comment", noteContent);
 	}
 
-	private async createMarkFromView(view: EditorView, kind: "highlight" | "comment", noteContent: string): Promise<void> {
+	private async createMarkFromView(view: EditorView, kind: "highlight" | "comment", noteContent: string): Promise<SideMark | null> {
 		const file = this.getActiveMarkdownFile();
 		const selection = view.state.selection.main;
 		if (!file || selection.empty) {
-			return;
+			return null;
 		}
-		await this.createMarkFromOffsets(view, selection.from, selection.to, kind, noteContent);
+		return this.createMarkFromOffsets(view, selection.from, selection.to, kind, noteContent);
 	}
 
 	private async createReadingMark(
 		selection: NonNullable<SideMarkPlugin["readingSelection"]>,
 		kind: "highlight" | "comment",
-		noteContent: string
-	): Promise<void> {
+		noteContent: string,
+		appearance: MarkStyleChoice = defaultHighlightAppearance(),
+		autoOpenSidebar = true
+	): Promise<SideMark | null> {
 		const previousMarkIds = new Set((this.currentDocument?.marks || []).map((mark) => mark.id));
 		this.currentDocument = await this.store.createMark({
 			filePath: selection.file.path,
@@ -503,6 +614,8 @@ export default class SideMarkPlugin extends Plugin {
 			endOffset: selection.to,
 			kind,
 			color: "yellow",
+			textColor: appearance.textColor,
+			backgroundColor: appearance.backgroundColor,
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
@@ -510,12 +623,13 @@ export default class SideMarkPlugin extends Plugin {
 		await this.renderPreviewMarksForFile(selection.file.path);
 		this.readingSelection = null;
 		window.getSelection()?.removeAllRanges();
-		if (this.settings.autoOpenSidebar) {
+		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
 			await this.openSidebar();
 		}
 		if (kind === "comment" && createdMark && noteContent.trim()) {
 			this.syncMarkToLarkInBackground(createdMark.id);
 		}
+		return createdMark || null;
 	}
 
 	private async createMarkFromOffsets(
@@ -523,11 +637,13 @@ export default class SideMarkPlugin extends Plugin {
 		from: number,
 		to: number,
 		kind: "highlight" | "comment",
-		noteContent: string
-	): Promise<void> {
+		noteContent: string,
+		appearance: MarkStyleChoice = defaultHighlightAppearance(),
+		autoOpenSidebar = true
+	): Promise<SideMark | null> {
 		const file = this.getActiveMarkdownFile();
 		if (!file || from === to) {
-			return;
+			return null;
 		}
 		const previousMarkIds = new Set((this.currentDocument?.marks || []).map((mark) => mark.id));
 		this.currentDocument = await this.store.createMark({
@@ -537,16 +653,30 @@ export default class SideMarkPlugin extends Plugin {
 			endOffset: to,
 			kind,
 			color: "yellow",
+			textColor: appearance.textColor,
+			backgroundColor: appearance.backgroundColor,
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
 		await this.refreshSidebar();
-		if (this.settings.autoOpenSidebar) {
+		this.refreshEditorDecorations();
+		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
 			await this.openSidebar();
 		}
 		if (kind === "comment" && createdMark && noteContent.trim()) {
 			this.syncMarkToLarkInBackground(createdMark.id);
 		}
+		return createdMark || null;
+	}
+
+	private refreshEditorDecorations(): void {
+		this.activeEditorView?.dispatch({ effects: [] });
+	}
+
+	private async refreshMarkViews(filePath: string): Promise<void> {
+		this.refreshEditorDecorations();
+		await this.refreshSidebar();
+		await this.renderPreviewMarksForFile(filePath);
 	}
 
 	private syncMarkToLarkInBackground(markId: string): void {
@@ -572,7 +702,7 @@ export default class SideMarkPlugin extends Plugin {
 			this.app.vault.read(file),
 			this.store.loadDocument(file.path)
 		]);
-		renderReadingMarks(container, source, document.marks, (markId) => void this.focusMark(markId));
+		renderReadingMarks(container, source, document.marks, (markId, rect) => void this.openMark(markId, rect));
 	}
 
 	private async renderPreviewMarksForFile(filePath: string): Promise<void> {
@@ -713,6 +843,19 @@ function findSourceRangeForReadingSelection(source: string, selectedText: string
 	};
 }
 
+function getReadingSelectionRect(range: Range): DOMRect | null {
+	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+	if (rects.length === 0) {
+		const rect = range.getBoundingClientRect();
+		return rect.width === 0 && rect.height === 0 ? null : rect;
+	}
+	const left = Math.min(...rects.map((rect) => rect.left));
+	const top = Math.min(...rects.map((rect) => rect.top));
+	const right = Math.max(...rects.map((rect) => rect.right));
+	const bottom = Math.max(...rects.map((rect) => rect.bottom));
+	return new DOMRect(left, top, right - left, bottom - top);
+}
+
 function buildRenderedSourceIndex(source: string): { text: string; offsets: number[] } {
 	let rendered = "";
 	const offsets: number[] = [];
@@ -744,7 +887,11 @@ function buildRenderedSourceIndex(source: string): { text: string; offsets: numb
 }
 
 function normalizeReadingSelection(text: string): string {
-	return text.replace(/\s+/g, "");
+	return text
+		.split(/\n+/)
+		.map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, ""))
+		.join("")
+		.replace(/\s+/g, "");
 }
 
 function isMarkdownMarkerAt(source: string, index: number): boolean {
@@ -761,6 +908,13 @@ function markerLengthAt(source: string, index: number): number {
 		return 1;
 	}
 	return 0;
+}
+
+function defaultHighlightAppearance(): MarkStyleChoice {
+	return {
+		textColor: "default",
+		backgroundColor: "none"
+	};
 }
 
 class SideMarkSettingTab extends PluginSettingTab {

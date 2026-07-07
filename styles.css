@@ -403,10 +403,10 @@
 }
 
 
-.side-mark-comment-popover {
+.side-mark-comment-popover,
+.side-mark-style-popover {
 	position: fixed;
 	z-index: 1001;
-	width: 286px;
 	padding: 9px;
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
@@ -419,23 +419,206 @@
 	will-change: opacity, transform;
 }
 
-.side-mark-comment-popover.is-visible {
+.side-mark-comment-popover {
+	width: 286px;
+}
+
+.side-mark-style-popover {
+	width: 312px;
+	padding: 8px;
+}
+
+.side-mark-comment-popover.is-visible,
+.side-mark-style-popover.is-visible {
 	opacity: 1;
 	transform: translateY(0) scale(1);
 }
 
 .side-mark-comment-popover-header,
-.side-mark-comment-actions {
+.side-mark-comment-actions,
+.side-mark-style-popover-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
 }
 
-.side-mark-comment-popover-header {
+.side-mark-comment-popover-header,
+.side-mark-style-popover-header {
 	margin-bottom: 7px;
 	font-size: 13px;
 	font-weight: 600;
+}
+
+.side-mark-style-section-title {
+	margin: 8px 0 5px;
+	color: var(--text-normal);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.side-mark-style-text-row,
+.side-mark-style-background-grid {
+	display: grid;
+	grid-template-columns: repeat(8, 28px);
+	gap: 6px;
+	align-items: center;
+}
+
+.side-mark-style-text-row {
+	margin-bottom: 8px;
+}
+
+.side-mark-style-background-grid {
+	grid-template-rows: repeat(2, 28px);
+	grid-auto-flow: row;
+}
+
+.side-mark-style-text-color,
+.side-mark-style-background-color {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	min-height: 0;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+	background: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-normal);
+	cursor: pointer;
+	font-size: 17px;
+	line-height: 1;
+}
+
+.side-mark-style-text-color:hover,
+.side-mark-style-text-color.is-active,
+.side-mark-style-background-color:hover,
+.side-mark-style-background-color.is-active {
+	border-color: #2f6df6;
+	box-shadow: inset 0 0 0 1px #2f6df6, 0 0 0 2px rgba(47, 109, 246, 0.14);
+}
+
+.side-mark-style-text-color.is-default {
+	color: var(--text-normal);
+}
+
+.side-mark-style-text-color.is-gray {
+	color: #8f959e;
+}
+
+.side-mark-style-text-color.is-red {
+	color: #e53935;
+}
+
+.side-mark-style-text-color.is-orange {
+	color: #ef7d00;
+}
+
+.side-mark-style-text-color.is-yellow {
+	color: #d79a00;
+}
+
+.side-mark-style-text-color.is-green {
+	color: #2ca01c;
+}
+
+.side-mark-style-text-color.is-blue {
+	color: #245bff;
+}
+
+.side-mark-style-text-color.is-purple {
+	color: #6f35d8;
+}
+
+.side-mark-style-background-color.is-none {
+	position: relative;
+	background: var(--background-primary);
+	overflow: hidden;
+}
+
+.side-mark-style-background-color.is-none::after {
+	content: "";
+	position: absolute;
+	left: 1px;
+	bottom: 2px;
+	width: 32px;
+	height: 1px;
+	border-radius: 999px;
+	background: #2f6df6;
+	transform: rotate(-43deg);
+	transform-origin: left center;
+}
+
+.side-mark-style-background-color.is-gray-light {
+	background: #f0f1f3;
+}
+
+.side-mark-style-background-color.is-red-light {
+	background: #f8b8b8;
+}
+
+.side-mark-style-background-color.is-orange-light {
+	background: #ffd8ad;
+}
+
+.side-mark-style-background-color.is-yellow-light {
+	background: #fff17a;
+}
+
+.side-mark-style-background-color.is-green-light {
+	background: #c8f0c4;
+}
+
+.side-mark-style-background-color.is-blue-light {
+	background: #cdd9ff;
+}
+
+.side-mark-style-background-color.is-purple-light {
+	background: #decaff;
+}
+
+.side-mark-style-background-color.is-gray {
+	background: #d7dadf;
+}
+
+.side-mark-style-background-color.is-red {
+	background: #f45f5f;
+}
+
+.side-mark-style-background-color.is-orange {
+	background: #ff9f3a;
+}
+
+.side-mark-style-background-color.is-yellow {
+	background: #ffe11c;
+}
+
+.side-mark-style-background-color.is-green {
+	background: #5fca50;
+}
+
+.side-mark-style-background-color.is-blue {
+	background: #91aaff;
+}
+
+.side-mark-style-background-color.is-purple {
+	background: #b695f0;
+}
+
+.side-mark-style-reset {
+	width: 100%;
+	min-height: 34px;
+	margin-top: 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+	background: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: 13px;
+	cursor: pointer;
 }
 
 .side-mark-comment-textarea {
@@ -498,20 +681,88 @@
 	}
 }
 
-.side-mark--highlight.side-mark--yellow {
-	background: rgba(245, 190, 42, 0.28);
+.side-mark--highlight.side-mark--text-gray {
+	color: #8f959e;
 }
 
-.side-mark--highlight.side-mark--blue {
-	background: rgba(75, 150, 255, 0.22);
+.side-mark--highlight.side-mark--text-red {
+	color: #e53935;
 }
 
-.side-mark--highlight.side-mark--green {
-	background: rgba(68, 184, 123, 0.22);
+.side-mark--highlight.side-mark--text-orange {
+	color: #ef7d00;
 }
 
-.side-mark--highlight.side-mark--red {
-	background: rgba(242, 87, 87, 0.2);
+.side-mark--highlight.side-mark--text-yellow {
+	color: #d79a00;
+}
+
+.side-mark--highlight.side-mark--text-green {
+	color: #2ca01c;
+}
+
+.side-mark--highlight.side-mark--text-blue {
+	color: #245bff;
+}
+
+.side-mark--highlight.side-mark--text-purple {
+	color: #6f35d8;
+}
+
+.side-mark--highlight.side-mark--background-gray-light {
+	background: #f0f1f3;
+}
+
+.side-mark--highlight.side-mark--background-red-light {
+	background: #f8b8b8;
+}
+
+.side-mark--highlight.side-mark--background-orange-light {
+	background: #ffd8ad;
+}
+
+.side-mark--highlight.side-mark--background-yellow-light {
+	background: #fff17a;
+}
+
+.side-mark--highlight.side-mark--background-green-light {
+	background: #c8f0c4;
+}
+
+.side-mark--highlight.side-mark--background-blue-light {
+	background: #cdd9ff;
+}
+
+.side-mark--highlight.side-mark--background-purple-light {
+	background: #decaff;
+}
+
+.side-mark--highlight.side-mark--background-gray {
+	background: #d7dadf;
+}
+
+.side-mark--highlight.side-mark--background-red {
+	background: #f45f5f;
+}
+
+.side-mark--highlight.side-mark--background-orange {
+	background: #ff9f3a;
+}
+
+.side-mark--highlight.side-mark--background-yellow {
+	background: #ffe11c;
+}
+
+.side-mark--highlight.side-mark--background-green {
+	background: #5fca50;
+}
+
+.side-mark--highlight.side-mark--background-blue {
+	background: #91aaff;
+}
+
+.side-mark--highlight.side-mark--background-purple {
+	background: #b695f0;
 }
 
 .side-mark--underline {
@@ -557,7 +808,6 @@
 	align-items: center;
 	width: 100%;
 	gap: 8px;
-	flex-wrap: wrap;
 }
 
 .side-mark-sidebar-header h3 {
@@ -574,10 +824,107 @@
 	align-items: center;
 	flex-wrap: wrap;
 	justify-content: flex-end;
-	flex: 1 1 150px;
+	flex: 0 1 auto;
 	min-width: 0;
 	width: auto;
 	gap: 6px 7px;
+}
+
+.side-mark-sidebar-toolbar-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	min-width: 0;
+	flex-wrap: wrap;
+}
+
+.side-mark-sidebar-tabs {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	flex: 1 1 132px;
+	min-width: 118px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+.side-mark-sidebar-tab {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 4px;
+	min-width: 0;
+	min-height: 24px;
+	padding: 0 0 5px;
+	border: 0 !important;
+	border-radius: 0;
+	background: transparent !important;
+	box-shadow: none !important;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	position: relative;
+	outline: none;
+}
+
+.side-mark-sidebar-tab.is-active {
+	background: transparent !important;
+	border: 0 !important;
+	color: #2f6df6;
+	box-shadow: none !important;
+}
+
+.side-mark-sidebar-tab:hover,
+.side-mark-sidebar-tab:focus,
+.side-mark-sidebar-tab:active {
+	background: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+}
+
+.side-mark-sidebar-tab.is-active::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 2px;
+	border-radius: 999px;
+	background: #2f6df6;
+}
+
+.side-mark-sidebar-tab-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.side-mark-sidebar-tab-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: rgba(120, 132, 153, 0.14);
+	color: var(--text-muted);
+	font-size: 10px;
+	line-height: 16px;
+}
+
+.side-mark-sidebar-tab.is-active .side-mark-sidebar-tab-count {
+	background: rgba(47, 109, 246, 0.14);
+	color: #2f6df6;
+}
+
+.side-mark-sidebar-tab:not(.is-active):hover {
+	color: #2f6df6;
 }
 
 .side-mark-lark-sync-plugin-status {
@@ -663,21 +1010,26 @@
 	top: 28px;
 	left: 0;
 	z-index: 20;
-	min-width: 88px;
-	padding: 8px 6px;
+	min-width: 72px;
+	padding: 6px 4px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
+	border-radius: 10px;
 	background: var(--background-primary);
 	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
 }
 
+.side-mark-sidebar-controls .side-mark-filter-field:last-child .side-mark-filter-menu {
+	right: 0;
+	left: auto;
+}
+
 .side-mark-filter-menu-item {
 	display: grid;
-	grid-template-columns: 20px minmax(0, 1fr);
+	grid-template-columns: 16px minmax(0, 1fr);
 	align-items: center;
 	width: 100%;
-	min-height: 30px;
-	padding: 0 7px 0 3px;
+	min-height: 28px;
+	padding: 0 5px 0 1px;
 	border: 0 !important;
 	border-radius: 6px;
 	background: transparent !important;
@@ -779,8 +1131,8 @@
 
 .side-mark-color-menu {
 	position: absolute;
-	top: 5px;
-	left: 14px;
+	top: 31px;
+	right: 10px;
 	z-index: 4;
 	display: flex;
 	align-items: center;
@@ -821,8 +1173,8 @@
 
 .side-mark-card-toolbar {
 	position: absolute;
-	top: 5px;
-	right: 10px;
+	top: 4px;
+	right: 4px;
 	z-index: 2;
 	display: flex;
 	align-items: center;
@@ -845,15 +1197,18 @@
 }
 
 .side-mark-card-icon-button {
+	appearance: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	width: 21px;
 	height: 21px;
+	min-height: 0;
 	padding: 0;
-	border: 0;
-	border-radius: 50%;
-	background: transparent;
+	border: 0 !important;
+	border-radius: 5px;
+	background: transparent !important;
+	box-shadow: none !important;
 	color: var(--text-muted);
 	cursor: pointer;
 }
@@ -864,7 +1219,8 @@
 }
 
 .side-mark-card-icon-button:hover {
-	background: var(--background-modifier-hover);
+	background: transparent !important;
+	box-shadow: none !important;
 	color: var(--text-normal);
 }
 
@@ -914,8 +1270,8 @@
 	top: 32px;
 	right: 8px;
 	z-index: 3;
-	min-width: 118px;
-	padding: 5px;
+	min-width: 82px;
+	padding: 4px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	background: var(--background-primary);
@@ -925,10 +1281,10 @@
 .side-mark-card-menu-item {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 5px;
 	width: 100%;
-	min-height: 32px;
-	padding: 6px 9px;
+	min-height: 28px;
+	padding: 4px 7px;
 	border: 0;
 	border-radius: 6px;
 	background: transparent;
@@ -956,14 +1312,14 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
-	flex: 0 0 16px;
+	width: 14px;
+	height: 14px;
+	flex: 0 0 14px;
 }
 
 .side-mark-card-menu-item-icon svg {
-	width: 15px;
-	height: 15px;
+	width: 14px;
+	height: 14px;
 	stroke-width: 2.1;
 }
 
@@ -1010,11 +1366,10 @@
 	bottom: 0;
 	width: 3px;
 	background: var(--background-modifier-border);
-	transition: width 140ms ease;
 }
 
 .side-mark-card-quote:hover::before {
-	width: 7px;
+	width: 3px;
 }
 
 .side-mark-card.is-color-yellow .side-mark-card-quote::before {
@@ -1049,6 +1404,126 @@
 	background: rgba(242, 87, 87, 0.07);
 }
 
+.side-mark-marker-card.is-background-none .side-mark-card-quote::before {
+	background: var(--background-modifier-border);
+}
+
+.side-mark-marker-card.is-background-none .side-mark-card-quote {
+	background: var(--background-secondary);
+}
+
+.side-mark-marker-card.is-background-gray-light .side-mark-card-quote::before {
+	background: #d7dadf;
+}
+
+.side-mark-marker-card.is-background-gray-light .side-mark-card-quote {
+	background: rgba(215, 218, 223, 0.2);
+}
+
+.side-mark-marker-card.is-background-red-light .side-mark-card-quote::before {
+	background: #f45f5f;
+}
+
+.side-mark-marker-card.is-background-red-light .side-mark-card-quote {
+	background: rgba(244, 95, 95, 0.1);
+}
+
+.side-mark-marker-card.is-background-orange-light .side-mark-card-quote::before {
+	background: #ff9f3a;
+}
+
+.side-mark-marker-card.is-background-orange-light .side-mark-card-quote {
+	background: rgba(255, 159, 58, 0.12);
+}
+
+.side-mark-marker-card.is-background-yellow-light .side-mark-card-quote::before {
+	background: #d9b900;
+}
+
+.side-mark-marker-card.is-background-yellow-light .side-mark-card-quote {
+	background: rgba(245, 190, 42, 0.08);
+}
+
+.side-mark-marker-card.is-background-green-light .side-mark-card-quote::before {
+	background: #5fca50;
+}
+
+.side-mark-marker-card.is-background-green-light .side-mark-card-quote {
+	background: rgba(95, 202, 80, 0.1);
+}
+
+.side-mark-marker-card.is-background-blue-light .side-mark-card-quote::before {
+	background: #91aaff;
+}
+
+.side-mark-marker-card.is-background-blue-light .side-mark-card-quote {
+	background: rgba(145, 170, 255, 0.12);
+}
+
+.side-mark-marker-card.is-background-purple-light .side-mark-card-quote::before {
+	background: #b695f0;
+}
+
+.side-mark-marker-card.is-background-purple-light .side-mark-card-quote {
+	background: rgba(182, 149, 240, 0.12);
+}
+
+.side-mark-marker-card.is-background-gray .side-mark-card-quote::before {
+	background: #a7adb8;
+}
+
+.side-mark-marker-card.is-background-gray .side-mark-card-quote {
+	background: rgba(167, 173, 184, 0.16);
+}
+
+.side-mark-marker-card.is-background-red .side-mark-card-quote::before {
+	background: #f45f5f;
+}
+
+.side-mark-marker-card.is-background-red .side-mark-card-quote {
+	background: rgba(244, 95, 95, 0.16);
+}
+
+.side-mark-marker-card.is-background-orange .side-mark-card-quote::before {
+	background: #ff9f3a;
+}
+
+.side-mark-marker-card.is-background-orange .side-mark-card-quote {
+	background: rgba(255, 159, 58, 0.18);
+}
+
+.side-mark-marker-card.is-background-yellow .side-mark-card-quote::before {
+	background: #d9b900;
+}
+
+.side-mark-marker-card.is-background-yellow .side-mark-card-quote {
+	background: rgba(245, 190, 42, 0.16);
+}
+
+.side-mark-marker-card.is-background-green .side-mark-card-quote::before {
+	background: #5fca50;
+}
+
+.side-mark-marker-card.is-background-green .side-mark-card-quote {
+	background: rgba(95, 202, 80, 0.16);
+}
+
+.side-mark-marker-card.is-background-blue .side-mark-card-quote::before {
+	background: #91aaff;
+}
+
+.side-mark-marker-card.is-background-blue .side-mark-card-quote {
+	background: rgba(145, 170, 255, 0.18);
+}
+
+.side-mark-marker-card.is-background-purple .side-mark-card-quote::before {
+	background: #b695f0;
+}
+
+.side-mark-marker-card.is-background-purple .side-mark-card-quote {
+	background: rgba(182, 149, 240, 0.18);
+}
+
 .side-mark-card-quote-text {
 	display: block;
 	max-width: 100%;
@@ -1056,6 +1531,120 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	transition: padding-right 140ms ease;
+}
+
+.side-mark-marker-card .side-mark-card-quote {
+	min-height: 36px;
+	padding-top: 8px;
+	padding-bottom: 7px;
+	padding-right: 42px;
+}
+
+.side-mark-marker-meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 12px 7px 14px;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.2;
+}
+
+.side-mark-marker-swatch {
+	display: inline-flex;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.side-mark-marker-swatch.is-text-default,
+.side-mark-marker-swatch.is-background-none {
+	background: var(--background-primary);
+}
+
+.side-mark-marker-swatch.is-text-gray {
+	background: #8f959e;
+}
+
+.side-mark-marker-swatch.is-text-red {
+	background: #e53935;
+}
+
+.side-mark-marker-swatch.is-text-orange {
+	background: #ef7d00;
+}
+
+.side-mark-marker-swatch.is-text-yellow {
+	background: #d79a00;
+}
+
+.side-mark-marker-swatch.is-text-green {
+	background: #2ca01c;
+}
+
+.side-mark-marker-swatch.is-text-blue {
+	background: #245bff;
+}
+
+.side-mark-marker-swatch.is-text-purple {
+	background: #6f35d8;
+}
+
+.side-mark-marker-swatch.is-background-gray-light {
+	background: #f0f1f3;
+}
+
+.side-mark-marker-swatch.is-background-red-light {
+	background: #f8b8b8;
+}
+
+.side-mark-marker-swatch.is-background-orange-light {
+	background: #ffd8ad;
+}
+
+.side-mark-marker-swatch.is-background-yellow-light {
+	background: #fff17a;
+}
+
+.side-mark-marker-swatch.is-background-green-light {
+	background: #c8f0c4;
+}
+
+.side-mark-marker-swatch.is-background-blue-light {
+	background: #cdd9ff;
+}
+
+.side-mark-marker-swatch.is-background-purple-light {
+	background: #decaff;
+}
+
+.side-mark-marker-swatch.is-background-gray {
+	background: #d7dadf;
+}
+
+.side-mark-marker-swatch.is-background-red {
+	background: #f45f5f;
+}
+
+.side-mark-marker-swatch.is-background-orange {
+	background: #ff9f3a;
+}
+
+.side-mark-marker-swatch.is-background-yellow {
+	background: #ffe11c;
+}
+
+.side-mark-marker-swatch.is-background-green {
+	background: #5fca50;
+}
+
+.side-mark-marker-swatch.is-background-blue {
+	background: #91aaff;
+}
+
+.side-mark-marker-swatch.is-background-purple {
+	background: #b695f0;
 }
 
 .side-mark-card:hover .side-mark-card-quote-text,
@@ -1080,23 +1669,8 @@
 }
 
 .side-mark-reply {
-	display: grid;
-	grid-template-columns: 28px minmax(0, 1fr);
-	column-gap: 8px;
+	display: block;
 	padding-bottom: 12px;
-}
-
-.side-mark-avatar {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 50%;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-size: 12px;
-	font-weight: 700;
 }
 
 .side-mark-reply-body {
@@ -1106,14 +1680,7 @@
 .side-mark-reply-meta {
 	display: flex;
 	align-items: baseline;
-	gap: 6px;
 	margin-bottom: 2px;
-}
-
-.side-mark-reply-author {
-	color: var(--text-normal);
-	font-size: 13px;
-	font-weight: 600;
 }
 
 .side-mark-reply-time {
@@ -1157,7 +1724,7 @@
 
 .side-mark-reply-composer {
 	min-height: 26px;
-	padding: 0 12px 8px 52px;
+	padding: 0 12px 8px;
 }
 
 .side-mark-reply-trigger {

@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => SideMarkPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/editor-extension.ts
 var import_obsidian = require("obsidian");
@@ -129,7 +129,13 @@ function createSideMarkEditorExtension(plugin) {
             continue;
           }
           ranges.push(import_view.Decoration.mark({
-            class: `side-mark side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`,
+            class: [
+              "side-mark",
+              `side-mark--${mark.mark.kind}`,
+              `side-mark--${mark.mark.color}`,
+              `side-mark--text-${mark.mark.textColor}`,
+              `side-mark--background-${mark.mark.backgroundColor}`
+            ].join(" "),
             attributes: {
               "data-side-mark-id": mark.id,
               title: mark.note.content || "FloatMark"
@@ -151,7 +157,9 @@ function createSideMarkEditorExtension(plugin) {
           return;
         }
         event.preventDefault();
-        void plugin.focusMark(markId);
+        plugin.setActiveEditorView(this.view);
+        const rect = markEl.getBoundingClientRect();
+        void plugin.openMark(markId, rect);
       }
       handleMouseMove(event) {
         if (!(event.target instanceof HTMLElement) || !this.view.dom.contains(event.target)) {
@@ -524,8 +532,174 @@ function isInsideWithPadding(event, element, padding) {
   return event.clientX >= rect.left - padding && event.clientX <= rect.right + padding && event.clientY >= rect.top - padding && event.clientY <= rect.bottom + padding;
 }
 
-// src/reading-selection-toolbar.ts
+// src/mark-style-popover.ts
 var import_obsidian4 = require("obsidian");
+var TEXT_COLORS = [
+  { color: "default", label: "\u9ED8\u8BA4\u5B57\u4F53" },
+  { color: "gray", label: "\u7070\u8272\u5B57\u4F53" },
+  { color: "red", label: "\u7EA2\u8272\u5B57\u4F53" },
+  { color: "orange", label: "\u6A59\u8272\u5B57\u4F53" },
+  { color: "yellow", label: "\u9EC4\u8272\u5B57\u4F53" },
+  { color: "green", label: "\u7EFF\u8272\u5B57\u4F53" },
+  { color: "blue", label: "\u84DD\u8272\u5B57\u4F53" },
+  { color: "purple", label: "\u7D2B\u8272\u5B57\u4F53" }
+];
+var BACKGROUND_COLORS = [
+  { color: "none", label: "\u65E0\u80CC\u666F" },
+  { color: "gray-light", label: "\u6D45\u7070\u80CC\u666F" },
+  { color: "red-light", label: "\u6D45\u7EA2\u80CC\u666F" },
+  { color: "orange-light", label: "\u6D45\u6A59\u80CC\u666F" },
+  { color: "yellow-light", label: "\u6D45\u9EC4\u80CC\u666F" },
+  { color: "green-light", label: "\u6D45\u7EFF\u80CC\u666F" },
+  { color: "blue-light", label: "\u6D45\u84DD\u80CC\u666F" },
+  { color: "purple-light", label: "\u6D45\u7D2B\u80CC\u666F" },
+  { color: "gray", label: "\u7070\u8272\u80CC\u666F" },
+  { color: "red", label: "\u7EA2\u8272\u80CC\u666F" },
+  { color: "orange", label: "\u6A59\u8272\u80CC\u666F" },
+  { color: "yellow", label: "\u9EC4\u8272\u80CC\u666F" },
+  { color: "green", label: "\u7EFF\u8272\u80CC\u666F" },
+  { color: "blue", label: "\u84DD\u8272\u80CC\u666F" },
+  { color: "purple", label: "\u7D2B\u8272\u80CC\u666F" }
+];
+var MarkStylePopover = class {
+  constructor() {
+    this.textColorButtons = /* @__PURE__ */ new Map();
+    this.backgroundColorButtons = /* @__PURE__ */ new Map();
+    this.textColor = "default";
+    this.backgroundColor = "none";
+    this.onChange = null;
+    this.onReset = null;
+    this.hideTimer = null;
+    this.el = document.body.createDiv({ cls: "side-mark-style-popover" });
+    this.el.hide();
+    this.el.addEventListener("mouseenter", () => this.cancelHide());
+    this.el.addEventListener("mouseleave", () => this.scheduleHide());
+    const header = this.el.createDiv({ cls: "side-mark-style-popover-header" });
+    header.createSpan({ text: "\u6807\u8BB0" });
+    const closeButton = header.createEl("button", {
+      cls: "side-mark-icon-button",
+      attr: { type: "button", "aria-label": "\u5173\u95ED" }
+    });
+    (0, import_obsidian4.setIcon)(closeButton, "x");
+    closeButton.addEventListener("click", () => this.hide());
+    this.renderTextColors();
+    this.renderBackgroundColors();
+    this.renderResetButton();
+  }
+  show(rect, choice, onChange, onReset) {
+    this.cancelHide();
+    this.textColor = choice.textColor;
+    this.backgroundColor = choice.backgroundColor;
+    this.onChange = onChange;
+    this.onReset = onReset;
+    this.renderActiveState();
+    this.el.show();
+    this.el.removeClass("is-visible");
+    const width = this.el.offsetWidth;
+    const left = clamp3(rect.right + 12, 8, window.innerWidth - width - 8);
+    const top = clamp3(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+    this.el.style.left = `${left}px`;
+    this.el.style.top = `${top}px`;
+    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+  }
+  hide() {
+    this.cancelHide();
+    this.el.removeClass("is-visible");
+    this.onChange = null;
+    this.onReset = null;
+    window.setTimeout(() => {
+      if (!this.el.hasClass("is-visible")) {
+        this.el.hide();
+      }
+    }, 150);
+  }
+  destroy() {
+    this.cancelHide();
+    this.el.remove();
+  }
+  renderTextColors() {
+    this.el.createDiv({ cls: "side-mark-style-section-title", text: "\u5B57\u4F53\u989C\u8272" });
+    const row = this.el.createDiv({ cls: "side-mark-style-text-row" });
+    for (const item of TEXT_COLORS) {
+      const button = row.createEl("button", {
+        cls: `side-mark-style-text-color is-${item.color}`,
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      button.createSpan({ text: "A" });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.textColor = item.color;
+        this.renderActiveState();
+        this.emitChange();
+      });
+      this.textColorButtons.set(item.color, button);
+    }
+  }
+  renderBackgroundColors() {
+    this.el.createDiv({ cls: "side-mark-style-section-title", text: "\u80CC\u666F\u989C\u8272" });
+    const grid = this.el.createDiv({ cls: "side-mark-style-background-grid" });
+    for (const item of BACKGROUND_COLORS) {
+      const button = grid.createEl("button", {
+        cls: `side-mark-style-background-color is-${item.color}`,
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.backgroundColor = item.color;
+        this.renderActiveState();
+        this.emitChange();
+      });
+      this.backgroundColorButtons.set(item.color, button);
+    }
+  }
+  renderResetButton() {
+    const button = this.el.createEl("button", {
+      cls: "side-mark-style-reset",
+      text: "\u6062\u590D\u9ED8\u8BA4",
+      attr: { type: "button" }
+    });
+    button.addEventListener("click", (event) => {
+      var _a;
+      event.preventDefault();
+      event.stopPropagation();
+      (_a = this.onReset) == null ? void 0 : _a.call(this);
+      this.hide();
+    });
+  }
+  renderActiveState() {
+    for (const [color, button] of this.textColorButtons) {
+      button.toggleClass("is-active", color === this.textColor);
+    }
+    for (const [color, button] of this.backgroundColorButtons) {
+      button.toggleClass("is-active", color === this.backgroundColor);
+    }
+  }
+  emitChange() {
+    var _a;
+    (_a = this.onChange) == null ? void 0 : _a.call(this, {
+      textColor: this.textColor,
+      backgroundColor: this.backgroundColor
+    });
+  }
+  scheduleHide() {
+    this.cancelHide();
+    this.hideTimer = window.setTimeout(() => this.hide(), 420);
+  }
+  cancelHide() {
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+};
+function clamp3(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+// src/reading-selection-toolbar.ts
+var import_obsidian5 = require("obsidian");
 var READING_BUTTONS = [
   { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
   { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
@@ -548,7 +722,7 @@ var ReadingSelectionToolbar = class {
           "aria-label": button.title
         }
       });
-      (0, import_obsidian4.setIcon)(buttonEl, button.icon);
+      (0, import_obsidian5.setIcon)(buttonEl, button.icon);
       buttonEl.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -566,13 +740,13 @@ var ReadingSelectionToolbar = class {
     const height = this.el.offsetHeight;
     const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
     const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
-    const left = clamp3(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const left = clamp4(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
     const aboveTop = rect.top - height - 10;
     const belowTop = rect.bottom + 10;
     const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
     const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
     const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
-    const top = clamp3(preferredTop, minTop, maxTop);
+    const top = clamp4(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -601,12 +775,12 @@ var ReadingSelectionToolbar = class {
     }
   }
 };
-function clamp3(value, min, max) {
+function clamp4(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
 }
 
 // src/selection-toolbar.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 var FORMAT_ITEMS = [
   { id: "paragraph", label: "\u6B63\u6587", shortcut: "T" },
   { id: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1" },
@@ -646,7 +820,7 @@ var SelectionToolbar = class {
     });
     this.formatLabel = format.createSpan({ text: "\u6B63\u6587" });
     const chevron = format.createSpan({ cls: "side-mark-toolbar-format-chevron" });
-    (0, import_obsidian5.setIcon)(chevron, "chevron-down");
+    (0, import_obsidian6.setIcon)(chevron, "chevron-down");
     format.addEventListener("mouseenter", () => this.openMenu());
     format.addEventListener("click", (event) => {
       event.preventDefault();
@@ -663,7 +837,7 @@ var SelectionToolbar = class {
           "aria-label": button.title
         }
       });
-      (0, import_obsidian5.setIcon)(buttonEl, button.icon);
+      (0, import_obsidian6.setIcon)(buttonEl, button.icon);
       buttonEl.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -683,14 +857,14 @@ var SelectionToolbar = class {
       });
       const iconWrap = row.createSpan({ cls: "side-mark-selection-menu-icon" });
       if (item.icon) {
-        (0, import_obsidian5.setIcon)(iconWrap, item.icon);
+        (0, import_obsidian6.setIcon)(iconWrap, item.icon);
       } else {
         iconWrap.setText(item.shortcut || "");
       }
       row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
       const check = row.createSpan({ cls: "side-mark-selection-menu-check" });
       if (item.id === "paragraph") {
-        (0, import_obsidian5.setIcon)(check, "check");
+        (0, import_obsidian6.setIcon)(check, "check");
         row.addClass("is-active");
       }
       row.addEventListener("click", (event) => {
@@ -712,13 +886,13 @@ var SelectionToolbar = class {
     const height = this.el.offsetHeight;
     const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
     const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
-    const left = clamp4(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const left = clamp5(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
     const aboveTop = rect.top - height - 10;
     const belowTop = rect.bottom + 10;
     const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
     const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
     const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
-    const top = clamp4(preferredTop, minTop, maxTop);
+    const top = clamp5(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -794,17 +968,17 @@ var SelectionToolbar = class {
     this.cancelHide();
     const rect = this.el.getBoundingClientRect();
     this.menu.show();
-    this.menu.style.left = `${clamp4(rect.left, 8, window.innerWidth - this.menu.offsetWidth - 8)}px`;
-    this.menu.style.top = `${clamp4(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
+    this.menu.style.left = `${clamp5(rect.left, 8, window.innerWidth - this.menu.offsetWidth - 8)}px`;
+    this.menu.style.top = `${clamp5(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
     window.requestAnimationFrame(() => this.menu.addClass("is-open"));
   }
 };
-function clamp4(value, min, max) {
+function clamp5(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
 }
 
 // src/storage.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var import_crypto = require("crypto");
 
 // src/anchors.ts
@@ -928,7 +1102,7 @@ var SideMarkStore = class {
     this.settings = settings;
   }
   async loadDocument(filePath) {
-    const normalizedPath = (0, import_obsidian6.normalizePath)(filePath);
+    const normalizedPath = (0, import_obsidian7.normalizePath)(filePath);
     const sidecarPath = this.getSidecarPath(normalizedPath);
     if (!await this.app.vault.adapter.exists(sidecarPath)) {
       return this.createEmptyDocument(normalizedPath);
@@ -943,7 +1117,7 @@ var SideMarkStore = class {
     };
   }
   async saveDocument(document2) {
-    const normalizedPath = (0, import_obsidian6.normalizePath)(document2.filePath);
+    const normalizedPath = (0, import_obsidian7.normalizePath)(document2.filePath);
     const next = {
       schemaVersion: 1,
       filePath: normalizedPath,
@@ -965,11 +1139,13 @@ var SideMarkStore = class {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const mark = {
       id: crypto.randomUUID(),
-      filePath: (0, import_obsidian6.normalizePath)(input.filePath),
+      filePath: (0, import_obsidian7.normalizePath)(input.filePath),
       anchor,
       mark: {
         kind: input.kind,
-        color: input.color
+        color: input.color,
+        textColor: input.textColor || "default",
+        backgroundColor: input.backgroundColor || "none"
       },
       note: {
         content: input.noteContent || "",
@@ -1110,10 +1286,10 @@ var SideMarkStore = class {
     };
   }
   getSidecarPath(filePath) {
-    return (0, import_obsidian6.normalizePath)(`${this.getFilesDir()}/${hashPath(filePath)}.json`);
+    return (0, import_obsidian7.normalizePath)(`${this.getFilesDir()}/${hashPath(filePath)}.json`);
   }
   getFilesDir() {
-    return (0, import_obsidian6.normalizePath)(`${this.settings.dataDir || DEFAULT_SETTINGS.dataDir}/files`);
+    return (0, import_obsidian7.normalizePath)(`${this.settings.dataDir || DEFAULT_SETTINGS.dataDir}/files`);
   }
   normalizeMark(mark) {
     const replies = this.getReplies(mark);
@@ -1149,11 +1325,11 @@ var SideMarkStore = class {
   }
 };
 function hashPath(filePath) {
-  return (0, import_crypto.createHash)("sha1").update((0, import_obsidian6.normalizePath)(filePath)).digest("hex");
+  return (0, import_crypto.createHash)("sha1").update((0, import_obsidian7.normalizePath)(filePath)).digest("hex");
 }
 
 // src/sidebar-view.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/icons.ts
 var FLOAT_MARK_ICON_ID = "float-mark";
@@ -1174,11 +1350,12 @@ var MARK_COLORS = [
   { color: "green", label: "\u7EFF\u8272" },
   { color: "red", label: "\u7EA2\u8272" }
 ];
-var SideMarkSidebarView = class extends import_obsidian7.ItemView {
+var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
     this.focusedMarkId = "";
+    this.activeTab = "comments";
     this.filter = "active";
     this.tagFilter = "all";
     this.colorFilter = "all";
@@ -1217,27 +1394,69 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     const header = container.createDiv({ cls: "side-mark-sidebar-header" });
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
     titleRow.createEl("h3", { text: "\u6B63\u6587\u6807\u6CE8" });
-    const controls = titleRow.createDiv({ cls: "side-mark-sidebar-controls" });
     const doc = this.plugin.currentDocument;
+    const allMarks = (doc == null ? void 0 : doc.marks) || [];
+    const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
+    this.renderTabs(toolbarRow, allMarks);
+    const controls = toolbarRow.createDiv({ cls: "side-mark-sidebar-controls" });
     if (!doc || doc.marks.length === 0) {
       this.renderFilters(header, controls, [], []);
       this.restoreSearchInputFocus();
       container.createDiv({ text: "\u5F53\u524D\u6587\u6863\u8FD8\u6CA1\u6709\u6807\u6CE8\u3002", cls: "setting-item-description" });
       return;
     }
-    const marks = this.getFilteredMarks(doc.marks);
-    this.renderFilters(header, controls, doc.marks, marks);
+    const tabMarks = this.getTabMarks(doc.marks);
+    const marks = this.getFilteredMarks(tabMarks);
+    this.renderFilters(header, controls, tabMarks, marks);
     this.restoreSearchInputFocus();
     if (marks.length === 0) {
       container.createDiv({
-        text: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u6CE8\u3002",
+        text: this.activeTab === "comments" ? "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8BC4\u8BBA\u3002" : "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u8BB0\u3002",
         cls: "setting-item-description"
       });
       return;
     }
     for (const mark of marks) {
-      this.renderCard(container, mark);
+      if (this.activeTab === "comments") {
+        this.renderCard(container, mark);
+      } else {
+        this.renderMarkCard(container, mark);
+      }
     }
+  }
+  renderTabs(container, marks) {
+    const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
+    this.renderTab(tabs, "comments", "\u8BC4\u8BBA", marks.filter((mark) => mark.mark.kind === "comment").length);
+    this.renderTab(tabs, "marks", "\u6807\u8BB0", marks.filter((mark) => mark.mark.kind === "highlight").length);
+  }
+  renderTab(container, tab, label, count) {
+    const button = container.createEl("button", {
+      cls: `side-mark-sidebar-tab${this.activeTab === tab ? " is-active" : ""}`,
+      attr: { type: "button" }
+    });
+    button.createSpan({ cls: "side-mark-sidebar-tab-label", text: label });
+    button.createSpan({ cls: "side-mark-sidebar-tab-count", text: String(count) });
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectTab(tab);
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectTab(tab);
+    });
+  }
+  selectTab(tab) {
+    if (this.activeTab === tab) {
+      return;
+    }
+    this.activeTab = tab;
+    this.searchQuery = "";
+    void this.render();
   }
   renderFilters(container, controls, allMarks, filteredMarks) {
     this.renderSelect(controls, "\u72B6\u6001", this.filter, [
@@ -1249,16 +1468,18 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       this.filter = value;
       void this.render();
     });
-    this.renderSelect(controls, "\u989C\u8272", this.colorFilter, [
-      { value: "all", label: "\u5168\u90E8" },
-      { value: "yellow", label: "\u9EC4\u8272" },
-      { value: "blue", label: "\u84DD\u8272" },
-      { value: "green", label: "\u7EFF\u8272" },
-      { value: "red", label: "\u7EA2\u8272" }
-    ], (value) => {
-      this.colorFilter = value;
-      void this.render();
-    });
+    if (this.activeTab === "comments") {
+      this.renderSelect(controls, "\u989C\u8272", this.colorFilter, [
+        { value: "all", label: "\u5168\u90E8" },
+        { value: "yellow", label: "\u9EC4\u8272" },
+        { value: "blue", label: "\u84DD\u8272" },
+        { value: "green", label: "\u7EFF\u8272" },
+        { value: "red", label: "\u7EA2\u8272" }
+      ], (value) => {
+        this.colorFilter = value;
+        void this.render();
+      });
+    }
     this.renderSelect(controls, "\u6807\u7B7E", this.tagFilter, [
       { value: "all", label: "\u5168\u90E8" }
     ], (value) => {
@@ -1270,8 +1491,8 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       cls: "side-mark-sidebar-search-input",
       attr: {
         type: "search",
-        placeholder: "\u641C\u7D22\u6807\u6CE8",
-        "aria-label": "\u641C\u7D22\u6807\u6CE8"
+        placeholder: this.activeTab === "comments" ? "\u641C\u7D22\u8BC4\u8BBA" : "\u641C\u7D22\u6807\u8BB0",
+        "aria-label": this.activeTab === "comments" ? "\u641C\u7D22\u8BC4\u8BBA" : "\u641C\u7D22\u6807\u8BB0"
       }
     });
     search.value = this.searchQuery;
@@ -1291,7 +1512,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     });
     container.createDiv({
       cls: "side-mark-sidebar-stats",
-      text: allMarks.length === filteredMarks.length ? `\u5F53\u524D\u6587\u6863\uFF0C\u5171 ${allMarks.length} \u6761\u6807\u6CE8` : `\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 ${filteredMarks.length} / ${allMarks.length} \u6761\u6807\u6CE8`
+      text: allMarks.length === filteredMarks.length ? `\u5F53\u524D\u6587\u6863\uFF0C\u5171 ${allMarks.length} \u6761${this.activeTab === "comments" ? "\u8BC4\u8BBA" : "\u6807\u8BB0"}` : `\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 ${filteredMarks.length} / ${allMarks.length} \u6761${this.activeTab === "comments" ? "\u8BC4\u8BBA" : "\u6807\u8BB0"}`
     });
   }
   renderSelect(container, label, value, options, onChange) {
@@ -1316,7 +1537,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       attr: { type: "button", "aria-label": label }
     });
     const chevron = trigger.createSpan({ cls: "side-mark-filter-chevron" });
-    (0, import_obsidian7.setIcon)(chevron, "chevron-down");
+    (0, import_obsidian8.setIcon)(chevron, "chevron-down");
     const menu = field.createDiv({ cls: "side-mark-filter-menu" });
     menu.hide();
     for (const option of options) {
@@ -1326,7 +1547,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       });
       const check = item.createSpan({ cls: "side-mark-filter-menu-check" });
       if (option.value === value) {
-        (0, import_obsidian7.setIcon)(check, "check");
+        (0, import_obsidian8.setIcon)(check, "check");
       }
       item.createSpan({ cls: "side-mark-filter-menu-label", text: option.label });
       item.addEventListener("click", (event) => {
@@ -1369,7 +1590,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       if (this.filter === "orphaned" && mark.status !== "orphaned") {
         return false;
       }
-      if (this.colorFilter !== "all" && mark.mark.color !== this.colorFilter) {
+      if (this.activeTab === "comments" && this.colorFilter !== "all" && mark.mark.color !== this.colorFilter) {
         return false;
       }
       if (!query) {
@@ -1382,6 +1603,9 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       ].join("\n").toLowerCase();
       return haystack.includes(query);
     });
+  }
+  getTabMarks(marks) {
+    return marks.filter((mark) => this.activeTab === "comments" ? mark.mark.kind === "comment" : mark.mark.kind === "highlight");
   }
   updateSearchQuery(search) {
     this.searchQuery = search.value;
@@ -1426,7 +1650,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     });
     this.renderCardToolbar(card, mark);
     const quote = card.createDiv({ cls: "side-mark-card-quote" });
-    this.renderColorPicker(card, quote, mark);
+    this.renderColorPicker(card, mark);
     quote.createDiv({
       cls: "side-mark-card-quote-text",
       text: mark.anchor.selectedText
@@ -1434,28 +1658,38 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     this.renderThread(card, mark);
     this.renderReplyComposer(card, mark);
   }
-  renderColorPicker(card, quote, mark) {
-    const menu = card.createDiv({ cls: "side-mark-color-menu" });
-    menu.hide();
-    for (const item of MARK_COLORS) {
-      const button = menu.createEl("button", {
-        cls: `side-mark-color-option is-${item.color}${item.color === mark.mark.color ? " is-active" : ""}`,
-        attr: { type: "button", title: item.label, "aria-label": item.label }
-      });
-      if (item.color === mark.mark.color) {
-        (0, import_obsidian7.setIcon)(button, "check");
-      }
-      button.addEventListener("click", async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        menu.hide();
-        await this.plugin.updateMarkColor(mark.id, item.color);
-      });
+  renderMarkCard(container, mark) {
+    const card = container.createDiv({
+      cls: `side-mark-card side-mark-marker-card is-background-${mark.mark.backgroundColor}${mark.status === "resolved" ? " is-resolved" : ""}`
+    });
+    card.dataset.sideMarkCardId = mark.id;
+    if (mark.id === this.focusedMarkId) {
+      card.addClass("is-focused");
     }
-    quote.addEventListener("click", (event) => {
-      if (event.offsetX > 14) {
+    card.addEventListener("click", (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const interactive = target == null ? void 0 : target.closest("button, a, .side-mark-card-menu");
+      if (interactive) {
         return;
       }
+      void this.plugin.jumpToMark(mark.id);
+      this.focusMark(mark.id);
+    });
+    const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
+    this.addIconAction(toolbar, "chevrons-up", "\u5B9A\u4F4D", () => void this.plugin.jumpToMark(mark.id));
+    this.addIconAction(toolbar, "palette", "\u6837\u5F0F", () => {
+      const rect = card.getBoundingClientRect();
+      void this.plugin.openMark(mark.id, rect);
+    });
+    const more = toolbar.createEl("button", {
+      cls: "side-mark-card-icon-button",
+      attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
+    });
+    (0, import_obsidian8.setIcon)(more, "more-horizontal");
+    const menu = card.createDiv({ cls: "side-mark-card-menu" });
+    menu.hide();
+    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
+    more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (menu.isShown()) {
@@ -1465,11 +1699,61 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       }
     });
     card.addEventListener("mouseleave", () => menu.hide());
+    const quote = card.createDiv({
+      cls: `side-mark-card-quote side-mark-marker-preview side-mark--text-${mark.mark.textColor} side-mark--background-${mark.mark.backgroundColor}`
+    });
+    quote.createDiv({
+      cls: "side-mark-card-quote-text",
+      text: mark.anchor.selectedText
+    });
+    const meta = card.createDiv({ cls: "side-mark-marker-meta" });
+    const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
+    textSwatch.setAttr("aria-hidden", "true");
+    meta.createSpan({ text: "\u5B57\u4F53" });
+    const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
+    backgroundSwatch.setAttr("aria-hidden", "true");
+    meta.createSpan({ text: "\u80CC\u666F" });
+  }
+  renderColorPicker(card, mark) {
+    const menu = card.createDiv({ cls: "side-mark-color-menu" });
+    menu.hide();
+    for (const item of MARK_COLORS) {
+      const button = menu.createEl("button", {
+        cls: `side-mark-color-option is-${item.color}${item.color === mark.mark.color ? " is-active" : ""}`,
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      if (item.color === mark.mark.color) {
+        (0, import_obsidian8.setIcon)(button, "check");
+      }
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        menu.hide();
+        await this.plugin.updateMarkColor(mark.id, item.color);
+      });
+    }
+    card.addEventListener("mouseleave", () => menu.hide());
+  }
+  toggleColorPicker(card) {
+    const menu = card.querySelector(".side-mark-color-menu");
+    if (!menu) {
+      return;
+    }
+    if (menu.isShown()) {
+      menu.hide();
+    } else {
+      menu.show();
+    }
   }
   renderCardToolbar(card, mark) {
     const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
     this.addIconAction(toolbar, "chevrons-up", "\u5B9A\u4F4D", () => void this.plugin.jumpToMark(mark.id));
     this.addSyncAction(toolbar, mark);
+    this.addIconAction(toolbar, "palette", "\u989C\u8272", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleColorPicker(card);
+    });
     this.addIconAction(
       toolbar,
       mark.status === "resolved" ? "circle" : "circle-check",
@@ -1480,7 +1764,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       cls: "side-mark-card-icon-button",
       attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
     });
-    (0, import_obsidian7.setIcon)(more, "more-horizontal");
+    (0, import_obsidian8.setIcon)(more, "more-horizontal");
     const menu = card.createDiv({ cls: "side-mark-card-menu" });
     menu.hide();
     this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
@@ -1511,11 +1795,8 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     }
     for (const reply of replies) {
       const row = thread.createDiv({ cls: "side-mark-reply" });
-      const avatar = row.createDiv({ cls: "side-mark-avatar", text: reply.authorName.slice(0, 1) || "\u6211" });
-      avatar.setAttr("aria-hidden", "true");
       const body = row.createDiv({ cls: "side-mark-reply-body" });
       const meta = body.createDiv({ cls: "side-mark-reply-meta" });
-      meta.createSpan({ cls: "side-mark-reply-author", text: reply.authorName || "\u6211" });
       meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt) });
       const content = body.createDiv({
         cls: "side-mark-reply-content",
@@ -1669,7 +1950,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       cls: "side-mark-card-icon-button",
       attr: { type: "button", title: label, "aria-label": label }
     });
-    (0, import_obsidian7.setIcon)(button, icon);
+    (0, import_obsidian8.setIcon)(button, icon);
     button.addEventListener("click", onClick);
   }
   addSyncAction(container, mark) {
@@ -1680,10 +1961,10 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       cls: `side-mark-card-icon-button side-mark-sync-action is-${status}`,
       attr: { type: "button", title: label, "aria-label": label }
     });
-    (0, import_obsidian7.setIcon)(button, "link");
+    (0, import_obsidian8.setIcon)(button, "link");
     if (status === "synced" || status === "failed") {
       const badge = button.createSpan({ cls: "side-mark-sync-action-badge" });
-      (0, import_obsidian7.setIcon)(badge, status === "synced" ? "check" : "x");
+      (0, import_obsidian8.setIcon)(badge, status === "synced" ? "check" : "x");
     }
     button.addEventListener("click", () => void this.syncMark(mark.id));
   }
@@ -1693,7 +1974,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
       attr: { type: "button", title: label, "aria-label": label }
     });
     const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
-    (0, import_obsidian7.setIcon)(iconEl, icon);
+    (0, import_obsidian8.setIcon)(iconEl, icon);
     button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
     button.addEventListener("click", (event) => {
       event.preventDefault();
@@ -1705,9 +1986,9 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
   async syncMark(markId) {
     try {
       await this.plugin.syncMarkToLark(markId);
-      new import_obsidian7.Notice("\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002");
+      new import_obsidian8.Notice("\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002");
     } catch (error) {
-      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error), 8e3);
+      new import_obsidian8.Notice(error instanceof Error ? error.message : String(error), 8e3);
     }
     await this.render();
   }
@@ -1737,7 +2018,7 @@ function formatReplyTime(value) {
 }
 
 // src/lark-bridge.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/block-map.ts
 function splitMarkdownBlocks(markdown) {
@@ -1931,7 +2212,7 @@ function readYamlScalar(frontmatter, key) {
 }
 async function readSyncState(plugin) {
   const adapter = plugin.app.vault.adapter;
-  if (!(adapter instanceof import_obsidian8.FileSystemAdapter)) {
+  if (!(adapter instanceof import_obsidian9.FileSystemAdapter)) {
     return null;
   }
   const statePath = `${plugin.app.vault.configDir}/plugins/${LARK_SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
@@ -2087,10 +2368,18 @@ function normalizeLarkCommentResult(result) {
 
 // src/reading-view-renderer.ts
 function renderReadingMarks(container, source, marks, onClick) {
+  clearReadingMarks(container);
   const activeMarks = marks.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText).map((mark) => ({ mark }));
   for (const item of activeMarks) {
     wrapReadingMark(container, item.mark, onClick);
   }
+}
+function clearReadingMarks(container) {
+  const wrappers = Array.from(container.querySelectorAll(".side-mark-reading"));
+  for (const wrapper of wrappers) {
+    wrapper.replaceWith(...Array.from(wrapper.childNodes));
+  }
+  container.normalize();
 }
 function wrapReadingMark(container, mark, onClick) {
   const ranges = collectTextNodes(container);
@@ -2110,13 +2399,20 @@ function wrapReadingMark(container, mark, onClick) {
   domRange.setStart(startRange.node, start - startRange.start);
   domRange.setEnd(endRange.node, end - endRange.start);
   const wrapper = document.createElement("span");
-  wrapper.className = `side-mark side-mark-reading side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`;
+  wrapper.className = [
+    "side-mark",
+    "side-mark-reading",
+    `side-mark--${mark.mark.kind}`,
+    `side-mark--${mark.mark.color}`,
+    `side-mark--text-${mark.mark.textColor}`,
+    `side-mark--background-${mark.mark.backgroundColor}`
+  ].join(" ");
   wrapper.dataset.sideMarkReadingId = mark.id;
   wrapper.title = mark.note.content || "FloatMark";
   wrapper.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    onClick(mark.id);
+    onClick(mark.id, wrapper.getBoundingClientRect());
   });
   try {
     wrapper.append(domRange.extractContents());
@@ -2249,7 +2545,7 @@ function estimateRenderedLineOffset(renderedText, lineNumber) {
 }
 
 // src/main.ts
-var SideMarkPlugin = class extends import_obsidian9.Plugin {
+var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.currentDocument = null;
@@ -2259,12 +2555,13 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    (0, import_obsidian9.addIcon)(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
+    (0, import_obsidian10.addIcon)(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
     this.store = new SideMarkStore(this.app, this.settings);
     this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
     this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
     this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target));
     this.commentPopover = new CommentPopover();
+    this.markStylePopover = new MarkStylePopover();
     this.registerEditorExtension(createSideMarkEditorExtension(this));
     this.registerMarkdownPostProcessor((element, context) => {
       void this.renderReadingModeMarks(element, context.sourcePath);
@@ -2285,7 +2582,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     this.registerDomEvent(document, "selectionchange", () => this.handleReadingSelectionChange());
     this.registerEvent(this.app.vault.on("modify", (file) => {
       var _a;
-      if (file instanceof import_obsidian9.TFile && file.extension === "md" && file.path === ((_a = this.getActiveMarkdownFile()) == null ? void 0 : _a.path)) {
+      if (file instanceof import_obsidian10.TFile && file.extension === "md" && file.path === ((_a = this.getActiveMarkdownFile()) == null ? void 0 : _a.path)) {
         void this.reloadCurrentDocument();
       }
     }));
@@ -2293,11 +2590,12 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     await this.reloadCurrentDocument();
   }
   onunload() {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
     (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
     (_c = this.blockToolbar) == null ? void 0 : _c.destroy();
     (_d = this.commentPopover) == null ? void 0 : _d.destroy();
+    (_e = this.markStylePopover) == null ? void 0 : _e.destroy();
   }
   async loadSettings() {
     const saved = await this.loadData();
@@ -2312,9 +2610,9 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     (_a = this.store) == null ? void 0 : _a.updateSettings(this.settings);
   }
   getActiveMarkdownFile() {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView);
     const file = view == null ? void 0 : view.file;
-    if (file instanceof import_obsidian9.TFile && file.extension === "md") {
+    if (file instanceof import_obsidian10.TFile && file.extension === "md") {
       this.lastMarkdownFilePath = file.path;
       return file;
     }
@@ -2322,12 +2620,15 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
       return null;
     }
     const lastFile = this.app.vault.getFileByPath(this.lastMarkdownFilePath);
-    return lastFile instanceof import_obsidian9.TFile && lastFile.extension === "md" ? lastFile : null;
+    return lastFile instanceof import_obsidian10.TFile && lastFile.extension === "md" ? lastFile : null;
   }
   showSelectionToolbar(view, rect, boundary) {
     this.activeEditorView = view;
     this.blockToolbar.hide();
     this.toolbar.show(rect, boundary);
+  }
+  setActiveEditorView(view) {
+    this.activeEditorView = view;
   }
   hideSelectionToolbar() {
     this.toolbar.hide();
@@ -2389,10 +2690,10 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     this.currentDocument = await this.store.updateMark(file.path, markId, {
       status: mark.status === "resolved" ? "active" : "resolved"
     });
-    await this.refreshSidebar();
+    await this.refreshMarkViews(file.path);
   }
   async updateMarkColor(markId, color) {
-    var _a, _b;
+    var _a;
     const file = this.getActiveMarkdownFile();
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!file || !mark) return;
@@ -2402,14 +2703,45 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
         color
       }
     });
-    (_b = this.activeEditorView) == null ? void 0 : _b.dispatch({ effects: [] });
-    await this.refreshSidebar();
+    await this.refreshMarkViews(file.path);
+  }
+  async updateMarkAppearance(markId, choice) {
+    var _a;
+    const file = this.getActiveMarkdownFile();
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) return;
+    this.currentDocument = await this.store.updateMark(file.path, markId, {
+      mark: {
+        ...mark.mark,
+        textColor: choice.textColor,
+        backgroundColor: choice.backgroundColor
+      }
+    });
+    await this.refreshMarkViews(file.path);
+  }
+  async openMark(markId, rect) {
+    var _a;
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!mark) return;
+    if (mark.mark.kind !== "highlight") {
+      await this.focusMark(markId);
+      return;
+    }
+    this.markStylePopover.show(rect, {
+      textColor: mark.mark.textColor,
+      backgroundColor: mark.mark.backgroundColor
+    }, (choice) => {
+      void this.updateMarkAppearance(mark.id, choice);
+    }, () => {
+      void this.deleteMark(mark.id);
+    });
   }
   async deleteMark(markId) {
     const file = this.getActiveMarkdownFile();
     if (!file) return;
     this.currentDocument = await this.store.deleteMark(file.path, markId);
-    await this.refreshSidebar();
+    this.markStylePopover.hide();
+    await this.refreshMarkViews(file.path);
   }
   async jumpToMark(markId) {
     var _a;
@@ -2461,7 +2793,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     const view = this.activeEditorView;
     if (!view) return;
     if (action === "highlight") {
-      await this.createMarkFromView(view, "highlight", "");
+      this.showMarkStylePopoverForView(view);
       return;
     }
     if (action === "comment") {
@@ -2492,7 +2824,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     }
     const view = this.findMarkdownPreviewView(range.commonAncestorContainer);
     const file = view == null ? void 0 : view.file;
-    if (!view || !(file instanceof import_obsidian9.TFile) || view.getMode() !== "preview") {
+    if (!view || !(file instanceof import_obsidian10.TFile) || view.getMode() !== "preview") {
       this.readingSelection = null;
       this.readingToolbar.hide();
       return;
@@ -2505,8 +2837,8 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
       this.readingToolbar.hide();
       return;
     }
-    const rect = range.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
+    const rect = getReadingSelectionRect(range);
+    if (!rect) {
       this.readingSelection = null;
       this.readingToolbar.hide();
       return;
@@ -2523,7 +2855,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
   findMarkdownPreviewView(node) {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
-      if (view instanceof import_obsidian9.MarkdownView && view.getMode() === "preview" && view.contentEl.contains(node)) {
+      if (view instanceof import_obsidian10.MarkdownView && view.getMode() === "preview" && view.contentEl.contains(node)) {
         return view;
       }
     }
@@ -2535,7 +2867,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
       return;
     }
     if (action === "highlight") {
-      await this.createReadingMark(selection, "highlight", "");
+      this.showMarkStylePopoverForReadingSelection(selection);
       return;
     }
     this.commentPopover.show(selection.rect, (content) => {
@@ -2551,7 +2883,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
     }
     if (action === "copy") {
       await navigator.clipboard.writeText(view.state.doc.sliceString(target.from, target.to));
-      new import_obsidian9.Notice("\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002");
+      new import_obsidian10.Notice("\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002");
       return;
     }
     this.applyBlockStyle(view, target, action);
@@ -2679,10 +3011,76 @@ ${stripped}
       void this.createMarkFromView(view, "comment", content);
     });
   }
+  showMarkStylePopoverForView(view) {
+    const selection = view.state.selection.main;
+    const rect = view.coordsAtPos(selection.to);
+    if (!rect || selection.empty) return;
+    const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    let markId = "";
+    let createPromise = null;
+    this.markStylePopover.show(popoverRect, defaultHighlightAppearance(), (choice) => {
+      void (async () => {
+        if (!markId) {
+          if (!createPromise) {
+            createPromise = this.createMarkFromOffsets(
+              view,
+              selection.from,
+              selection.to,
+              "highlight",
+              "",
+              choice,
+              false
+            );
+          }
+          const createdMark = await createPromise;
+          markId = (createdMark == null ? void 0 : createdMark.id) || "";
+          if (markId) {
+            await this.updateMarkAppearance(markId, choice);
+          }
+          return;
+        }
+        await this.updateMarkAppearance(markId, choice);
+      })();
+    }, () => {
+      if (markId) {
+        void this.deleteMark(markId);
+      }
+    });
+  }
+  showMarkStylePopoverForReadingSelection(selection) {
+    let markId = "";
+    let createPromise = null;
+    this.markStylePopover.show(selection.rect, defaultHighlightAppearance(), (choice) => {
+      void (async () => {
+        if (!markId) {
+          if (!createPromise) {
+            createPromise = this.createReadingMark(
+              selection,
+              "highlight",
+              "",
+              choice,
+              false
+            );
+          }
+          const createdMark = await createPromise;
+          markId = (createdMark == null ? void 0 : createdMark.id) || "";
+          if (markId) {
+            await this.updateMarkAppearance(markId, choice);
+          }
+          return;
+        }
+        await this.updateMarkAppearance(markId, choice);
+      })();
+    }, () => {
+      if (markId) {
+        void this.deleteMark(markId);
+      }
+    });
+  }
   async createCommentFromActiveSelection(noteContent) {
     const view = this.activeEditorView;
     if (!view) {
-      new import_obsidian9.Notice("\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002");
+      new import_obsidian10.Notice("\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002");
       return;
     }
     await this.createMarkFromView(view, "comment", noteContent);
@@ -2691,11 +3089,11 @@ ${stripped}
     const file = this.getActiveMarkdownFile();
     const selection = view.state.selection.main;
     if (!file || selection.empty) {
-      return;
+      return null;
     }
-    await this.createMarkFromOffsets(view, selection.from, selection.to, kind, noteContent);
+    return this.createMarkFromOffsets(view, selection.from, selection.to, kind, noteContent);
   }
-  async createReadingMark(selection, kind, noteContent) {
+  async createReadingMark(selection, kind, noteContent, appearance = defaultHighlightAppearance(), autoOpenSidebar = true) {
     var _a, _b;
     const previousMarkIds = new Set((((_a = this.currentDocument) == null ? void 0 : _a.marks) || []).map((mark) => mark.id));
     this.currentDocument = await this.store.createMark({
@@ -2705,6 +3103,8 @@ ${stripped}
       endOffset: selection.to,
       kind,
       color: "yellow",
+      textColor: appearance.textColor,
+      backgroundColor: appearance.backgroundColor,
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
@@ -2712,18 +3112,19 @@ ${stripped}
     await this.renderPreviewMarksForFile(selection.file.path);
     this.readingSelection = null;
     (_b = window.getSelection()) == null ? void 0 : _b.removeAllRanges();
-    if (this.settings.autoOpenSidebar) {
+    if (autoOpenSidebar && this.settings.autoOpenSidebar) {
       await this.openSidebar();
     }
     if (kind === "comment" && createdMark && noteContent.trim()) {
       this.syncMarkToLarkInBackground(createdMark.id);
     }
+    return createdMark || null;
   }
-  async createMarkFromOffsets(view, from, to, kind, noteContent) {
+  async createMarkFromOffsets(view, from, to, kind, noteContent, appearance = defaultHighlightAppearance(), autoOpenSidebar = true) {
     var _a;
     const file = this.getActiveMarkdownFile();
     if (!file || from === to) {
-      return;
+      return null;
     }
     const previousMarkIds = new Set((((_a = this.currentDocument) == null ? void 0 : _a.marks) || []).map((mark) => mark.id));
     this.currentDocument = await this.store.createMark({
@@ -2733,16 +3134,29 @@ ${stripped}
       endOffset: to,
       kind,
       color: "yellow",
+      textColor: appearance.textColor,
+      backgroundColor: appearance.backgroundColor,
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
     await this.refreshSidebar();
-    if (this.settings.autoOpenSidebar) {
+    this.refreshEditorDecorations();
+    if (autoOpenSidebar && this.settings.autoOpenSidebar) {
       await this.openSidebar();
     }
     if (kind === "comment" && createdMark && noteContent.trim()) {
       this.syncMarkToLarkInBackground(createdMark.id);
     }
+    return createdMark || null;
+  }
+  refreshEditorDecorations() {
+    var _a;
+    (_a = this.activeEditorView) == null ? void 0 : _a.dispatch({ effects: [] });
+  }
+  async refreshMarkViews(filePath) {
+    this.refreshEditorDecorations();
+    await this.refreshSidebar();
+    await this.renderPreviewMarksForFile(filePath);
   }
   syncMarkToLarkInBackground(markId) {
     if (!this.settings.autoSyncToLark) {
@@ -2750,12 +3164,12 @@ ${stripped}
     }
     void this.syncMarkToLark(markId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian9.Notice(`\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A${message}`, 8e3);
+      new import_obsidian10.Notice(`\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A${message}`, 8e3);
     });
   }
   getActiveEditor() {
     var _a;
-    return ((_a = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView)) == null ? void 0 : _a.editor) || null;
+    return ((_a = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView)) == null ? void 0 : _a.editor) || null;
   }
   async renderReadingModeMarks(container, sourcePath) {
     const file = this.app.vault.getFileByPath(sourcePath);
@@ -2766,13 +3180,13 @@ ${stripped}
       this.app.vault.read(file),
       this.store.loadDocument(file.path)
     ]);
-    renderReadingMarks(container, source, document2.marks, (markId) => void this.focusMark(markId));
+    renderReadingMarks(container, source, document2.marks, (markId, rect) => void this.openMark(markId, rect));
   }
   async renderPreviewMarksForFile(filePath) {
     var _a;
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
-      if (!(view instanceof import_obsidian9.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
+      if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
         continue;
       }
       await this.renderReadingModeMarks(view.contentEl, filePath);
@@ -2797,7 +3211,7 @@ ${stripped}
     var _a;
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
-      if (!(view instanceof import_obsidian9.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
+      if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
         continue;
       }
       const element = view.contentEl.querySelector(`[data-side-mark-reading-id="${markId}"]`);
@@ -2812,7 +3226,7 @@ ${stripped}
     var _a;
     for (const leaf2 of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf2.view;
-      if (view instanceof import_obsidian9.MarkdownView && ((_a = view.file) == null ? void 0 : _a.path) === filePath) {
+      if (view instanceof import_obsidian10.MarkdownView && ((_a = view.file) == null ? void 0 : _a.path) === filePath) {
         this.app.workspace.revealLeaf(leaf2);
         return view;
       }
@@ -2823,7 +3237,7 @@ ${stripped}
     }
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
-    return leaf.view instanceof import_obsidian9.MarkdownView ? leaf.view : null;
+    return leaf.view instanceof import_obsidian10.MarkdownView ? leaf.view : null;
   }
   async setMarkdownViewMode(view, mode) {
     const state = view.leaf.getViewState();
@@ -2895,6 +3309,18 @@ function findSourceRangeForReadingSelection(source, selectedText) {
     to: to + 1
   };
 }
+function getReadingSelectionRect(range) {
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return rect.width === 0 && rect.height === 0 ? null : rect;
+  }
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
+}
 function buildRenderedSourceIndex(source) {
   let rendered = "";
   const offsets = [];
@@ -2925,7 +3351,7 @@ function buildRenderedSourceIndex(source) {
   return { text: rendered, offsets };
 }
 function normalizeReadingSelection(text) {
-  return text.replace(/\s+/g, "");
+  return text.split(/\n+/).map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "")).join("").replace(/\s+/g, "");
 }
 function isMarkdownMarkerAt(source, index) {
   return markerLengthAt(source, index) > 0;
@@ -2941,7 +3367,13 @@ function markerLengthAt(source, index) {
   }
   return 0;
 }
-var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
+function defaultHighlightAppearance() {
+  return {
+    textColor: "default",
+    backgroundColor: "none"
+  };
+}
+var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   constructor(plugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
@@ -2950,20 +3382,20 @@ var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "FloatMark" });
-    new import_obsidian9.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
+    new import_obsidian10.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian9.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
+    new import_obsidian10.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
         this.plugin.settings.autoSyncToLark = value;
         await this.plugin.saveSettings();
       });
     });
     this.renderLarkSyncPluginStatus(containerEl);
-    new import_obsidian9.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
+    new import_obsidian10.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
       text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
         this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
         await this.plugin.saveSettings();
@@ -2972,7 +3404,7 @@ var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
   }
   renderLarkSyncPluginStatus(containerEl) {
     const status = getLarkSyncPluginStatus(this.plugin);
-    const setting = new import_obsidian9.Setting(containerEl).setName("Feishu Lark CLI Sync").setDesc("FloatMark \u53EA\u68C0\u6D4B\u63D2\u4EF6\u72B6\u6001\uFF1B\u98DE\u4E66 CLI \u8DEF\u5F84\u3001\u767B\u5F55\u548C\u6267\u884C\u80FD\u529B\u7531 Feishu Lark CLI Sync \u7BA1\u7406\u3002");
+    const setting = new import_obsidian10.Setting(containerEl).setName("Feishu Lark CLI Sync").setDesc("FloatMark \u53EA\u68C0\u6D4B\u63D2\u4EF6\u72B6\u6001\uFF1B\u98DE\u4E66 CLI \u8DEF\u5F84\u3001\u767B\u5F55\u548C\u6267\u884C\u80FD\u529B\u7531 Feishu Lark CLI Sync \u7BA1\u7406\u3002");
     const statusEl = setting.descEl.createDiv({
       cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
       text: getLarkSyncPluginStatusText(status)
