@@ -656,6 +656,11 @@
 	cursor: pointer;
 }
 
+.side-mark-pending-comment-selection {
+	background: rgba(47, 109, 246, 0.24);
+	border-radius: 2px;
+}
+
 .side-mark-reading {
 	border-radius: 2px;
 	transition: box-shadow 160ms ease, background-color 160ms ease;

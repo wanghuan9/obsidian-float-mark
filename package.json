@@ -7,7 +7,7 @@
 	"scripts": {
 		"build": "tsc --noEmit && node esbuild.config.mjs production",
 		"dev": "node esbuild.config.mjs",
-		"test": "node test/test-anchors.mjs && node test/test-block-map.mjs && node test/test-reading-view-renderer.mjs"
+		"test": "node test/test-anchors.mjs && node test/test-block-map.mjs && node test/test-reading-selection.mjs && node test/test-reading-view-renderer.mjs"
 	},
 	"keywords": [
 		"obsidian",

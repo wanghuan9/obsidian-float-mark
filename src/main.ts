@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, type MarkBackgroundColor, type MarkColor, type MarkTe
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
 import { getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";
+import { findSourceRangeForReadingSelection, getReadingSelectionRect } from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 
 export default class SideMarkPlugin extends Plugin {
@@ -23,6 +24,11 @@ export default class SideMarkPlugin extends Plugin {
 	private commentPopover!: CommentPopover;
 	private markStylePopover!: MarkStylePopover;
 	private activeEditorView: EditorView | null = null;
+	private pendingCommentSelection: {
+		filePath: string;
+		from: number;
+		to: number;
+	} | null = null;
 	private readingSelection: {
 		file: TFile;
 		source: string;
@@ -116,6 +122,16 @@ export default class SideMarkPlugin extends Plugin {
 
 	hideSelectionToolbar(): void {
 		this.toolbar.hide();
+	}
+
+	getPendingCommentSelection(filePath: string): { from: number; to: number } | null {
+		if (!this.pendingCommentSelection || this.pendingCommentSelection.filePath !== filePath) {
+			return null;
+		}
+		return {
+			from: this.pendingCommentSelection.from,
+			to: this.pendingCommentSelection.to
+		};
 	}
 
 	showBlockToolbar(view: EditorView, target: HoverBlockTarget): void {
@@ -318,7 +334,7 @@ export default class SideMarkPlugin extends Plugin {
 			this.readingToolbar.hide();
 			return;
 		}
-		const view = this.findMarkdownPreviewView(range.commonAncestorContainer);
+		const view = this.findMarkdownPreviewViewForRange(range);
 		const file = view?.file;
 		if (!view || !(file instanceof TFile) || view.getMode() !== "preview") {
 			this.readingSelection = null;
@@ -353,6 +369,33 @@ export default class SideMarkPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (view instanceof MarkdownView && view.getMode() === "preview" && view.contentEl.contains(node)) {
+				return view;
+			}
+		}
+		return null;
+	}
+
+	private findMarkdownPreviewViewForRange(range: Range): MarkdownView | null {
+		return this.findMarkdownPreviewView(range.commonAncestorContainer)
+			|| this.findMarkdownPreviewView(range.startContainer)
+			|| this.findMarkdownPreviewView(range.endContainer)
+			|| this.findMarkdownPreviewViewByContainedRange(range);
+	}
+
+	private findMarkdownPreviewViewByContainedRange(range: Range): MarkdownView | null {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.getMode() !== "preview") {
+				continue;
+			}
+			const contentRange = document.createRange();
+			contentRange.selectNodeContents(view.contentEl);
+			const startsInView = range.compareBoundaryPoints(Range.START_TO_START, contentRange) >= 0
+				&& range.compareBoundaryPoints(Range.START_TO_END, contentRange) <= 0;
+			const endsInView = range.compareBoundaryPoints(Range.END_TO_START, contentRange) >= 0
+				&& range.compareBoundaryPoints(Range.END_TO_END, contentRange) <= 0;
+			contentRange.detach();
+			if (startsInView || endsInView) {
 				return view;
 			}
 		}
@@ -504,10 +547,21 @@ export default class SideMarkPlugin extends Plugin {
 	private showCommentPopover(view: EditorView): void {
 		const selection = view.state.selection.main;
 		const rect = view.coordsAtPos(selection.to);
-		if (!rect) return;
+		const file = this.getActiveMarkdownFile();
+		if (!rect || selection.empty || !file) return;
 		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+		const from = selection.from;
+		const to = selection.to;
+		this.pendingCommentSelection = {
+			filePath: file.path,
+			from,
+			to
+		};
+		this.refreshEditorDecorations();
 		this.commentPopover.show(popoverRect, (content) => {
-			void this.createMarkFromView(view, "comment", content);
+			void this.createMarkFromOffsets(view, from, to, "comment", content);
+		}, () => {
+			this.clearPendingCommentSelection();
 		});
 	}
 
@@ -673,6 +727,14 @@ export default class SideMarkPlugin extends Plugin {
 		this.activeEditorView?.dispatch({ effects: [] });
 	}
 
+	private clearPendingCommentSelection(): void {
+		if (!this.pendingCommentSelection) {
+			return;
+		}
+		this.pendingCommentSelection = null;
+		this.refreshEditorDecorations();
+	}
+
 	private async refreshMarkViews(filePath: string): Promise<void> {
 		this.refreshEditorDecorations();
 		await this.refreshSidebar();
@@ -816,98 +878,6 @@ function isSelectionBlockAction(action: ToolbarAction): boolean {
 		"quote",
 		"code-block"
 	].includes(action);
-}
-
-function findSourceRangeForReadingSelection(source: string, selectedText: string): { from: number; to: number } | null {
-	const directIndex = source.indexOf(selectedText);
-	if (directIndex >= 0) {
-		return {
-			from: directIndex,
-			to: directIndex + selectedText.length
-		};
-	}
-	const sourceIndex = buildRenderedSourceIndex(source);
-	const renderedSelection = normalizeReadingSelection(selectedText);
-	const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
-	if (renderedIndex < 0) {
-		return null;
-	}
-	const from = sourceIndex.offsets[renderedIndex];
-	const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
-	if (from === undefined || to === undefined) {
-		return null;
-	}
-	return {
-		from,
-		to: to + 1
-	};
-}
-
-function getReadingSelectionRect(range: Range): DOMRect | null {
-	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
-	if (rects.length === 0) {
-		const rect = range.getBoundingClientRect();
-		return rect.width === 0 && rect.height === 0 ? null : rect;
-	}
-	const left = Math.min(...rects.map((rect) => rect.left));
-	const top = Math.min(...rects.map((rect) => rect.top));
-	const right = Math.max(...rects.map((rect) => rect.right));
-	const bottom = Math.max(...rects.map((rect) => rect.bottom));
-	return new DOMRect(left, top, right - left, bottom - top);
-}
-
-function buildRenderedSourceIndex(source: string): { text: string; offsets: number[] } {
-	let rendered = "";
-	const offsets: number[] = [];
-	let index = 0;
-	const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
-	while (index < source.length) {
-		const lineStart = index === 0 || source[index - 1] === "\n";
-		if (lineStart) {
-			const prefix = source.slice(index).match(linePrefixPattern);
-			if (prefix?.[0]) {
-				index += prefix[0].length;
-				continue;
-			}
-		}
-		const char = source[index] || "";
-		if (isMarkdownMarkerAt(source, index)) {
-			index += markerLengthAt(source, index);
-			continue;
-		}
-		if (/\s/.test(char)) {
-			index += 1;
-			continue;
-		}
-		rendered += char;
-		offsets.push(index);
-		index += 1;
-	}
-	return { text: rendered, offsets };
-}
-
-function normalizeReadingSelection(text: string): string {
-	return text
-		.split(/\n+/)
-		.map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, ""))
-		.join("")
-		.replace(/\s+/g, "");
-}
-
-function isMarkdownMarkerAt(source: string, index: number): boolean {
-	return markerLengthAt(source, index) > 0;
-}
-
-function markerLengthAt(source: string, index: number): number {
-	const marker = source.slice(index, index + 2);
-	if (marker === "**" || marker === "__" || marker === "~~") {
-		return 2;
-	}
-	const char = source[index];
-	if (char === "*" || char === "_" || char === "`") {
-		return 1;
-	}
-	return 0;
 }
 
 function defaultHighlightAppearance(): MarkStyleChoice {

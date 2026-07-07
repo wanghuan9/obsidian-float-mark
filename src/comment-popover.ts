@@ -4,6 +4,7 @@ export class CommentPopover {
 	private readonly el: HTMLDivElement;
 	private readonly textarea: HTMLTextAreaElement;
 	private onSave: ((content: string) => void) | null = null;
+	private onHide: (() => void) | null = null;
 	private hideTimer: number | null = null;
 
 	constructor() {
@@ -42,9 +43,10 @@ export class CommentPopover {
 		});
 	}
 
-	show(rect: DOMRect, onSave: (content: string) => void): void {
+	show(rect: DOMRect, onSave: (content: string) => void, onHide?: () => void): void {
 		this.cancelHide();
 		this.onSave = onSave;
+		this.onHide = onHide || null;
 		this.textarea.value = "";
 		this.el.show();
 		this.el.removeClass("is-visible");
@@ -61,6 +63,8 @@ export class CommentPopover {
 		this.cancelHide();
 		this.el.removeClass("is-visible");
 		this.onSave = null;
+		this.onHide?.();
+		this.onHide = null;
 		window.setTimeout(() => {
 			if (!this.el.hasClass("is-visible")) {
 				this.el.hide();

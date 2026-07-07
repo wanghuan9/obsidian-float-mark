@@ -142,6 +142,16 @@ function createSideMarkEditorExtension(plugin) {
             }
           }).range(from, to));
         }
+        const pendingCommentSelection = plugin.getPendingCommentSelection(filePath);
+        if (pendingCommentSelection) {
+          const from = Math.max(0, Math.min(pendingCommentSelection.from, docLength));
+          const to = Math.max(from, Math.min(pendingCommentSelection.to, docLength));
+          if (from !== to) {
+            ranges.push(import_view.Decoration.mark({
+              class: "side-mark-pending-comment-selection"
+            }).range(from, to));
+          }
+        }
         return import_state.RangeSet.of(ranges, true);
       }
       getFilePath() {
@@ -251,6 +261,7 @@ var import_obsidian2 = require("obsidian");
 var CommentPopover = class {
   constructor() {
     this.onSave = null;
+    this.onHide = null;
     this.hideTimer = null;
     this.el = document.body.createDiv({ cls: "side-mark-comment-popover" });
     this.el.hide();
@@ -286,9 +297,10 @@ var CommentPopover = class {
       this.hide();
     });
   }
-  show(rect, onSave) {
+  show(rect, onSave, onHide) {
     this.cancelHide();
     this.onSave = onSave;
+    this.onHide = onHide || null;
     this.textarea.value = "";
     this.el.show();
     this.el.removeClass("is-visible");
@@ -301,9 +313,12 @@ var CommentPopover = class {
     this.textarea.focus();
   }
   hide() {
+    var _a;
     this.cancelHide();
     this.el.removeClass("is-visible");
     this.onSave = null;
+    (_a = this.onHide) == null ? void 0 : _a.call(this);
+    this.onHide = null;
     window.setTimeout(() => {
       if (!this.el.hasClass("is-visible")) {
         this.el.hide();
@@ -2544,12 +2559,120 @@ function estimateRenderedLineOffset(renderedText, lineNumber) {
   return offset;
 }
 
+// src/reading-selection.ts
+function findSourceRangeForReadingSelection(source, selectedText) {
+  const directIndex = source.indexOf(selectedText);
+  if (directIndex >= 0) {
+    return {
+      from: directIndex,
+      to: directIndex + selectedText.length
+    };
+  }
+  const sourceIndex = buildRenderedSourceIndex(source);
+  const renderedSelection = normalizeReadingSelection(selectedText);
+  const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
+  if (renderedIndex < 0) {
+    return null;
+  }
+  const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedIndex]);
+  const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
+  if (from === void 0 || to === void 0) {
+    return null;
+  }
+  return {
+    from,
+    to: to + 1
+  };
+}
+function getReadingSelectionRect(range) {
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return rect.width === 0 && rect.height === 0 ? null : rect;
+  }
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+function buildRenderedSourceIndex(source) {
+  let rendered = "";
+  const offsets = [];
+  let index = 0;
+  const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
+  while (index < source.length) {
+    const lineStart = index === 0 || source[index - 1] === "\n";
+    if (lineStart) {
+      const prefix = source.slice(index).match(linePrefixPattern);
+      if (prefix == null ? void 0 : prefix[0]) {
+        index += prefix[0].length;
+        continue;
+      }
+    }
+    const char = source[index] || "";
+    if (isMarkdownMarkerAt(source, index)) {
+      index += markerLengthAt(source, index);
+      continue;
+    }
+    if (isIgnoredSpacing(char)) {
+      index += 1;
+      continue;
+    }
+    rendered += char;
+    offsets.push(index);
+    index += 1;
+  }
+  return { text: rendered, offsets };
+}
+function expandStartToOpeningMarker(source, offset) {
+  if (offset === void 0) {
+    return void 0;
+  }
+  const previousPair = source.slice(offset - 2, offset);
+  if (previousPair === "**" || previousPair === "__" || previousPair === "~~") {
+    return offset - 2;
+  }
+  const previous = source[offset - 1];
+  if (previous === "*" || previous === "_" || previous === "`") {
+    return offset - 1;
+  }
+  return offset;
+}
+function normalizeReadingSelection(text) {
+  return text.replace(/[\u200B-\u200D\uFEFF]/g, "").split(/\n+/).map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "").replace(/^\s*\[(?: |x|X)\]\s+/, "")).join("").replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
+}
+function isMarkdownMarkerAt(source, index) {
+  return markerLengthAt(source, index) > 0;
+}
+function markerLengthAt(source, index) {
+  const marker = source.slice(index, index + 2);
+  if (marker === "**" || marker === "__" || marker === "~~") {
+    return 2;
+  }
+  const char = source[index];
+  if (char === "_" && isAsciiAlphaNumeric(source[index - 1]) && isAsciiAlphaNumeric(source[index + 1])) {
+    return 0;
+  }
+  if (char === "*" || char === "_" || char === "`") {
+    return 1;
+  }
+  return 0;
+}
+function isAsciiAlphaNumeric(char) {
+  return Boolean(char && /[A-Za-z0-9]/.test(char));
+}
+function isIgnoredSpacing(char) {
+  return /\s/.test(char) || /[\u200B-\u200D\uFEFF]/.test(char);
+}
+
 // src/main.ts
 var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.currentDocument = null;
     this.activeEditorView = null;
+    this.pendingCommentSelection = null;
     this.readingSelection = null;
     this.lastMarkdownFilePath = "";
   }
@@ -2632,6 +2755,15 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   hideSelectionToolbar() {
     this.toolbar.hide();
+  }
+  getPendingCommentSelection(filePath) {
+    if (!this.pendingCommentSelection || this.pendingCommentSelection.filePath !== filePath) {
+      return null;
+    }
+    return {
+      from: this.pendingCommentSelection.from,
+      to: this.pendingCommentSelection.to
+    };
   }
   showBlockToolbar(view, target) {
     if (this.toolbar.isVisible()) {
@@ -2822,7 +2954,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       this.readingToolbar.hide();
       return;
     }
-    const view = this.findMarkdownPreviewView(range.commonAncestorContainer);
+    const view = this.findMarkdownPreviewViewForRange(range);
     const file = view == null ? void 0 : view.file;
     if (!view || !(file instanceof import_obsidian10.TFile) || view.getMode() !== "preview") {
       this.readingSelection = null;
@@ -2856,6 +2988,26 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
       if (view instanceof import_obsidian10.MarkdownView && view.getMode() === "preview" && view.contentEl.contains(node)) {
+        return view;
+      }
+    }
+    return null;
+  }
+  findMarkdownPreviewViewForRange(range) {
+    return this.findMarkdownPreviewView(range.commonAncestorContainer) || this.findMarkdownPreviewView(range.startContainer) || this.findMarkdownPreviewView(range.endContainer) || this.findMarkdownPreviewViewByContainedRange(range);
+  }
+  findMarkdownPreviewViewByContainedRange(range) {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof import_obsidian10.MarkdownView) || view.getMode() !== "preview") {
+        continue;
+      }
+      const contentRange = document.createRange();
+      contentRange.selectNodeContents(view.contentEl);
+      const startsInView = range.compareBoundaryPoints(Range.START_TO_START, contentRange) >= 0 && range.compareBoundaryPoints(Range.START_TO_END, contentRange) <= 0;
+      const endsInView = range.compareBoundaryPoints(Range.END_TO_START, contentRange) >= 0 && range.compareBoundaryPoints(Range.END_TO_END, contentRange) <= 0;
+      contentRange.detach();
+      if (startsInView || endsInView) {
         return view;
       }
     }
@@ -3005,10 +3157,21 @@ ${stripped}
   showCommentPopover(view) {
     const selection = view.state.selection.main;
     const rect = view.coordsAtPos(selection.to);
-    if (!rect) return;
+    const file = this.getActiveMarkdownFile();
+    if (!rect || selection.empty || !file) return;
     const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    const from = selection.from;
+    const to = selection.to;
+    this.pendingCommentSelection = {
+      filePath: file.path,
+      from,
+      to
+    };
+    this.refreshEditorDecorations();
     this.commentPopover.show(popoverRect, (content) => {
-      void this.createMarkFromView(view, "comment", content);
+      void this.createMarkFromOffsets(view, from, to, "comment", content);
+    }, () => {
+      this.clearPendingCommentSelection();
     });
   }
   showMarkStylePopoverForView(view) {
@@ -3153,6 +3316,13 @@ ${stripped}
     var _a;
     (_a = this.activeEditorView) == null ? void 0 : _a.dispatch({ effects: [] });
   }
+  clearPendingCommentSelection() {
+    if (!this.pendingCommentSelection) {
+      return;
+    }
+    this.pendingCommentSelection = null;
+    this.refreshEditorDecorations();
+  }
   async refreshMarkViews(filePath) {
     this.refreshEditorDecorations();
     await this.refreshSidebar();
@@ -3284,88 +3454,6 @@ function isSelectionBlockAction(action) {
     "quote",
     "code-block"
   ].includes(action);
-}
-function findSourceRangeForReadingSelection(source, selectedText) {
-  const directIndex = source.indexOf(selectedText);
-  if (directIndex >= 0) {
-    return {
-      from: directIndex,
-      to: directIndex + selectedText.length
-    };
-  }
-  const sourceIndex = buildRenderedSourceIndex(source);
-  const renderedSelection = normalizeReadingSelection(selectedText);
-  const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
-  if (renderedIndex < 0) {
-    return null;
-  }
-  const from = sourceIndex.offsets[renderedIndex];
-  const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
-  if (from === void 0 || to === void 0) {
-    return null;
-  }
-  return {
-    from,
-    to: to + 1
-  };
-}
-function getReadingSelectionRect(range) {
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
-  if (rects.length === 0) {
-    const rect = range.getBoundingClientRect();
-    return rect.width === 0 && rect.height === 0 ? null : rect;
-  }
-  const left = Math.min(...rects.map((rect) => rect.left));
-  const top = Math.min(...rects.map((rect) => rect.top));
-  const right = Math.max(...rects.map((rect) => rect.right));
-  const bottom = Math.max(...rects.map((rect) => rect.bottom));
-  return new DOMRect(left, top, right - left, bottom - top);
-}
-function buildRenderedSourceIndex(source) {
-  let rendered = "";
-  const offsets = [];
-  let index = 0;
-  const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
-  while (index < source.length) {
-    const lineStart = index === 0 || source[index - 1] === "\n";
-    if (lineStart) {
-      const prefix = source.slice(index).match(linePrefixPattern);
-      if (prefix == null ? void 0 : prefix[0]) {
-        index += prefix[0].length;
-        continue;
-      }
-    }
-    const char = source[index] || "";
-    if (isMarkdownMarkerAt(source, index)) {
-      index += markerLengthAt(source, index);
-      continue;
-    }
-    if (/\s/.test(char)) {
-      index += 1;
-      continue;
-    }
-    rendered += char;
-    offsets.push(index);
-    index += 1;
-  }
-  return { text: rendered, offsets };
-}
-function normalizeReadingSelection(text) {
-  return text.split(/\n+/).map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "")).join("").replace(/\s+/g, "");
-}
-function isMarkdownMarkerAt(source, index) {
-  return markerLengthAt(source, index) > 0;
-}
-function markerLengthAt(source, index) {
-  const marker = source.slice(index, index + 2);
-  if (marker === "**" || marker === "__" || marker === "~~") {
-    return 2;
-  }
-  const char = source[index];
-  if (char === "*" || char === "_" || char === "`") {
-    return 1;
-  }
-  return 0;
 }
 function defaultHighlightAppearance() {
   return {

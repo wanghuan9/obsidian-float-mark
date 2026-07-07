@@ -127,6 +127,16 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 						}
 					}).range(from, to));
 				}
+				const pendingCommentSelection = plugin.getPendingCommentSelection(filePath);
+				if (pendingCommentSelection) {
+					const from = Math.max(0, Math.min(pendingCommentSelection.from, docLength));
+					const to = Math.max(from, Math.min(pendingCommentSelection.to, docLength));
+					if (from !== to) {
+						ranges.push(Decoration.mark({
+							class: "side-mark-pending-comment-selection"
+						}).range(from, to));
+					}
+				}
 				return RangeSet.of(ranges, true);
 			}
 
