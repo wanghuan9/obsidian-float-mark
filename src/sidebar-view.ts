@@ -1,6 +1,7 @@
 import { ItemView, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type SideMarkPlugin from "./main";
 import type { MarkColor, SideMark } from "./types";
+import { FLOAT_MARK_ICON_ID } from "./icons";
 
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
@@ -24,7 +25,6 @@ export class SideMarkSidebarView extends ItemView {
 	private searchSelectionStart: number | null = null;
 	private searchSelectionEnd: number | null = null;
 	private isSearchComposing = false;
-	private isRefreshing = false;
 
 	constructor(leaf: WorkspaceLeaf, private readonly plugin: SideMarkPlugin) {
 		super(leaf);
@@ -39,7 +39,7 @@ export class SideMarkSidebarView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "highlighter";
+		return FLOAT_MARK_ICON_ID;
 	}
 
 	async onOpen(): Promise<void> {
@@ -64,13 +64,6 @@ export class SideMarkSidebarView extends ItemView {
 		const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
 		titleRow.createEl("h3", { text: "正文标注" });
 		const controls = titleRow.createDiv({ cls: "side-mark-sidebar-controls" });
-		const refresh = titleRow.createEl("button", {
-			cls: `side-mark-icon-button side-mark-refresh-button${this.isRefreshing ? " is-refreshing" : ""}`,
-			attr: { type: "button", "aria-label": "刷新" }
-		});
-		refresh.disabled = this.isRefreshing;
-		setIcon(refresh, "refresh-cw");
-		refresh.addEventListener("click", () => void this.refreshCurrentDocument());
 
 		const doc = this.plugin.currentDocument;
 		if (!doc || doc.marks.length === 0) {
@@ -281,23 +274,6 @@ export class SideMarkSidebarView extends ItemView {
 		search.setSelectionRange(start, end);
 	}
 
-	private async refreshCurrentDocument(): Promise<void> {
-		if (this.isRefreshing) {
-			return;
-		}
-		this.isRefreshing = true;
-		await this.render();
-		try {
-			await this.plugin.reloadCurrentDocument();
-			new Notice("标注已刷新。");
-		} catch (error) {
-			new Notice(error instanceof Error ? error.message : String(error), 8000);
-		} finally {
-			this.isRefreshing = false;
-			await this.render();
-		}
-	}
-
 	private renderCard(container: HTMLElement, mark: SideMark): void {
 		const card = container.createDiv({
 			cls: `side-mark-card is-color-${mark.mark.color}${mark.status === "resolved" ? " is-resolved" : ""}`
@@ -378,7 +354,7 @@ export class SideMarkSidebarView extends ItemView {
 		setIcon(more, "more-horizontal");
 		const menu = card.createDiv({ cls: "side-mark-card-menu" });
 		menu.hide();
-		this.addMenuAction(menu, "删除", () => void this.deleteMark(mark.id));
+		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id));
 		more.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -595,12 +571,14 @@ export class SideMarkSidebarView extends ItemView {
 		button.addEventListener("click", () => void this.syncMark(mark.id));
 	}
 
-	private addMenuAction(container: HTMLElement, label: string, onClick: () => void): void {
+	private addMenuAction(container: HTMLElement, icon: string, label: string, onClick: () => void): void {
 		const button = container.createEl("button", {
-			text: label,
-			cls: "side-mark-card-menu-item",
-			attr: { type: "button" }
+			cls: "side-mark-card-menu-item is-danger",
+			attr: { type: "button", title: label, "aria-label": label }
 		});
+		const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
+		setIcon(iconEl, icon);
+		button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
 		button.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();

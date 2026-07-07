@@ -1,5 +1,4 @@
-import { existsSync } from "fs";
-import { Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
+import { addIcon, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
 import { CommentPopover } from "./comment-popover";
@@ -9,8 +8,9 @@ import { SelectionToolbar, type ToolbarAction } from "./selection-toolbar";
 import { SideMarkStore } from "./storage";
 import { DEFAULT_SETTINGS, type MarkColor, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
-import { syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
+import { getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";
+import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 
 export default class SideMarkPlugin extends Plugin {
 	settings!: SideMarkSettings;
@@ -32,6 +32,7 @@ export default class SideMarkPlugin extends Plugin {
 
 	override async onload(): Promise<void> {
 		await this.loadSettings();
+		addIcon(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
 		this.store = new SideMarkStore(this.app, this.settings);
 		this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
 		this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
@@ -43,7 +44,7 @@ export default class SideMarkPlugin extends Plugin {
 			void this.renderReadingModeMarks(element, context.sourcePath);
 		});
 		this.registerView(SIDE_MARK_VIEW_TYPE, (leaf: WorkspaceLeaf) => new SideMarkSidebarView(leaf, this));
-		this.addRibbonIcon("highlighter", "打开正文标注", () => void this.openSidebar());
+		this.addRibbonIcon(FLOAT_MARK_ICON_ID, "打开正文标注", () => void this.openSidebar());
 		this.addCommand({
 			id: "open-side-mark-sidebar",
 			name: "打开正文标注",
@@ -78,9 +79,6 @@ export default class SideMarkPlugin extends Plugin {
 			...DEFAULT_SETTINGS,
 			...(saved || {})
 		};
-		if (!saved?.larkCliPath || saved.larkCliPath === "lark-cli") {
-			this.settings.larkCliPath = detectLarkCliPath();
-		}
 	}
 
 	async saveSettings(): Promise<void> {
@@ -765,15 +763,6 @@ function markerLengthAt(source: string, index: number): number {
 	return 0;
 }
 
-function detectLarkCliPath(): string {
-	const candidates = [
-		"/Users/wanghuan/.npm-global/bin/lark-cli",
-		"/opt/homebrew/bin/lark-cli",
-		"/usr/local/bin/lark-cli"
-	];
-	return candidates.find((candidate) => existsSync(candidate)) || "lark-cli";
-}
-
 class SideMarkSettingTab extends PluginSettingTab {
 	constructor(private readonly plugin: SideMarkPlugin) {
 		super(plugin.app, plugin);
@@ -785,16 +774,6 @@ class SideMarkSettingTab extends PluginSettingTab {
 		containerEl.createEl("h2", { text: "FloatMark" });
 
 		new Setting(containerEl)
-			.setName("lark-cli 路径")
-			.setDesc("用于同步评论到飞书。默认使用 PATH 中的 lark-cli。")
-			.addText((text) => {
-				text.setValue(this.plugin.settings.larkCliPath).onChange(async (value) => {
-					this.plugin.settings.larkCliPath = value.trim() || "lark-cli";
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
 			.setName("创建标注后打开侧栏")
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
@@ -804,14 +783,15 @@ class SideMarkSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("评论后自动同步到飞书")
-			.setDesc("开启后，添加本地评论或回复后会在后台同步到飞书。")
+			.setName("标注同步飞书")
+			.setDesc("开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书。CLI 配置由该插件管理。")
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
 					this.plugin.settings.autoSyncToLark = value;
 					await this.plugin.saveSettings();
 				});
 			});
+		this.renderLarkSyncPluginStatus(containerEl);
 
 		new Setting(containerEl)
 			.setName("评论显示名称")
@@ -822,5 +802,17 @@ class SideMarkSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+	}
+
+	private renderLarkSyncPluginStatus(containerEl: HTMLElement): void {
+		const status = getLarkSyncPluginStatus(this.plugin);
+		const setting = new Setting(containerEl)
+			.setName("Feishu Lark CLI Sync")
+			.setDesc("FloatMark 只检测插件状态；飞书 CLI 路径、登录和执行能力由 Feishu Lark CLI Sync 管理。");
+		const statusEl = setting.descEl.createDiv({
+			cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
+			text: getLarkSyncPluginStatusText(status)
+		});
+		statusEl.setAttr("aria-live", "polite");
 	}
 }

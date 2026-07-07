@@ -23,7 +23,6 @@ __export(main_exports, {
   default: () => SideMarkPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_fs2 = require("fs");
 var import_obsidian9 = require("obsidian");
 
 // src/editor-extension.ts
@@ -194,15 +193,7 @@ function createSideMarkEditorExtension(plugin) {
         if (lineRect.height <= 0) {
           return null;
         }
-        const contentEl = target.closest(".cm-line > span, .cm-header, .cm-strong, .cm-emphasis");
-        if (!contentEl || !lineEl.contains(contentEl)) {
-          return lineRect;
-        }
-        const contentRect = contentEl.getBoundingClientRect();
-        if (contentRect.height <= 0) {
-          return lineRect;
-        }
-        return new DOMRect(lineRect.left, contentRect.top, lineRect.width, contentRect.height);
+        return lineRect;
       }
     },
     {
@@ -921,7 +912,6 @@ function offsetToLineColumn(source, offset) {
 var DATA_DIR = ".obsidian-float-marks";
 var DEFAULT_SETTINGS = {
   dataDir: DATA_DIR,
-  larkCliPath: "lark-cli",
   autoOpenSidebar: true,
   autoSyncToLark: false,
   preferBodyBlockForLark: false,
@@ -1164,6 +1154,19 @@ function hashPath(filePath) {
 
 // src/sidebar-view.ts
 var import_obsidian7 = require("obsidian");
+
+// src/icons.ts
+var FLOAT_MARK_ICON_ID = "float-mark";
+var FLOAT_MARK_ICON_SVG = `
+<g fill="none" stroke="currentColor" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
+	<path d="M20 26h60a12 12 0 0 1 12 12v28a12 12 0 0 1-12 12H56L37 94V78H20A12 12 0 0 1 8 66V38a12 12 0 0 1 12-12Z"/>
+	<path d="M28 50h44"/>
+	<path d="M28 64h28"/>
+	<path d="M30 10h40"/>
+</g>
+`;
+
+// src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 var MARK_COLORS = [
   { color: "yellow", label: "\u9EC4\u8272" },
@@ -1184,7 +1187,6 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     this.searchSelectionStart = null;
     this.searchSelectionEnd = null;
     this.isSearchComposing = false;
-    this.isRefreshing = false;
   }
   getViewType() {
     return SIDE_MARK_VIEW_TYPE;
@@ -1193,7 +1195,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     return "FloatMark";
   }
   getIcon() {
-    return "highlighter";
+    return FLOAT_MARK_ICON_ID;
   }
   async onOpen() {
     await this.render();
@@ -1216,13 +1218,6 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
     titleRow.createEl("h3", { text: "\u6B63\u6587\u6807\u6CE8" });
     const controls = titleRow.createDiv({ cls: "side-mark-sidebar-controls" });
-    const refresh = titleRow.createEl("button", {
-      cls: `side-mark-icon-button side-mark-refresh-button${this.isRefreshing ? " is-refreshing" : ""}`,
-      attr: { type: "button", "aria-label": "\u5237\u65B0" }
-    });
-    refresh.disabled = this.isRefreshing;
-    (0, import_obsidian7.setIcon)(refresh, "refresh-cw");
-    refresh.addEventListener("click", () => void this.refreshCurrentDocument());
     const doc = this.plugin.currentDocument;
     if (!doc || doc.marks.length === 0) {
       this.renderFilters(header, controls, [], []);
@@ -1410,22 +1405,6 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     const end = (_b = this.searchSelectionEnd) != null ? _b : start;
     search.setSelectionRange(start, end);
   }
-  async refreshCurrentDocument() {
-    if (this.isRefreshing) {
-      return;
-    }
-    this.isRefreshing = true;
-    await this.render();
-    try {
-      await this.plugin.reloadCurrentDocument();
-      new import_obsidian7.Notice("\u6807\u6CE8\u5DF2\u5237\u65B0\u3002");
-    } catch (error) {
-      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error), 8e3);
-    } finally {
-      this.isRefreshing = false;
-      await this.render();
-    }
-  }
   renderCard(container, mark) {
     const card = container.createDiv({
       cls: `side-mark-card is-color-${mark.mark.color}${mark.status === "resolved" ? " is-resolved" : ""}`
@@ -1504,7 +1483,7 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     (0, import_obsidian7.setIcon)(more, "more-horizontal");
     const menu = card.createDiv({ cls: "side-mark-card-menu" });
     menu.hide();
-    this.addMenuAction(menu, "\u5220\u9664", () => void this.deleteMark(mark.id));
+    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
     more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1708,12 +1687,14 @@ var SideMarkSidebarView = class extends import_obsidian7.ItemView {
     }
     button.addEventListener("click", () => void this.syncMark(mark.id));
   }
-  addMenuAction(container, label, onClick) {
+  addMenuAction(container, icon, label, onClick) {
     const button = container.createEl("button", {
-      text: label,
-      cls: "side-mark-card-menu-item",
-      attr: { type: "button" }
+      cls: "side-mark-card-menu-item is-danger",
+      attr: { type: "button", title: label, "aria-label": label }
     });
+    const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
+    (0, import_obsidian7.setIcon)(iconEl, icon);
+    button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1756,9 +1737,6 @@ function formatReplyTime(value) {
 }
 
 // src/lark-bridge.ts
-var import_child_process = require("child_process");
-var import_util = require("util");
-var import_fs = require("fs");
 var import_obsidian8 = require("obsidian");
 
 // src/block-map.ts
@@ -1848,8 +1826,7 @@ function readBlockKind(line) {
 }
 
 // src/lark-bridge.ts
-var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
-var SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
+var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
 async function syncMarkToLark(plugin, file, source, mark) {
   var _a, _b, _c, _d;
@@ -1868,7 +1845,7 @@ async function syncMarkToLark(plugin, file, source, mark) {
   }
   const replies = getReplies(mark);
   const [firstReply, ...restReplies] = replies.length ? replies : [{ content: "\uFF08\u65E0\u8BC4\u8BBA\uFF09" }];
-  const result = await runLarkCreateComment(plugin.settings.larkCliPath, {
+  const result = await runLarkCreateComment(plugin, {
     doc: binding.doc,
     blockId,
     content: buildCommentElements(firstReply.content)
@@ -1879,7 +1856,7 @@ async function syncMarkToLark(plugin, file, source, mark) {
   const commentId = (_c = result.data) == null ? void 0 : _c.comment_id;
   if (commentId) {
     for (const reply of restReplies) {
-      await runLarkCreateReply(plugin.settings.larkCliPath, {
+      await runLarkCreateReply(plugin, {
         doc: binding.doc,
         commentId,
         content: buildReplyBody(reply.content)
@@ -1897,6 +1874,44 @@ async function syncMarkToLark(plugin, file, source, mark) {
 ${getThreadContent(replies)}`,
     syncedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+function getLarkSyncPluginStatus(plugin) {
+  var _a, _b, _c, _d;
+  const manager = getObsidianPluginManager(plugin);
+  if (!manager) {
+    return "unknown";
+  }
+  if (!((_a = manager.manifests) == null ? void 0 : _a[LARK_SYNC_PLUGIN_ID]) && !((_b = manager.getPlugin) == null ? void 0 : _b.call(manager, LARK_SYNC_PLUGIN_ID))) {
+    return "not-installed";
+  }
+  if (((_c = manager.enabledPlugins) == null ? void 0 : _c.has(LARK_SYNC_PLUGIN_ID)) || ((_d = manager.getPlugin) == null ? void 0 : _d.call(manager, LARK_SYNC_PLUGIN_ID))) {
+    return "enabled";
+  }
+  return "disabled";
+}
+function getLarkSyncPluginStatusText(status) {
+  switch (status) {
+    case "enabled":
+      return "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u542F\u7528\u3002";
+    case "disabled":
+      return "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u5B89\u88C5\u4F46\u672A\u542F\u7528\u3002";
+    case "not-installed":
+      return "\u72B6\u6001\uFF1A\u672A\u5B89\u88C5 Feishu Lark CLI Sync\u3002";
+    case "unknown":
+      return "\u72B6\u6001\uFF1A\u65E0\u6CD5\u68C0\u6D4B Feishu Lark CLI Sync\u3002";
+  }
+}
+function getLarkSyncPluginStatusClass(status) {
+  switch (status) {
+    case "enabled":
+      return "is-installed";
+    case "disabled":
+      return "is-warning";
+    case "not-installed":
+      return "is-error";
+    case "unknown":
+      return "is-muted";
+  }
 }
 function readLarkBinding(source) {
   const frontmatter = source.match(/^---\n([\s\S]*?)\n---/);
@@ -1919,7 +1934,7 @@ async function readSyncState(plugin) {
   if (!(adapter instanceof import_obsidian8.FileSystemAdapter)) {
     return null;
   }
-  const statePath = `${plugin.app.vault.configDir}/plugins/${SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
+  const statePath = `${plugin.app.vault.configDir}/plugins/${LARK_SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
   if (!await adapter.exists(statePath)) {
     return null;
   }
@@ -1969,11 +1984,9 @@ function getReplies(mark) {
 function getThreadContent(replies) {
   return replies.map((reply) => reply.content).join("\n\n");
 }
-async function runLarkCreateComment(larkCliPath, input) {
-  const cliPath = resolveLarkCliPath(larkCliPath);
-  let stdout = "";
+async function runLarkCreateComment(plugin, input) {
   try {
-    ({ stdout } = await execLarkCli(cliPath, [
+    return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
       "drive",
       "file.comments",
       "create_v2",
@@ -1992,21 +2005,16 @@ async function runLarkCreateComment(larkCliPath, input) {
       "--json"
     ]));
   } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Error(`\u627E\u4E0D\u5230 lark-cli \u6216 node\uFF1A${cliPath}\u3002\u8BF7\u786E\u8BA4 /opt/homebrew/bin/node \u548C /Users/wanghuan/.npm-global/bin/lark-cli \u5B58\u5728\u3002`);
-    }
     const message = getExecErrorMessage(error);
     if (message) {
       throw new Error(message);
     }
     throw error;
   }
-  return normalizeLarkCommentResult(JSON.parse(stdout));
 }
-async function runLarkCreateReply(larkCliPath, input) {
-  const cliPath = resolveLarkCliPath(larkCliPath);
+async function runLarkCreateReply(plugin, input) {
   try {
-    await execLarkCli(cliPath, [
+    await runLarkCliViaSyncPlugin(plugin, [
       "drive",
       "file.comment.replys",
       "create",
@@ -2023,9 +2031,6 @@ async function runLarkCreateReply(larkCliPath, input) {
       "--json"
     ]);
   } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Error(`\u627E\u4E0D\u5230 lark-cli \u6216 node\uFF1A${cliPath}\u3002\u8BF7\u786E\u8BA4 /opt/homebrew/bin/node \u548C /Users/wanghuan/.npm-global/bin/lark-cli \u5B58\u5728\u3002`);
-    }
     const message = getExecErrorMessage(error);
     if (message) {
       throw new Error(message);
@@ -2033,39 +2038,17 @@ async function runLarkCreateReply(larkCliPath, input) {
     throw error;
   }
 }
-async function execLarkCli(cliPath, args) {
-  const { stdout } = await execFileAsync(cliPath, args, {
-    env: {
-      ...process.env,
-      PATH: buildLarkCliPathEnv()
-    },
-    maxBuffer: 1024 * 1024
-  });
-  return { stdout };
-}
-function resolveLarkCliPath(larkCliPath) {
-  if (larkCliPath && larkCliPath !== "lark-cli") {
-    return larkCliPath;
+async function runLarkCliViaSyncPlugin(plugin, args) {
+  const status = getLarkSyncPluginStatus(plugin);
+  if (status !== "enabled") {
+    throw new Error(`${getLarkSyncPluginStatusText(status)} \u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`);
   }
-  const candidates = [
-    "/Users/wanghuan/.npm-global/bin/lark-cli",
-    "/opt/homebrew/bin/lark-cli",
-    "/usr/local/bin/lark-cli"
-  ];
-  return candidates.find((candidate) => (0, import_fs.existsSync)(candidate)) || "lark-cli";
-}
-function buildLarkCliPathEnv() {
-  const extraPaths = [
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-    "/Users/wanghuan/.npm-global/bin"
-  ];
-  return [...extraPaths, process.env.PATH || ""].filter(Boolean).join(":");
-}
-function isNotFoundError(error) {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
+  const syncPlugin = getLarkSyncPluginBridge(plugin);
+  const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
+  if (!runLarkCliCommand) {
+    throw new Error("Feishu Lark CLI Sync \u672A\u66B4\u9732 CLI \u6267\u884C\u80FD\u529B\uFF0C\u8BF7\u5347\u7EA7\u8BE5\u63D2\u4EF6\u3002");
+  }
+  return await runLarkCliCommand.call(syncPlugin, args);
 }
 function getExecErrorMessage(error) {
   if (!error || typeof error !== "object") {
@@ -2073,6 +2056,13 @@ function getExecErrorMessage(error) {
   }
   const execError = error;
   return (execError.stderr || execError.stdout || execError.message || "").trim();
+}
+function getLarkSyncPluginBridge(plugin) {
+  var _a, _b;
+  return (_b = (_a = getObsidianPluginManager(plugin)) == null ? void 0 : _a.getPlugin) == null ? void 0 : _b.call(_a, LARK_SYNC_PLUGIN_ID);
+}
+function getObsidianPluginManager(plugin) {
+  return plugin.app.plugins || null;
 }
 function normalizeLarkCommentResult(result) {
   if (typeof result.ok === "boolean") {
@@ -2269,6 +2259,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
   }
   async onload() {
     await this.loadSettings();
+    (0, import_obsidian9.addIcon)(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
     this.store = new SideMarkStore(this.app, this.settings);
     this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
     this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
@@ -2279,7 +2270,7 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
       void this.renderReadingModeMarks(element, context.sourcePath);
     });
     this.registerView(SIDE_MARK_VIEW_TYPE, (leaf) => new SideMarkSidebarView(leaf, this));
-    this.addRibbonIcon("highlighter", "\u6253\u5F00\u6B63\u6587\u6807\u6CE8", () => void this.openSidebar());
+    this.addRibbonIcon(FLOAT_MARK_ICON_ID, "\u6253\u5F00\u6B63\u6587\u6807\u6CE8", () => void this.openSidebar());
     this.addCommand({
       id: "open-side-mark-sidebar",
       name: "\u6253\u5F00\u6B63\u6587\u6807\u6CE8",
@@ -2314,9 +2305,6 @@ var SideMarkPlugin = class extends import_obsidian9.Plugin {
       ...DEFAULT_SETTINGS,
       ...saved || {}
     };
-    if (!(saved == null ? void 0 : saved.larkCliPath) || saved.larkCliPath === "lark-cli") {
-      this.settings.larkCliPath = detectLarkCliPath();
-    }
   }
   async saveSettings() {
     var _a;
@@ -2953,14 +2941,6 @@ function markerLengthAt(source, index) {
   }
   return 0;
 }
-function detectLarkCliPath() {
-  const candidates = [
-    "/Users/wanghuan/.npm-global/bin/lark-cli",
-    "/opt/homebrew/bin/lark-cli",
-    "/usr/local/bin/lark-cli"
-  ];
-  return candidates.find((candidate) => (0, import_fs2.existsSync)(candidate)) || "lark-cli";
-}
 var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
   constructor(plugin) {
     super(plugin.app, plugin);
@@ -2970,29 +2950,33 @@ var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "FloatMark" });
-    new import_obsidian9.Setting(containerEl).setName("lark-cli \u8DEF\u5F84").setDesc("\u7528\u4E8E\u540C\u6B65\u8BC4\u8BBA\u5230\u98DE\u4E66\u3002\u9ED8\u8BA4\u4F7F\u7528 PATH \u4E2D\u7684 lark-cli\u3002").addText((text) => {
-      text.setValue(this.plugin.settings.larkCliPath).onChange(async (value) => {
-        this.plugin.settings.larkCliPath = value.trim() || "lark-cli";
-        await this.plugin.saveSettings();
-      });
-    });
     new import_obsidian9.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian9.Setting(containerEl).setName("\u8BC4\u8BBA\u540E\u81EA\u52A8\u540C\u6B65\u5230\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u540E\u4F1A\u5728\u540E\u53F0\u540C\u6B65\u5230\u98DE\u4E66\u3002").addToggle((toggle) => {
+    new import_obsidian9.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
         this.plugin.settings.autoSyncToLark = value;
         await this.plugin.saveSettings();
       });
     });
+    this.renderLarkSyncPluginStatus(containerEl);
     new import_obsidian9.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
       text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
         this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
         await this.plugin.saveSettings();
       });
     });
+  }
+  renderLarkSyncPluginStatus(containerEl) {
+    const status = getLarkSyncPluginStatus(this.plugin);
+    const setting = new import_obsidian9.Setting(containerEl).setName("Feishu Lark CLI Sync").setDesc("FloatMark \u53EA\u68C0\u6D4B\u63D2\u4EF6\u72B6\u6001\uFF1B\u98DE\u4E66 CLI \u8DEF\u5F84\u3001\u767B\u5F55\u548C\u6267\u884C\u80FD\u529B\u7531 Feishu Lark CLI Sync \u7BA1\u7406\u3002");
+    const statusEl = setting.descEl.createDiv({
+      cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
+      text: getLarkSyncPluginStatusText(status)
+    });
+    statusEl.setAttr("aria-live", "polite");
   }
 };

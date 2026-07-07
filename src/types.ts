@@ -66,7 +66,6 @@ export interface SideMarkDocument {
 
 export interface SideMarkSettings {
 	dataDir: string;
-	larkCliPath: string;
 	autoOpenSidebar: boolean;
 	autoSyncToLark: boolean;
 	preferBodyBlockForLark: boolean;
@@ -75,7 +74,6 @@ export interface SideMarkSettings {
 
 export const DEFAULT_SETTINGS: SideMarkSettings = {
 	dataDir: DATA_DIR,
-	larkCliPath: "lark-cli",
 	autoOpenSidebar: true,
 	autoSyncToLark: false,
 	preferBodyBlockForLark: false,

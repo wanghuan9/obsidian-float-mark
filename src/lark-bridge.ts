@@ -1,14 +1,12 @@
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { existsSync } from "fs";
 import { FileSystemAdapter, TFile } from "obsidian";
 import type SideMarkPlugin from "./main";
 import { findRemoteBlockId, type RemoteUnit } from "./block-map";
 import type { RemoteSyncState, SideMark } from "./types";
 
-const execFileAsync = promisify(execFile);
-const SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
+export const LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 const SYNC_STATE_FILE = "lark-sync-state.json";
+
+export type LarkSyncPluginStatus = "enabled" | "disabled" | "not-installed" | "unknown";
 
 interface LarkSyncStateFile {
 	version: 1;
@@ -39,6 +37,21 @@ interface LarkReply {
 	createdAt?: string;
 }
 
+interface ObsidianPluginManager {
+	manifests?: Record<string, unknown>;
+	enabledPlugins?: Set<string>;
+	getPlugin?: (id: string) => unknown;
+}
+
+interface AppWithPluginManager {
+	plugins?: ObsidianPluginManager;
+}
+
+interface LarkSyncPluginBridge {
+	runLarkCliCommand?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
+	runLarkCli?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
+}
+
 export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source: string, mark: SideMark): Promise<RemoteSyncState> {
 	const binding = readLarkBinding(source);
 	if (!binding.doc) {
@@ -60,7 +73,7 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 	const [firstReply, ...restReplies] = replies.length
 		? replies
 		: [{ content: "（无评论）" }];
-	const result = await runLarkCreateComment(plugin.settings.larkCliPath, {
+	const result = await runLarkCreateComment(plugin, {
 		doc: binding.doc,
 		blockId,
 		content: buildCommentElements(firstReply.content)
@@ -71,7 +84,7 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 	const commentId = result.data?.comment_id;
 	if (commentId) {
 		for (const reply of restReplies) {
-			await runLarkCreateReply(plugin.settings.larkCliPath, {
+			await runLarkCreateReply(plugin, {
 				doc: binding.doc,
 				commentId,
 				content: buildReplyBody(reply.content)
@@ -89,6 +102,46 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		syncedHash: `${mark.anchor.selectedText}\n${getThreadContent(replies)}`,
 		syncedAt: new Date().toISOString()
 	};
+}
+
+export function getLarkSyncPluginStatus(plugin: SideMarkPlugin): LarkSyncPluginStatus {
+	const manager = getObsidianPluginManager(plugin);
+	if (!manager) {
+		return "unknown";
+	}
+	if (!manager.manifests?.[LARK_SYNC_PLUGIN_ID] && !manager.getPlugin?.(LARK_SYNC_PLUGIN_ID)) {
+		return "not-installed";
+	}
+	if (manager.enabledPlugins?.has(LARK_SYNC_PLUGIN_ID) || manager.getPlugin?.(LARK_SYNC_PLUGIN_ID)) {
+		return "enabled";
+	}
+	return "disabled";
+}
+
+export function getLarkSyncPluginStatusText(status: LarkSyncPluginStatus): string {
+	switch (status) {
+		case "enabled":
+			return "状态：Feishu Lark CLI Sync 已启用。";
+		case "disabled":
+			return "状态：Feishu Lark CLI Sync 已安装但未启用。";
+		case "not-installed":
+			return "状态：未安装 Feishu Lark CLI Sync。";
+		case "unknown":
+			return "状态：无法检测 Feishu Lark CLI Sync。";
+	}
+}
+
+export function getLarkSyncPluginStatusClass(status: LarkSyncPluginStatus): string {
+	switch (status) {
+		case "enabled":
+			return "is-installed";
+		case "disabled":
+			return "is-warning";
+		case "not-installed":
+			return "is-error";
+		case "unknown":
+			return "is-muted";
+	}
 }
 
 function readLarkBinding(source: string): { doc: string; token?: string; url?: string } {
@@ -114,7 +167,7 @@ async function readSyncState(plugin: SideMarkPlugin): Promise<LarkSyncStateFile 
 		return null;
 	}
 
-	const statePath = `${plugin.app.vault.configDir}/plugins/${SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
+	const statePath = `${plugin.app.vault.configDir}/plugins/${LARK_SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
 	if (!await adapter.exists(statePath)) {
 		return null;
 	}
@@ -173,11 +226,9 @@ function getThreadContent(replies: LarkReply[]): string {
 	return replies.map((reply) => reply.content).join("\n\n");
 }
 
-async function runLarkCreateComment(larkCliPath: string, input: { doc: string; blockId: string; content: string }): Promise<LarkCliResult> {
-	const cliPath = resolveLarkCliPath(larkCliPath);
-	let stdout = "";
+async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string; blockId: string; content: string }): Promise<LarkCliResult> {
 	try {
-		({ stdout } = await execLarkCli(cliPath, [
+		return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comments",
 			"create_v2",
@@ -196,22 +247,17 @@ async function runLarkCreateComment(larkCliPath: string, input: { doc: string; b
 			"--json"
 		]));
 	} catch (error) {
-		if (isNotFoundError(error)) {
-			throw new Error(`找不到 lark-cli 或 node：${cliPath}。请确认 /opt/homebrew/bin/node 和 /Users/wanghuan/.npm-global/bin/lark-cli 存在。`);
-		}
 		const message = getExecErrorMessage(error);
 		if (message) {
 			throw new Error(message);
 		}
 		throw error;
 	}
-	return normalizeLarkCommentResult(JSON.parse(stdout) as LarkCliResult);
 }
 
-async function runLarkCreateReply(larkCliPath: string, input: { doc: string; commentId: string; content: string }): Promise<void> {
-	const cliPath = resolveLarkCliPath(larkCliPath);
+async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; content: string }): Promise<void> {
 	try {
-		await execLarkCli(cliPath, [
+		await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comment.replys",
 			"create",
@@ -228,9 +274,6 @@ async function runLarkCreateReply(larkCliPath: string, input: { doc: string; com
 			"--json"
 		]);
 	} catch (error) {
-		if (isNotFoundError(error)) {
-			throw new Error(`找不到 lark-cli 或 node：${cliPath}。请确认 /opt/homebrew/bin/node 和 /Users/wanghuan/.npm-global/bin/lark-cli 存在。`);
-		}
 		const message = getExecErrorMessage(error);
 		if (message) {
 			throw new Error(message);
@@ -239,42 +282,17 @@ async function runLarkCreateReply(larkCliPath: string, input: { doc: string; com
 	}
 }
 
-async function execLarkCli(cliPath: string, args: string[]): Promise<{ stdout: string }> {
-	const { stdout } = await execFileAsync(cliPath, args, {
-		env: {
-			...process.env,
-			PATH: buildLarkCliPathEnv()
-		},
-		maxBuffer: 1024 * 1024
-	});
-	return { stdout };
-}
-
-function resolveLarkCliPath(larkCliPath: string): string {
-	if (larkCliPath && larkCliPath !== "lark-cli") {
-		return larkCliPath;
+async function runLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
+	const status = getLarkSyncPluginStatus(plugin);
+	if (status !== "enabled") {
+		throw new Error(`${getLarkSyncPluginStatusText(status)} 请先安装并启用该插件。`);
 	}
-	const candidates = [
-		"/Users/wanghuan/.npm-global/bin/lark-cli",
-		"/opt/homebrew/bin/lark-cli",
-		"/usr/local/bin/lark-cli"
-	];
-	return candidates.find((candidate) => existsSync(candidate)) || "lark-cli";
-}
-
-function buildLarkCliPathEnv(): string {
-	const extraPaths = [
-		"/opt/homebrew/bin",
-		"/usr/local/bin",
-		"/usr/bin",
-		"/bin",
-		"/Users/wanghuan/.npm-global/bin"
-	];
-	return [...extraPaths, process.env.PATH || ""].filter(Boolean).join(":");
-}
-
-function isNotFoundError(error: unknown): boolean {
-	return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT");
+	const syncPlugin = getLarkSyncPluginBridge(plugin);
+	const runLarkCliCommand = syncPlugin?.runLarkCliCommand || syncPlugin?.runLarkCli;
+	if (!runLarkCliCommand) {
+		throw new Error("Feishu Lark CLI Sync 未暴露 CLI 执行能力，请升级该插件。");
+	}
+	return await runLarkCliCommand.call(syncPlugin, args);
 }
 
 function getExecErrorMessage(error: unknown): string {
@@ -283,6 +301,14 @@ function getExecErrorMessage(error: unknown): string {
 	}
 	const execError = error as { stderr?: string; stdout?: string; message?: string };
 	return (execError.stderr || execError.stdout || execError.message || "").trim();
+}
+
+function getLarkSyncPluginBridge(plugin: SideMarkPlugin): LarkSyncPluginBridge | null {
+	return getObsidianPluginManager(plugin)?.getPlugin?.(LARK_SYNC_PLUGIN_ID) as LarkSyncPluginBridge | null;
+}
+
+function getObsidianPluginManager(plugin: SideMarkPlugin): ObsidianPluginManager | null {
+	return ((plugin.app as AppWithPluginManager).plugins || null);
 }
 
 function normalizeLarkCommentResult(result: LarkCliResult): LarkCliResult {

@@ -181,15 +181,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				if (lineRect.height <= 0) {
 					return null;
 				}
-				const contentEl = target.closest<HTMLElement>(".cm-line > span, .cm-header, .cm-strong, .cm-emphasis");
-				if (!contentEl || !lineEl.contains(contentEl)) {
-					return lineRect;
-				}
-				const contentRect = contentEl.getBoundingClientRect();
-				if (contentRect.height <= 0) {
-					return lineRect;
-				}
-				return new DOMRect(lineRect.left, contentRect.top, lineRect.width, contentRect.height);
+				return lineRect;
 			}
 		},
 		{
