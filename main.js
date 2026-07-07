@@ -1,0 +1,2998 @@
+/* FloatMark */
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/main.ts
+var main_exports = {};
+__export(main_exports, {
+  default: () => SideMarkPlugin
+});
+module.exports = __toCommonJS(main_exports);
+var import_fs2 = require("fs");
+var import_obsidian9 = require("obsidian");
+
+// src/editor-extension.ts
+var import_obsidian = require("obsidian");
+var import_state = require("@codemirror/state");
+var import_view = require("@codemirror/view");
+function createSideMarkEditorExtension(plugin) {
+  return import_view.ViewPlugin.fromClass(
+    class SideMarkEditorPlugin {
+      constructor(view) {
+        this.view = view;
+        this.selectionTimer = null;
+        this.decorations = this.buildDecorations();
+        this.mouseupHandler = () => this.scheduleSelectionCheck();
+        this.keyupHandler = () => this.scheduleSelectionCheck();
+        this.clickHandler = (event) => this.handleMarkClick(event);
+        this.mousemoveHandler = (event) => this.handleMouseMove(event);
+        this.mouseleaveHandler = () => plugin.scheduleHideBlockToolbar();
+        this.scrollHandler = () => plugin.hideBlockToolbar();
+        view.dom.addEventListener("mouseup", this.mouseupHandler);
+        view.dom.addEventListener("keyup", this.keyupHandler);
+        view.dom.addEventListener("click", this.clickHandler);
+        view.dom.addEventListener("mousemove", this.mousemoveHandler);
+        view.dom.addEventListener("mouseleave", this.mouseleaveHandler);
+        view.dom.addEventListener("scroll", this.scrollHandler, true);
+      }
+      update(update) {
+        if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
+          this.decorations = this.buildDecorations();
+          if (update.viewportChanged) {
+            plugin.hideBlockToolbar();
+          }
+          if (update.docChanged) {
+            plugin.hideSelectionToolbar();
+          }
+        }
+      }
+      destroy() {
+        this.view.dom.removeEventListener("mouseup", this.mouseupHandler);
+        this.view.dom.removeEventListener("keyup", this.keyupHandler);
+        this.view.dom.removeEventListener("click", this.clickHandler);
+        this.view.dom.removeEventListener("mousemove", this.mousemoveHandler);
+        this.view.dom.removeEventListener("mouseleave", this.mouseleaveHandler);
+        this.view.dom.removeEventListener("scroll", this.scrollHandler, true);
+        if (this.selectionTimer !== null) {
+          window.clearTimeout(this.selectionTimer);
+          this.selectionTimer = null;
+        }
+      }
+      scheduleSelectionCheck() {
+        if (this.selectionTimer !== null) {
+          window.clearTimeout(this.selectionTimer);
+        }
+        this.selectionTimer = window.setTimeout(() => {
+          this.selectionTimer = null;
+          const selection = this.view.state.selection.main;
+          if (selection.empty) {
+            plugin.hideSelectionToolbar();
+            return;
+          }
+          const rect = this.getSelectionRect(selection.from, selection.to);
+          if (!rect) {
+            plugin.hideSelectionToolbar();
+            return;
+          }
+          plugin.showSelectionToolbar(this.view, rect, this.view.dom.getBoundingClientRect());
+        }, 120);
+      }
+      getSelectionRect(from, to) {
+        const domRect = getDomSelectionRect(this.view.dom);
+        if (domRect) {
+          return domRect;
+        }
+        const start = this.view.coordsAtPos(from);
+        const end = this.view.coordsAtPos(to);
+        if (!start && !end) {
+          return null;
+        }
+        if (!start || !end) {
+          const rect = start || end;
+          return rect ? new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) : null;
+        }
+        const left = Math.min(start.left, end.left);
+        const right = Math.max(start.right, end.right);
+        const top = Math.min(start.top, end.top);
+        const bottom = Math.max(start.bottom, end.bottom);
+        return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+      }
+      buildDecorations() {
+        var _a;
+        const filePath = this.getFilePath();
+        if (!filePath || ((_a = plugin.currentDocument) == null ? void 0 : _a.filePath) !== filePath) {
+          return import_view.Decoration.none;
+        }
+        const ranges = [];
+        const docLength = this.view.state.doc.length;
+        for (const mark of plugin.currentDocument.marks) {
+          if (mark.status === "orphaned" || mark.status === "resolved") {
+            continue;
+          }
+          const from = Math.max(0, Math.min(mark.anchor.startOffset, docLength));
+          const to = Math.max(from, Math.min(mark.anchor.endOffset, docLength));
+          if (from === to) {
+            continue;
+          }
+          ranges.push(import_view.Decoration.mark({
+            class: `side-mark side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`,
+            attributes: {
+              "data-side-mark-id": mark.id,
+              title: mark.note.content || "FloatMark"
+            }
+          }).range(from, to));
+        }
+        return import_state.RangeSet.of(ranges, true);
+      }
+      getFilePath() {
+        var _a, _b;
+        const info = this.view.state.field(import_obsidian.editorInfoField, false);
+        return ((_a = info == null ? void 0 : info.file) == null ? void 0 : _a.path) || ((_b = plugin.getActiveMarkdownFile()) == null ? void 0 : _b.path) || null;
+      }
+      handleMarkClick(event) {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        const markEl = target == null ? void 0 : target.closest("[data-side-mark-id]");
+        const markId = markEl == null ? void 0 : markEl.dataset.sideMarkId;
+        if (!markId) {
+          return;
+        }
+        event.preventDefault();
+        void plugin.focusMark(markId);
+      }
+      handleMouseMove(event) {
+        if (!(event.target instanceof HTMLElement) || !this.view.dom.contains(event.target)) {
+          return;
+        }
+        if (!this.view.state.selection.main.empty) {
+          plugin.scheduleHideBlockToolbar();
+          return;
+        }
+        const pos = this.view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (pos === null) {
+          plugin.scheduleHideBlockToolbar();
+          return;
+        }
+        const line = this.view.state.doc.lineAt(pos);
+        if (!line.text.trim()) {
+          plugin.scheduleHideBlockToolbar();
+          return;
+        }
+        const rect = this.view.coordsAtPos(line.from);
+        if (!rect) {
+          plugin.scheduleHideBlockToolbar();
+          return;
+        }
+        const lineRect = this.getLineRect(event.target);
+        plugin.showBlockToolbar(this.view, {
+          from: line.from,
+          to: line.to,
+          label: getLineLabel(line.text),
+          rect: lineRect || new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+        });
+      }
+      getLineRect(target) {
+        const lineEl = target.closest(".cm-line");
+        if (!lineEl || !this.view.dom.contains(lineEl)) {
+          return null;
+        }
+        const lineRect = lineEl.getBoundingClientRect();
+        if (lineRect.height <= 0) {
+          return null;
+        }
+        const contentEl = target.closest(".cm-line > span, .cm-header, .cm-strong, .cm-emphasis");
+        if (!contentEl || !lineEl.contains(contentEl)) {
+          return lineRect;
+        }
+        const contentRect = contentEl.getBoundingClientRect();
+        if (contentRect.height <= 0) {
+          return lineRect;
+        }
+        return new DOMRect(lineRect.left, contentRect.top, lineRect.width, contentRect.height);
+      }
+    },
+    {
+      decorations: (value) => value.decorations
+    }
+  );
+}
+function getLineLabel(lineText) {
+  var _a;
+  const heading = lineText.match(/^(#{1,6})\s+/);
+  if (heading) {
+    return `H${((_a = heading[1]) == null ? void 0 : _a.length) || 1}`;
+  }
+  if (/^\s*(?:[-+*]|\d+\.)\s+/.test(lineText)) {
+    return "List";
+  }
+  if (/^\s*>/.test(lineText)) {
+    return "Quote";
+  }
+  return "T";
+}
+function getDomSelectionRect(editorDom) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  const element = common instanceof HTMLElement ? common : common.parentElement;
+  if (!element || !editorDom.contains(element)) {
+    return null;
+  }
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
+  }
+  const first = rects[0];
+  if (!first) {
+    return null;
+  }
+  return new DOMRect(first.left, first.top, first.width, first.height);
+}
+
+// src/comment-popover.ts
+var import_obsidian2 = require("obsidian");
+var CommentPopover = class {
+  constructor() {
+    this.onSave = null;
+    this.hideTimer = null;
+    this.el = document.body.createDiv({ cls: "side-mark-comment-popover" });
+    this.el.hide();
+    this.el.addEventListener("mouseenter", () => this.cancelHide());
+    this.el.addEventListener("mouseleave", () => this.scheduleHide());
+    const header = this.el.createDiv({ cls: "side-mark-comment-popover-header" });
+    header.createSpan({ text: "\u8BC4\u8BBA" });
+    const closeButton = header.createEl("button", {
+      cls: "side-mark-icon-button",
+      attr: { type: "button", "aria-label": "\u5173\u95ED" }
+    });
+    (0, import_obsidian2.setIcon)(closeButton, "x");
+    closeButton.addEventListener("click", () => this.hide());
+    this.textarea = this.el.createEl("textarea", {
+      cls: "side-mark-comment-textarea",
+      attr: { placeholder: "\u586B\u5199\u5907\u6CE8" }
+    });
+    const actions = this.el.createDiv({ cls: "side-mark-comment-actions" });
+    const cancel = actions.createEl("button", {
+      text: "\u53D6\u6D88",
+      cls: "side-mark-secondary-button",
+      attr: { type: "button" }
+    });
+    cancel.addEventListener("click", () => this.hide());
+    const save = actions.createEl("button", {
+      text: "\u4FDD\u5B58",
+      cls: "side-mark-primary-button",
+      attr: { type: "button" }
+    });
+    save.addEventListener("click", () => {
+      var _a;
+      (_a = this.onSave) == null ? void 0 : _a.call(this, this.textarea.value);
+      this.hide();
+    });
+  }
+  show(rect, onSave) {
+    this.cancelHide();
+    this.onSave = onSave;
+    this.textarea.value = "";
+    this.el.show();
+    this.el.removeClass("is-visible");
+    const width = this.el.offsetWidth;
+    const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
+    const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+    this.el.style.left = `${left}px`;
+    this.el.style.top = `${top}px`;
+    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+    this.textarea.focus();
+  }
+  hide() {
+    this.cancelHide();
+    this.el.removeClass("is-visible");
+    this.onSave = null;
+    window.setTimeout(() => {
+      if (!this.el.hasClass("is-visible")) {
+        this.el.hide();
+      }
+    }, 150);
+  }
+  destroy() {
+    this.cancelHide();
+    this.el.remove();
+  }
+  scheduleHide() {
+    if (this.textarea.value.trim()) {
+      return;
+    }
+    this.cancelHide();
+    this.hideTimer = window.setTimeout(() => this.hide(), 420);
+  }
+  cancelHide() {
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+};
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+// src/hover-block-toolbar.ts
+var import_obsidian3 = require("obsidian");
+var FORMAT_BUTTONS = [
+  { action: "paragraph", label: "\u6B63\u6587", shortcut: "T", compact: true },
+  { action: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1", compact: true },
+  { action: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2", compact: true },
+  { action: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3", compact: true },
+  { action: "heading-4", label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", compact: true },
+  { action: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
+  { action: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
+  { action: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
+  { action: "code-block", icon: "braces", label: "\u4EE3\u7801\u5757" },
+  { action: "quote", icon: "quote", label: "\u5F15\u7528" }
+];
+var ACTION_BUTTONS = [
+  { action: "comment", icon: "message-square-text", label: "\u8BC4\u8BBA" },
+  { action: "copy", icon: "copy", label: "\u590D\u5236" },
+  { action: "delete", icon: "trash-2", label: "\u5220\u9664", danger: true }
+];
+var HoverBlockToolbar = class {
+  constructor(onAction) {
+    this.onAction = onAction;
+    this.target = null;
+    this.hideTimer = null;
+    this.openTimer = null;
+    this.pointerMoveHandler = (event) => this.handlePointerMove(event);
+    this.pill = document.body.createDiv({ cls: "side-mark-block-pill" });
+    this.pill.hide();
+    this.pill.addEventListener("mousedown", (event) => event.preventDefault());
+    this.pill.addEventListener("mouseenter", () => this.scheduleOpen());
+    this.pill.addEventListener("mouseleave", () => this.scheduleHide());
+    const label = this.pill.createEl("button", {
+      cls: "side-mark-block-pill-label",
+      attr: { type: "button", "aria-label": "\u5757\u683C\u5F0F" }
+    });
+    this.pill.createDiv({
+      cls: "side-mark-block-pill-arrow"
+    });
+    const drag = this.pill.createDiv({ cls: "side-mark-block-pill-drag" });
+    (0, import_obsidian3.setIcon)(drag, "grip-vertical");
+    this.menu = document.body.createDiv({ cls: "side-mark-block-menu" });
+    this.menu.hide();
+    this.menu.addEventListener("mousedown", (event) => event.preventDefault());
+    this.menu.addEventListener("mouseenter", () => this.cancelHide());
+    this.menu.addEventListener("mouseleave", () => this.scheduleHide());
+    this.renderMenu();
+  }
+  show(target) {
+    var _a;
+    if (this.isMenuOpen()) {
+      return;
+    }
+    this.target = target;
+    this.cancelHide();
+    this.pill.show();
+    this.pill.addClass("is-visible");
+    (_a = this.pill.querySelector(".side-mark-block-pill-label")) == null ? void 0 : _a.setText(target.label);
+    const left = clamp2(target.rect.left - 58, 8, window.innerWidth - 82);
+    const pillHeight = this.pill.offsetHeight || 22;
+    const visualOffset = target.label.startsWith("H") ? 2 : 0;
+    const top = clamp2(target.rect.top + target.rect.height / 2 - pillHeight / 2 + visualOffset, 8, window.innerHeight - pillHeight - 8);
+    this.pill.style.left = `${left}px`;
+    this.pill.style.top = `${top}px`;
+  }
+  hide() {
+    this.cancelOpen();
+    this.cancelHide();
+    document.removeEventListener("mousemove", this.pointerMoveHandler);
+    this.pill.removeClass("is-visible");
+    this.pill.removeClass("is-open");
+    this.menu.removeClass("is-open");
+    window.setTimeout(() => {
+      if (!this.pill.hasClass("is-visible")) {
+        this.pill.hide();
+      }
+      if (!this.menu.hasClass("is-open")) {
+        this.menu.hide();
+      }
+    }, 140);
+    this.target = null;
+  }
+  scheduleHide() {
+    this.cancelOpen();
+    if (this.hideTimer !== null) {
+      return;
+    }
+    this.hideTimer = window.setTimeout(() => this.hide(), 220);
+  }
+  destroy() {
+    this.cancelHide();
+    this.cancelOpen();
+    document.removeEventListener("mousemove", this.pointerMoveHandler);
+    this.pill.remove();
+    this.menu.remove();
+  }
+  renderMenu() {
+    const list = this.menu.createDiv({ cls: "side-mark-block-menu-list" });
+    for (const item of FORMAT_BUTTONS) {
+      this.renderButton(list, item);
+    }
+    this.menu.createDiv({ cls: "side-mark-block-menu-separator" });
+    this.renderSubmenuRow(list, "align-start-horizontal", "\u7F29\u8FDB\u548C\u5BF9\u9F50");
+    this.renderSubmenuRow(list, "paintbrush", "\u989C\u8272");
+    this.menu.createDiv({ cls: "side-mark-block-menu-separator" });
+    for (const item of ACTION_BUTTONS) {
+      this.renderButton(list, item);
+    }
+  }
+  renderButton(container, item) {
+    const button = container.createEl("button", {
+      cls: item.compact ? "side-mark-block-menu-compact" : `side-mark-block-menu-row${item.danger ? " is-danger" : ""}`,
+      attr: {
+        type: "button",
+        title: item.label,
+        "aria-label": item.label
+      }
+    });
+    const icon = button.createSpan({ cls: "side-mark-block-menu-row-icon" });
+    if (item.icon) {
+      (0, import_obsidian3.setIcon)(icon, item.icon);
+    } else {
+      icon.setText(item.shortcut || item.label);
+    }
+    button.createSpan({ cls: "side-mark-block-menu-row-label", text: item.label });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.target) {
+        this.onAction(item.action, this.target);
+      }
+      this.hide();
+    });
+  }
+  renderSubmenuRow(container, icon, label) {
+    const row = container.createDiv({ cls: "side-mark-block-menu-row is-disabled" });
+    const iconEl = row.createSpan({ cls: "side-mark-block-menu-row-icon" });
+    (0, import_obsidian3.setIcon)(iconEl, icon);
+    row.createSpan({ cls: "side-mark-block-menu-row-label", text: label });
+    const arrow = row.createSpan({ cls: "side-mark-block-menu-row-arrow" });
+    (0, import_obsidian3.setIcon)(arrow, "chevron-right");
+  }
+  scheduleOpen() {
+    this.cancelHide();
+    this.cancelOpen();
+    this.openTimer = window.setTimeout(() => this.openMenu(), 70);
+  }
+  openMenu() {
+    if (!this.target) {
+      return;
+    }
+    this.pill.addClass("is-open");
+    document.addEventListener("mousemove", this.pointerMoveHandler);
+    this.menu.show();
+    this.positionMenu();
+    window.requestAnimationFrame(() => this.menu.addClass("is-open"));
+  }
+  positionMenu() {
+    if (!this.target) return;
+    const left = clamp2(this.target.rect.left - 58, 8, window.innerWidth - 240);
+    const top = clamp2(this.target.rect.top + 22, 8, window.innerHeight - 340);
+    this.menu.style.left = `${left}px`;
+    this.menu.style.top = `${top}px`;
+  }
+  isMenuOpen() {
+    return this.menu.isShown() || this.menu.hasClass("is-open");
+  }
+  handlePointerMove(event) {
+    if (!this.isMenuOpen()) {
+      return;
+    }
+    if (isInsideWithPadding(event, this.pill, 8) || isInsideWithPadding(event, this.menu, 8)) {
+      this.cancelHide();
+      return;
+    }
+    this.scheduleHide();
+  }
+  cancelHide() {
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+  cancelOpen() {
+    if (this.openTimer !== null) {
+      window.clearTimeout(this.openTimer);
+      this.openTimer = null;
+    }
+  }
+};
+function clamp2(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+function isInsideWithPadding(event, element, padding) {
+  if (!element.isShown()) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  return event.clientX >= rect.left - padding && event.clientX <= rect.right + padding && event.clientY >= rect.top - padding && event.clientY <= rect.bottom + padding;
+}
+
+// src/reading-selection-toolbar.ts
+var import_obsidian4 = require("obsidian");
+var READING_BUTTONS = [
+  { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
+  { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
+];
+var ReadingSelectionToolbar = class {
+  constructor(onAction) {
+    this.onAction = onAction;
+    this.hideTimer = null;
+    this.el = document.body.createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
+    this.el.hide();
+    this.el.addEventListener("mousedown", (event) => event.preventDefault());
+    this.el.addEventListener("mouseenter", () => this.cancelHide());
+    this.el.addEventListener("mouseleave", () => this.scheduleHide());
+    for (const button of READING_BUTTONS) {
+      const buttonEl = this.el.createEl("button", {
+        cls: "side-mark-toolbar-button",
+        attr: {
+          type: "button",
+          title: button.title,
+          "aria-label": button.title
+        }
+      });
+      (0, import_obsidian4.setIcon)(buttonEl, button.icon);
+      buttonEl.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.onAction(button.id);
+        this.hide();
+      });
+    }
+  }
+  show(rect, boundary) {
+    var _a, _b, _c, _d;
+    this.cancelHide();
+    this.el.show();
+    this.el.removeClass("is-visible");
+    const width = this.el.offsetWidth;
+    const height = this.el.offsetHeight;
+    const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
+    const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
+    const left = clamp3(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const aboveTop = rect.top - height - 10;
+    const belowTop = rect.bottom + 10;
+    const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
+    const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
+    const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
+    const top = clamp3(preferredTop, minTop, maxTop);
+    this.el.style.left = `${left}px`;
+    this.el.style.top = `${top}px`;
+    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+  }
+  hide() {
+    this.cancelHide();
+    this.el.removeClass("is-visible");
+    window.setTimeout(() => {
+      if (!this.el.hasClass("is-visible")) {
+        this.el.hide();
+      }
+    }, 140);
+  }
+  destroy() {
+    this.cancelHide();
+    this.el.remove();
+  }
+  scheduleHide() {
+    this.cancelHide();
+    this.hideTimer = window.setTimeout(() => this.hide(), 420);
+  }
+  cancelHide() {
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+};
+function clamp3(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+// src/selection-toolbar.ts
+var import_obsidian5 = require("obsidian");
+var FORMAT_ITEMS = [
+  { id: "paragraph", label: "\u6B63\u6587", shortcut: "T" },
+  { id: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1" },
+  { id: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2" },
+  { id: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3" },
+  { id: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
+  { id: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
+  { id: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
+  { id: "code-block", icon: "braces", label: "\u4EE3\u7801\u5757" },
+  { id: "quote", icon: "quote", label: "\u5F15\u7528" }
+];
+var BUTTONS = [
+  { id: "bold", icon: "bold", title: "\u52A0\u7C97" },
+  { id: "strike", icon: "strikethrough", title: "\u5220\u9664\u7EBF" },
+  { id: "italic", icon: "italic", title: "\u659C\u4F53" },
+  { id: "underline", icon: "underline", title: "\u4E0B\u5212\u7EBF" },
+  { id: "link", icon: "link", title: "\u94FE\u63A5" },
+  { id: "code", icon: "code", title: "\u884C\u5185\u4EE3\u7801" },
+  { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
+  { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
+];
+var SelectionToolbar = class {
+  constructor(onAction) {
+    this.onAction = onAction;
+    this.hideTimer = null;
+    this.el = document.body.createDiv({ cls: "side-mark-toolbar" });
+    this.el.hide();
+    this.pointerMoveHandler = (event) => this.handlePointerMove(event);
+    this.el.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    this.el.addEventListener("mouseenter", () => this.cancelHide());
+    this.el.addEventListener("mouseleave", () => this.scheduleHide());
+    const format = this.el.createEl("button", {
+      cls: "side-mark-toolbar-format",
+      attr: { type: "button", title: "\u683C\u5F0F", "aria-label": "\u683C\u5F0F" }
+    });
+    this.formatLabel = format.createSpan({ text: "\u6B63\u6587" });
+    const chevron = format.createSpan({ cls: "side-mark-toolbar-format-chevron" });
+    (0, import_obsidian5.setIcon)(chevron, "chevron-down");
+    format.addEventListener("mouseenter", () => this.openMenu());
+    format.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleMenu();
+    });
+    this.el.createDiv({ cls: "side-mark-toolbar-divider" });
+    for (const button of BUTTONS) {
+      const buttonEl = this.el.createEl("button", {
+        cls: "side-mark-toolbar-button",
+        attr: {
+          type: "button",
+          title: button.title,
+          "aria-label": button.title
+        }
+      });
+      (0, import_obsidian5.setIcon)(buttonEl, button.icon);
+      buttonEl.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.onAction(button.id);
+        this.hide();
+      });
+    }
+    this.menu = document.body.createDiv({ cls: "side-mark-selection-menu" });
+    this.menu.hide();
+    this.menu.addEventListener("mousedown", (event) => event.preventDefault());
+    this.menu.addEventListener("mouseenter", () => this.cancelHide());
+    this.menu.addEventListener("mouseleave", () => this.scheduleHide());
+    for (const item of FORMAT_ITEMS) {
+      const row = this.menu.createEl("button", {
+        cls: "side-mark-selection-menu-row",
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      const iconWrap = row.createSpan({ cls: "side-mark-selection-menu-icon" });
+      if (item.icon) {
+        (0, import_obsidian5.setIcon)(iconWrap, item.icon);
+      } else {
+        iconWrap.setText(item.shortcut || "");
+      }
+      row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+      const check = row.createSpan({ cls: "side-mark-selection-menu-check" });
+      if (item.id === "paragraph") {
+        (0, import_obsidian5.setIcon)(check, "check");
+        row.addClass("is-active");
+      }
+      row.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.formatLabel.setText(item.shortcut || item.label);
+        this.onAction(item.id);
+        this.hide();
+      });
+    }
+  }
+  show(rect, boundary) {
+    var _a, _b, _c, _d;
+    this.cancelHide();
+    document.addEventListener("mousemove", this.pointerMoveHandler);
+    this.el.show();
+    this.el.removeClass("is-visible");
+    const width = this.el.offsetWidth;
+    const height = this.el.offsetHeight;
+    const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
+    const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
+    const left = clamp4(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const aboveTop = rect.top - height - 10;
+    const belowTop = rect.bottom + 10;
+    const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
+    const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
+    const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
+    const top = clamp4(preferredTop, minTop, maxTop);
+    this.el.style.left = `${left}px`;
+    this.el.style.top = `${top}px`;
+    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+  }
+  hide() {
+    this.cancelHide();
+    document.removeEventListener("mousemove", this.pointerMoveHandler);
+    this.el.removeClass("is-visible");
+    this.menu.removeClass("is-open");
+    window.setTimeout(() => {
+      if (!this.el.hasClass("is-visible")) {
+        this.el.hide();
+      }
+      if (!this.menu.hasClass("is-open")) {
+        this.menu.hide();
+      }
+    }, 140);
+  }
+  isVisible() {
+    return this.el.isShown() && this.el.hasClass("is-visible");
+  }
+  destroy() {
+    this.cancelHide();
+    document.removeEventListener("mousemove", this.pointerMoveHandler);
+    this.el.remove();
+    this.menu.remove();
+  }
+  scheduleHide() {
+    this.cancelHide();
+    this.hideTimer = window.setTimeout(() => this.hide(), 260);
+  }
+  cancelHide() {
+    if (this.hideTimer !== null) {
+      window.clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+  handlePointerMove(event) {
+    if (!this.el.isShown()) {
+      return;
+    }
+    const rect = this.el.getBoundingClientRect();
+    const menuRect = this.menu.isShown() ? this.menu.getBoundingClientRect() : null;
+    const safeRect = {
+      left: rect.left - 22,
+      right: rect.right + 22,
+      top: rect.top - 28,
+      bottom: rect.bottom + 42
+    };
+    if (event.clientX >= safeRect.left && event.clientX <= safeRect.right && event.clientY >= safeRect.top && event.clientY <= safeRect.bottom) {
+      this.cancelHide();
+      return;
+    }
+    if (menuRect && event.clientX >= menuRect.left - 16 && event.clientX <= menuRect.right + 16 && event.clientY >= menuRect.top - 16 && event.clientY <= menuRect.bottom + 16) {
+      this.cancelHide();
+      return;
+    }
+    this.scheduleHide();
+  }
+  toggleMenu() {
+    if (this.menu.hasClass("is-open")) {
+      this.menu.removeClass("is-open");
+      window.setTimeout(() => {
+        if (!this.menu.hasClass("is-open")) {
+          this.menu.hide();
+        }
+      }, 120);
+      return;
+    }
+    this.openMenu();
+  }
+  openMenu() {
+    this.cancelHide();
+    const rect = this.el.getBoundingClientRect();
+    this.menu.show();
+    this.menu.style.left = `${clamp4(rect.left, 8, window.innerWidth - this.menu.offsetWidth - 8)}px`;
+    this.menu.style.top = `${clamp4(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
+    window.requestAnimationFrame(() => this.menu.addClass("is-open"));
+  }
+};
+function clamp4(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+// src/storage.ts
+var import_obsidian6 = require("obsidian");
+var import_crypto = require("crypto");
+
+// src/anchors.ts
+var CONTEXT_LENGTH = 40;
+function createTextAnchor(source, startOffset, endOffset) {
+  const start = Math.max(0, Math.min(startOffset, endOffset, source.length));
+  const end = Math.max(start, Math.min(Math.max(startOffset, endOffset), source.length));
+  const startPosition = offsetToLineColumn(source, start);
+  const endPosition = offsetToLineColumn(source, end);
+  return {
+    startOffset: start,
+    endOffset: end,
+    selectedText: source.slice(start, end),
+    prefix: source.slice(Math.max(0, start - CONTEXT_LENGTH), start),
+    suffix: source.slice(end, end + CONTEXT_LENGTH),
+    position: {
+      lineStart: startPosition.line,
+      lineEnd: endPosition.line,
+      columnStart: startPosition.column,
+      columnEnd: endPosition.column
+    }
+  };
+}
+function relocateAnchor(source, anchor) {
+  if (!anchor.selectedText) {
+    return null;
+  }
+  if (source.slice(anchor.startOffset, anchor.endOffset) === anchor.selectedText) {
+    return anchor;
+  }
+  const contextual = findByContext(source, anchor);
+  if (contextual) {
+    return createTextAnchor(source, contextual, contextual + anchor.selectedText.length);
+  }
+  const matches = findExactMatches(source, anchor.selectedText);
+  if (matches.length === 1) {
+    return createTextAnchor(source, matches[0] || 0, (matches[0] || 0) + anchor.selectedText.length);
+  }
+  return null;
+}
+function findByContext(source, anchor) {
+  let searchFrom = 0;
+  let best = null;
+  let ambiguous = false;
+  while (searchFrom <= source.length) {
+    const index = source.indexOf(anchor.selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    const end = index + anchor.selectedText.length;
+    const prefix = source.slice(Math.max(0, index - anchor.prefix.length), index);
+    const suffix = source.slice(end, end + anchor.suffix.length);
+    const score = similarity(prefix, anchor.prefix) + similarity(suffix, anchor.suffix);
+    if (!best || score > best.score) {
+      best = { index, score };
+      ambiguous = false;
+    } else if (score === best.score) {
+      ambiguous = true;
+    }
+    searchFrom = end;
+  }
+  return best && best.score >= 1.4 && !ambiguous ? best.index : null;
+}
+function findExactMatches(source, selectedText) {
+  const matches = [];
+  let searchFrom = 0;
+  while (searchFrom <= source.length) {
+    const index = source.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    matches.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  return matches;
+}
+function similarity(left, right) {
+  const maxLength = Math.max(left.length, right.length);
+  if (maxLength === 0) {
+    return 1;
+  }
+  let same = 0;
+  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+    if (left[index] === right[index]) {
+      same += 1;
+    }
+  }
+  return same / maxLength;
+}
+function offsetToLineColumn(source, offset) {
+  let line = 1;
+  let column = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (source[index] === "\n") {
+      line += 1;
+      column = 1;
+    } else {
+      column += 1;
+    }
+  }
+  return { line, column };
+}
+
+// src/types.ts
+var DATA_DIR = ".obsidian-float-marks";
+var DEFAULT_SETTINGS = {
+  dataDir: DATA_DIR,
+  larkCliPath: "lark-cli",
+  autoOpenSidebar: true,
+  autoSyncToLark: false,
+  preferBodyBlockForLark: false,
+  commentAuthorName: "\u6211"
+};
+
+// src/storage.ts
+var SideMarkStore = class {
+  constructor(app, settings) {
+    this.app = app;
+    this.settings = settings;
+  }
+  updateSettings(settings) {
+    this.settings = settings;
+  }
+  async loadDocument(filePath) {
+    const normalizedPath = (0, import_obsidian6.normalizePath)(filePath);
+    const sidecarPath = this.getSidecarPath(normalizedPath);
+    if (!await this.app.vault.adapter.exists(sidecarPath)) {
+      return this.createEmptyDocument(normalizedPath);
+    }
+    const raw = await this.app.vault.adapter.read(sidecarPath);
+    const parsed = JSON.parse(raw);
+    return {
+      schemaVersion: 1,
+      filePath: normalizedPath,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : (/* @__PURE__ */ new Date()).toISOString(),
+      marks: Array.isArray(parsed.marks) ? parsed.marks.map((mark) => this.normalizeMark(mark)) : []
+    };
+  }
+  async saveDocument(document2) {
+    const normalizedPath = (0, import_obsidian6.normalizePath)(document2.filePath);
+    const next = {
+      schemaVersion: 1,
+      filePath: normalizedPath,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      marks: [...document2.marks].sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
+    };
+    const sidecarPath = this.getSidecarPath(normalizedPath);
+    await this.app.vault.adapter.mkdir(this.getFilesDir());
+    await this.app.vault.adapter.write(sidecarPath, JSON.stringify(next, null, 2));
+    return next;
+  }
+  async createMark(input) {
+    var _a;
+    const anchor = createTextAnchor(input.source, input.startOffset, input.endOffset);
+    if (!anchor.selectedText) {
+      throw new Error("Cannot create a mark from an empty selection.");
+    }
+    const document2 = await this.loadDocument(input.filePath);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const mark = {
+      id: crypto.randomUUID(),
+      filePath: (0, import_obsidian6.normalizePath)(input.filePath),
+      anchor,
+      mark: {
+        kind: input.kind,
+        color: input.color
+      },
+      note: {
+        content: input.noteContent || "",
+        createdAt: now,
+        updatedAt: now
+      },
+      replies: ((_a = input.noteContent) == null ? void 0 : _a.trim()) ? [this.createReply(input.noteContent, now)] : [],
+      status: "active",
+      remote: {
+        status: "pending"
+      }
+    };
+    return this.saveDocument({
+      ...document2,
+      marks: [...document2.marks, mark]
+    });
+  }
+  async updateMark(filePath, markId, update) {
+    const document2 = await this.loadDocument(filePath);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.saveDocument({
+      ...document2,
+      marks: document2.marks.map((mark) => {
+        var _a, _b, _c;
+        if (mark.id !== markId) {
+          return mark;
+        }
+        return {
+          ...mark,
+          status: (_a = update.status) != null ? _a : mark.status,
+          remote: (_b = update.remote) != null ? _b : mark.remote,
+          mark: (_c = update.mark) != null ? _c : mark.mark,
+          note: update.noteContent === void 0 ? mark.note : {
+            ...mark.note,
+            content: update.noteContent,
+            updatedAt: now
+          }
+        };
+      })
+    });
+  }
+  async addReply(filePath, markId, content) {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+    }
+    const document2 = await this.loadDocument(filePath);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.saveDocument({
+      ...document2,
+      marks: document2.marks.map((mark) => {
+        var _a;
+        if (mark.id !== markId) {
+          return mark;
+        }
+        const replies = this.getReplies(mark);
+        return {
+          ...mark,
+          replies: [...replies, this.createReply(trimmed, now)],
+          note: {
+            ...mark.note,
+            content: [...replies.map((reply) => reply.content), trimmed].join("\n\n"),
+            updatedAt: now
+          },
+          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+        };
+      })
+    });
+  }
+  async updateReply(filePath, markId, replyId, content) {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+    }
+    const document2 = await this.loadDocument(filePath);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.saveDocument({
+      ...document2,
+      marks: document2.marks.map((mark) => {
+        var _a;
+        if (mark.id !== markId) {
+          return mark;
+        }
+        const replies = this.getReplies(mark).map((reply) => reply.id === replyId ? { ...reply, content: trimmed, updatedAt: now } : reply);
+        return {
+          ...mark,
+          replies,
+          note: {
+            ...mark.note,
+            content: replies.map((reply) => reply.content).join("\n\n"),
+            updatedAt: now
+          },
+          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+        };
+      })
+    });
+  }
+  async deleteMark(filePath, markId) {
+    const document2 = await this.loadDocument(filePath);
+    return this.saveDocument({
+      ...document2,
+      marks: document2.marks.filter((mark) => mark.id !== markId)
+    });
+  }
+  async relocateDocument(filePath, source) {
+    const document2 = await this.loadDocument(filePath);
+    let changed = false;
+    const marks = document2.marks.map((mark) => {
+      const anchor = relocateAnchor(source, mark.anchor);
+      if (!anchor) {
+        if (mark.status === "orphaned") {
+          return mark;
+        }
+        changed = true;
+        return { ...mark, status: "orphaned" };
+      }
+      if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
+        return mark;
+      }
+      changed = true;
+      return {
+        ...mark,
+        anchor,
+        status: mark.status === "orphaned" ? "active" : mark.status
+      };
+    });
+    if (!changed) {
+      return document2;
+    }
+    return this.saveDocument({ ...document2, marks });
+  }
+  createEmptyDocument(filePath) {
+    return {
+      schemaVersion: 1,
+      filePath,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      marks: []
+    };
+  }
+  getSidecarPath(filePath) {
+    return (0, import_obsidian6.normalizePath)(`${this.getFilesDir()}/${hashPath(filePath)}.json`);
+  }
+  getFilesDir() {
+    return (0, import_obsidian6.normalizePath)(`${this.settings.dataDir || DEFAULT_SETTINGS.dataDir}/files`);
+  }
+  normalizeMark(mark) {
+    const replies = this.getReplies(mark);
+    return {
+      ...mark,
+      replies,
+      note: {
+        ...mark.note,
+        content: replies.length ? replies.map((reply) => reply.content).join("\n\n") : mark.note.content
+      }
+    };
+  }
+  getReplies(mark) {
+    var _a, _b;
+    if (Array.isArray(mark.replies)) {
+      return mark.replies;
+    }
+    const content = (_b = (_a = mark.note) == null ? void 0 : _a.content) == null ? void 0 : _b.trim();
+    if (!content) {
+      return [];
+    }
+    const createdAt = mark.note.createdAt || (/* @__PURE__ */ new Date()).toISOString();
+    return [this.createReply(content, createdAt)];
+  }
+  createReply(content, now) {
+    return {
+      id: crypto.randomUUID(),
+      authorName: this.settings.commentAuthorName || DEFAULT_SETTINGS.commentAuthorName,
+      content,
+      createdAt: now,
+      updatedAt: now
+    };
+  }
+};
+function hashPath(filePath) {
+  return (0, import_crypto.createHash)("sha1").update((0, import_obsidian6.normalizePath)(filePath)).digest("hex");
+}
+
+// src/sidebar-view.ts
+var import_obsidian7 = require("obsidian");
+var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
+var MARK_COLORS = [
+  { color: "yellow", label: "\u9EC4\u8272" },
+  { color: "blue", label: "\u84DD\u8272" },
+  { color: "green", label: "\u7EFF\u8272" },
+  { color: "red", label: "\u7EA2\u8272" }
+];
+var SideMarkSidebarView = class extends import_obsidian7.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.focusedMarkId = "";
+    this.filter = "active";
+    this.tagFilter = "all";
+    this.colorFilter = "all";
+    this.searchQuery = "";
+    this.restoreSearchFocus = false;
+    this.searchSelectionStart = null;
+    this.searchSelectionEnd = null;
+    this.isSearchComposing = false;
+    this.isRefreshing = false;
+  }
+  getViewType() {
+    return SIDE_MARK_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "FloatMark";
+  }
+  getIcon() {
+    return "highlighter";
+  }
+  async onOpen() {
+    await this.render();
+  }
+  focusMark(markId) {
+    this.focusedMarkId = markId;
+    void this.render();
+    window.setTimeout(() => {
+      var _a;
+      (_a = this.containerEl.querySelector(`[data-side-mark-card-id="${markId}"]`)) == null ? void 0 : _a.scrollIntoView({
+        block: "center"
+      });
+    });
+  }
+  async render() {
+    const container = this.contentEl;
+    container.empty();
+    container.addClass("side-mark-sidebar");
+    const header = container.createDiv({ cls: "side-mark-sidebar-header" });
+    const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
+    titleRow.createEl("h3", { text: "\u6B63\u6587\u6807\u6CE8" });
+    const controls = titleRow.createDiv({ cls: "side-mark-sidebar-controls" });
+    const refresh = titleRow.createEl("button", {
+      cls: `side-mark-icon-button side-mark-refresh-button${this.isRefreshing ? " is-refreshing" : ""}`,
+      attr: { type: "button", "aria-label": "\u5237\u65B0" }
+    });
+    refresh.disabled = this.isRefreshing;
+    (0, import_obsidian7.setIcon)(refresh, "refresh-cw");
+    refresh.addEventListener("click", () => void this.refreshCurrentDocument());
+    const doc = this.plugin.currentDocument;
+    if (!doc || doc.marks.length === 0) {
+      this.renderFilters(header, controls, [], []);
+      this.restoreSearchInputFocus();
+      container.createDiv({ text: "\u5F53\u524D\u6587\u6863\u8FD8\u6CA1\u6709\u6807\u6CE8\u3002", cls: "setting-item-description" });
+      return;
+    }
+    const marks = this.getFilteredMarks(doc.marks);
+    this.renderFilters(header, controls, doc.marks, marks);
+    this.restoreSearchInputFocus();
+    if (marks.length === 0) {
+      container.createDiv({
+        text: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u6CE8\u3002",
+        cls: "setting-item-description"
+      });
+      return;
+    }
+    for (const mark of marks) {
+      this.renderCard(container, mark);
+    }
+  }
+  renderFilters(container, controls, allMarks, filteredMarks) {
+    this.renderSelect(controls, "\u72B6\u6001", this.filter, [
+      { value: "all", label: "\u5168\u90E8" },
+      { value: "active", label: "\u6D3B\u52A8" },
+      { value: "resolved", label: "\u5DF2\u89E3\u51B3" },
+      { value: "orphaned", label: "\u5931\u8054" }
+    ], (value) => {
+      this.filter = value;
+      void this.render();
+    });
+    this.renderSelect(controls, "\u989C\u8272", this.colorFilter, [
+      { value: "all", label: "\u5168\u90E8" },
+      { value: "yellow", label: "\u9EC4\u8272" },
+      { value: "blue", label: "\u84DD\u8272" },
+      { value: "green", label: "\u7EFF\u8272" },
+      { value: "red", label: "\u7EA2\u8272" }
+    ], (value) => {
+      this.colorFilter = value;
+      void this.render();
+    });
+    this.renderSelect(controls, "\u6807\u7B7E", this.tagFilter, [
+      { value: "all", label: "\u5168\u90E8" }
+    ], (value) => {
+      this.tagFilter = value;
+      void this.render();
+    });
+    const searchWrap = container.createDiv({ cls: "side-mark-sidebar-search" });
+    const search = searchWrap.createEl("input", {
+      cls: "side-mark-sidebar-search-input",
+      attr: {
+        type: "search",
+        placeholder: "\u641C\u7D22\u6807\u6CE8",
+        "aria-label": "\u641C\u7D22\u6807\u6CE8"
+      }
+    });
+    search.value = this.searchQuery;
+    search.addEventListener("compositionstart", () => {
+      this.isSearchComposing = true;
+    });
+    search.addEventListener("compositionend", () => {
+      this.isSearchComposing = false;
+      this.updateSearchQuery(search);
+    });
+    search.addEventListener("input", (event) => {
+      this.searchQuery = search.value;
+      if (this.isSearchComposing || event instanceof InputEvent && event.isComposing) {
+        return;
+      }
+      this.updateSearchQuery(search);
+    });
+    container.createDiv({
+      cls: "side-mark-sidebar-stats",
+      text: allMarks.length === filteredMarks.length ? `\u5F53\u524D\u6587\u6863\uFF0C\u5171 ${allMarks.length} \u6761\u6807\u6CE8` : `\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 ${filteredMarks.length} / ${allMarks.length} \u6761\u6807\u6CE8`
+    });
+  }
+  renderSelect(container, label, value, options, onChange) {
+    const field = container.createDiv({ cls: "side-mark-filter-field" });
+    let hideTimer = 0;
+    const clearHideTimer = () => {
+      if (hideTimer) {
+        window.clearTimeout(hideTimer);
+        hideTimer = 0;
+      }
+    };
+    const scheduleHideMenu = () => {
+      clearHideTimer();
+      hideTimer = window.setTimeout(() => {
+        menu.hide();
+        hideTimer = 0;
+      }, 160);
+    };
+    const trigger = field.createEl("button", {
+      cls: "side-mark-filter-trigger",
+      text: label,
+      attr: { type: "button", "aria-label": label }
+    });
+    const chevron = trigger.createSpan({ cls: "side-mark-filter-chevron" });
+    (0, import_obsidian7.setIcon)(chevron, "chevron-down");
+    const menu = field.createDiv({ cls: "side-mark-filter-menu" });
+    menu.hide();
+    for (const option of options) {
+      const item = menu.createEl("button", {
+        cls: `side-mark-filter-menu-item${option.value === value ? " is-active" : ""}`,
+        attr: { type: "button" }
+      });
+      const check = item.createSpan({ cls: "side-mark-filter-menu-check" });
+      if (option.value === value) {
+        (0, import_obsidian7.setIcon)(check, "check");
+      }
+      item.createSpan({ cls: "side-mark-filter-menu-label", text: option.label });
+      item.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearHideTimer();
+        menu.hide();
+        onChange(option.value);
+      });
+    }
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.containerEl.querySelectorAll(".side-mark-filter-menu").forEach((other) => {
+        if (other !== menu) {
+          other.hide();
+        }
+      });
+      if (menu.isShown()) {
+        menu.hide();
+      } else {
+        clearHideTimer();
+        menu.show();
+      }
+    });
+    field.addEventListener("mouseenter", clearHideTimer);
+    field.addEventListener("mouseleave", scheduleHideMenu);
+    menu.addEventListener("mouseenter", clearHideTimer);
+    menu.addEventListener("mouseleave", scheduleHideMenu);
+  }
+  getFilteredMarks(marks) {
+    const query = this.searchQuery.trim().toLowerCase();
+    return marks.filter((mark) => {
+      if (this.filter === "active" && mark.status !== "active") {
+        return false;
+      }
+      if (this.filter === "resolved" && mark.status !== "resolved") {
+        return false;
+      }
+      if (this.filter === "orphaned" && mark.status !== "orphaned") {
+        return false;
+      }
+      if (this.colorFilter !== "all" && mark.mark.color !== this.colorFilter) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        mark.anchor.selectedText,
+        mark.note.content,
+        ...(mark.replies || []).map((reply) => reply.content)
+      ].join("\n").toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+  updateSearchQuery(search) {
+    this.searchQuery = search.value;
+    this.restoreSearchFocus = true;
+    this.searchSelectionStart = search.selectionStart;
+    this.searchSelectionEnd = search.selectionEnd;
+    void this.render();
+  }
+  restoreSearchInputFocus() {
+    var _a, _b;
+    if (!this.restoreSearchFocus) {
+      return;
+    }
+    this.restoreSearchFocus = false;
+    const search = this.containerEl.querySelector(".side-mark-sidebar-search-input");
+    if (!search) {
+      return;
+    }
+    search.focus();
+    const start = (_a = this.searchSelectionStart) != null ? _a : search.value.length;
+    const end = (_b = this.searchSelectionEnd) != null ? _b : start;
+    search.setSelectionRange(start, end);
+  }
+  async refreshCurrentDocument() {
+    if (this.isRefreshing) {
+      return;
+    }
+    this.isRefreshing = true;
+    await this.render();
+    try {
+      await this.plugin.reloadCurrentDocument();
+      new import_obsidian7.Notice("\u6807\u6CE8\u5DF2\u5237\u65B0\u3002");
+    } catch (error) {
+      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error), 8e3);
+    } finally {
+      this.isRefreshing = false;
+      await this.render();
+    }
+  }
+  renderCard(container, mark) {
+    const card = container.createDiv({
+      cls: `side-mark-card is-color-${mark.mark.color}${mark.status === "resolved" ? " is-resolved" : ""}`
+    });
+    card.dataset.sideMarkCardId = mark.id;
+    if (mark.id === this.focusedMarkId) {
+      card.addClass("is-focused");
+    }
+    card.addEventListener("click", (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const interactive = target == null ? void 0 : target.closest(
+        "button, textarea, input, select, a, .side-mark-card-menu, .side-mark-color-menu, .side-mark-reply-content"
+      );
+      if (interactive) {
+        return;
+      }
+      void this.plugin.jumpToMark(mark.id);
+      this.focusMark(mark.id);
+    });
+    this.renderCardToolbar(card, mark);
+    const quote = card.createDiv({ cls: "side-mark-card-quote" });
+    this.renderColorPicker(card, quote, mark);
+    quote.createDiv({
+      cls: "side-mark-card-quote-text",
+      text: mark.anchor.selectedText
+    });
+    this.renderThread(card, mark);
+    this.renderReplyComposer(card, mark);
+  }
+  renderColorPicker(card, quote, mark) {
+    const menu = card.createDiv({ cls: "side-mark-color-menu" });
+    menu.hide();
+    for (const item of MARK_COLORS) {
+      const button = menu.createEl("button", {
+        cls: `side-mark-color-option is-${item.color}${item.color === mark.mark.color ? " is-active" : ""}`,
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      if (item.color === mark.mark.color) {
+        (0, import_obsidian7.setIcon)(button, "check");
+      }
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        menu.hide();
+        await this.plugin.updateMarkColor(mark.id, item.color);
+      });
+    }
+    quote.addEventListener("click", (event) => {
+      if (event.offsetX > 14) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (menu.isShown()) {
+        menu.hide();
+      } else {
+        menu.show();
+      }
+    });
+    card.addEventListener("mouseleave", () => menu.hide());
+  }
+  renderCardToolbar(card, mark) {
+    const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
+    this.addIconAction(toolbar, "chevrons-up", "\u5B9A\u4F4D", () => void this.plugin.jumpToMark(mark.id));
+    this.addSyncAction(toolbar, mark);
+    this.addIconAction(
+      toolbar,
+      mark.status === "resolved" ? "circle" : "circle-check",
+      mark.status === "resolved" ? "\u6062\u590D" : "\u89E3\u51B3",
+      () => void this.plugin.toggleResolved(mark.id)
+    );
+    const more = toolbar.createEl("button", {
+      cls: "side-mark-card-icon-button",
+      attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
+    });
+    (0, import_obsidian7.setIcon)(more, "more-horizontal");
+    const menu = card.createDiv({ cls: "side-mark-card-menu" });
+    menu.hide();
+    this.addMenuAction(menu, "\u5220\u9664", () => void this.deleteMark(mark.id));
+    more.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (menu.isShown()) {
+        menu.hide();
+      } else {
+        menu.show();
+      }
+    });
+    card.addEventListener("mouseleave", () => menu.hide());
+  }
+  renderThread(card, mark) {
+    var _a;
+    const thread = card.createDiv({ cls: "side-mark-thread" });
+    const replies = ((_a = mark.replies) == null ? void 0 : _a.length) ? mark.replies : mark.note.content.trim() ? [{
+      id: "legacy-note",
+      authorName: this.plugin.settings.commentAuthorName,
+      content: mark.note.content,
+      createdAt: mark.note.createdAt,
+      updatedAt: mark.note.updatedAt
+    }] : [];
+    if (!replies.length) {
+      thread.createDiv({ cls: "side-mark-empty-thread", text: "\u8FD8\u6CA1\u6709\u8BC4\u8BBA\uFF0C\u7EE7\u7EED\u8F93\u5165\u7B2C\u4E00\u6761\u3002" });
+      return;
+    }
+    for (const reply of replies) {
+      const row = thread.createDiv({ cls: "side-mark-reply" });
+      const avatar = row.createDiv({ cls: "side-mark-avatar", text: reply.authorName.slice(0, 1) || "\u6211" });
+      avatar.setAttr("aria-hidden", "true");
+      const body = row.createDiv({ cls: "side-mark-reply-body" });
+      const meta = body.createDiv({ cls: "side-mark-reply-meta" });
+      meta.createSpan({ cls: "side-mark-reply-author", text: reply.authorName || "\u6211" });
+      meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt) });
+      const content = body.createDiv({
+        cls: "side-mark-reply-content",
+        text: reply.content,
+        attr: { title: "\u53CC\u51FB\u4FEE\u6539\u8BC4\u8BBA" }
+      });
+      content.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.renderReplyEditor(body, mark.id, reply.id, reply.content);
+      });
+    }
+  }
+  renderReplyEditor(body, markId, replyId, content) {
+    var _a;
+    (_a = body.querySelector(".side-mark-reply-content")) == null ? void 0 : _a.remove();
+    const editor = body.createDiv({ cls: "side-mark-reply-editor" });
+    const textarea = editor.createEl("textarea", { text: content });
+    const actions = editor.createDiv({ cls: "side-mark-reply-editor-actions" });
+    const cancel = actions.createEl("button", {
+      text: "\u53D6\u6D88",
+      cls: "side-mark-secondary-button",
+      attr: { type: "button" }
+    });
+    const save = actions.createEl("button", {
+      text: "\u4FDD\u5B58",
+      cls: "side-mark-primary-button",
+      attr: { type: "button" }
+    });
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      void this.render();
+    };
+    const submit = async () => {
+      if (closed) return;
+      const next = textarea.value.trim();
+      if (!next || next === content.trim()) {
+        close();
+        return;
+      }
+      closed = true;
+      await this.plugin.updateMarkReply(markId, replyId, next);
+    };
+    cancel.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    });
+    save.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void submit();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        void submit();
+      }
+    });
+    textarea.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        if (!editor.contains(document.activeElement)) {
+          void submit();
+        }
+      }, 80);
+    });
+    textarea.focus();
+    textarea.select();
+  }
+  renderReplyComposer(card, mark) {
+    const composer = card.createDiv({ cls: "side-mark-reply-composer" });
+    const trigger = composer.createEl("button", {
+      text: "\u56DE\u590D...",
+      cls: "side-mark-reply-trigger",
+      attr: { type: "button" }
+    });
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      composer.addClass("is-editing");
+      card.addClass("is-composing");
+      trigger.hide();
+      textarea.show();
+      textarea.focus();
+    });
+    const textarea = composer.createEl("textarea", {
+      attr: { placeholder: "\u7EE7\u7EED\u8BC4\u8BBA" }
+    });
+    textarea.hide();
+    const row = composer.createDiv({ cls: "side-mark-reply-composer-actions" });
+    row.hide();
+    const cancel = row.createEl("button", {
+      text: "\u53D6\u6D88",
+      cls: "side-mark-secondary-button",
+      attr: { type: "button" }
+    });
+    const submit = row.createEl("button", {
+      text: "\u56DE\u590D",
+      cls: "side-mark-primary-button",
+      attr: { type: "button" }
+    });
+    const closeComposer = () => {
+      textarea.value = "";
+      row.hide();
+      textarea.hide();
+      trigger.show();
+      composer.removeClass("is-editing");
+      card.removeClass("is-composing");
+    };
+    cancel.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeComposer();
+    });
+    submit.addEventListener("click", async () => {
+      const content = textarea.value.trim();
+      if (!content) {
+        return;
+      }
+      await this.plugin.addMarkReply(mark.id, content);
+      closeComposer();
+    });
+    textarea.addEventListener("input", () => {
+      if (textarea.value.trim()) {
+        row.show();
+      } else {
+        row.hide();
+      }
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeComposer();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        submit.click();
+      }
+    });
+  }
+  addIconAction(container, icon, label, onClick) {
+    const button = container.createEl("button", {
+      cls: "side-mark-card-icon-button",
+      attr: { type: "button", title: label, "aria-label": label }
+    });
+    (0, import_obsidian7.setIcon)(button, icon);
+    button.addEventListener("click", onClick);
+  }
+  addSyncAction(container, mark) {
+    var _a;
+    const status = ((_a = mark.remote) == null ? void 0 : _a.status) || "pending";
+    const label = status === "synced" ? "\u5DF2\u540C\u6B65\u5230\u98DE\u4E66" : status === "failed" ? "\u540C\u6B65\u98DE\u4E66\u5931\u8D25" : "\u540C\u6B65\u5230\u98DE\u4E66";
+    const button = container.createEl("button", {
+      cls: `side-mark-card-icon-button side-mark-sync-action is-${status}`,
+      attr: { type: "button", title: label, "aria-label": label }
+    });
+    (0, import_obsidian7.setIcon)(button, "link");
+    if (status === "synced" || status === "failed") {
+      const badge = button.createSpan({ cls: "side-mark-sync-action-badge" });
+      (0, import_obsidian7.setIcon)(badge, status === "synced" ? "check" : "x");
+    }
+    button.addEventListener("click", () => void this.syncMark(mark.id));
+  }
+  addMenuAction(container, label, onClick) {
+    const button = container.createEl("button", {
+      text: label,
+      cls: "side-mark-card-menu-item",
+      attr: { type: "button" }
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      container.hide();
+      onClick();
+    });
+  }
+  async syncMark(markId) {
+    try {
+      await this.plugin.syncMarkToLark(markId);
+      new import_obsidian7.Notice("\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002");
+    } catch (error) {
+      new import_obsidian7.Notice(error instanceof Error ? error.message : String(error), 8e3);
+    }
+    await this.render();
+  }
+  async deleteMark(markId) {
+    if (!window.confirm("\u5220\u9664\u8FD9\u6761\u6807\u6CE8\uFF1F")) {
+      return;
+    }
+    await this.plugin.deleteMark(markId);
+  }
+};
+function formatReplyTime(value) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 6e4) {
+    return "\u521A\u521A";
+  }
+  if (diffMs < 36e5) {
+    return `${Math.floor(diffMs / 6e4)} \u5206\u949F\u524D`;
+  }
+  if (diffMs < 864e5) {
+    return `${Math.floor(diffMs / 36e5)} \u5C0F\u65F6\u524D`;
+  }
+  return new Date(timestamp).toLocaleDateString();
+}
+
+// src/lark-bridge.ts
+var import_child_process = require("child_process");
+var import_util = require("util");
+var import_fs = require("fs");
+var import_obsidian8 = require("obsidian");
+
+// src/block-map.ts
+function splitMarkdownBlocks(markdown) {
+  var _a;
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  const lineStarts = createLineStarts(markdown.replace(/\r\n/g, "\n"));
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] || "";
+    if (line.trim() === "") {
+      index += 1;
+      continue;
+    }
+    const startLine = index;
+    const kind = readBlockKind(line);
+    if (kind === "heading" || kind === "hr") {
+      index += 1;
+    } else if (kind === "code") {
+      index += 1;
+      while (index < lines.length && !/^\s{0,3}```/.test(lines[index] || "")) {
+        index += 1;
+      }
+      if (index < lines.length) {
+        index += 1;
+      }
+    } else if (kind === "list") {
+      index += 1;
+      while (index < lines.length && (lines[index] || "").trim() !== "" && (readBlockKind(lines[index] || "") === "list" || /^\s+/.test(lines[index] || ""))) {
+        index += 1;
+      }
+    } else if (kind === "blockquote" || kind === "table") {
+      index += 1;
+      while (index < lines.length && readBlockKind(lines[index] || "") === kind) {
+        index += 1;
+      }
+    } else {
+      index += 1;
+      while (index < lines.length && (lines[index] || "").trim() !== "" && readBlockKind(lines[index] || "") === "paragraph") {
+        index += 1;
+      }
+    }
+    const startOffset = lineStarts[startLine] || 0;
+    const endOffset = (_a = lineStarts[index]) != null ? _a : markdown.length;
+    blocks.push({
+      index: blocks.length,
+      kind,
+      startOffset,
+      endOffset,
+      content: markdown.slice(startOffset, endOffset).trim()
+    });
+  }
+  return blocks;
+}
+function findFirstHitBlock(markdown, startOffset, endOffset) {
+  const start = Math.min(startOffset, endOffset);
+  const end = Math.max(startOffset, endOffset);
+  return splitMarkdownBlocks(markdown).find((block) => block.endOffset > start && block.startOffset < end) || null;
+}
+function findRemoteBlockId(markdown, units, startOffset, endOffset) {
+  var _a;
+  const block = findFirstHitBlock(markdown, startOffset, endOffset);
+  if (!block) {
+    return null;
+  }
+  return ((_a = units[block.index]) == null ? void 0 : _a.blockId) || null;
+}
+function createLineStarts(markdown) {
+  const starts = [0];
+  for (let index = 0; index < markdown.length; index += 1) {
+    if (markdown[index] === "\n") {
+      starts.push(index + 1);
+    }
+  }
+  starts.push(markdown.length);
+  return starts;
+}
+function readBlockKind(line) {
+  if (/^#{1,6}\s+/.test(line)) return "heading";
+  if (/^\s{0,3}```/.test(line)) return "code";
+  if (/^\s*>/.test(line)) return "blockquote";
+  if (/^\s*(?:[-+*]|\d+\.)\s+/.test(line)) return "list";
+  if (/^\s*[|]/.test(line)) return "table";
+  if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return "hr";
+  return "paragraph";
+}
+
+// src/lark-bridge.ts
+var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
+var SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
+var SYNC_STATE_FILE = "lark-sync-state.json";
+async function syncMarkToLark(plugin, file, source, mark) {
+  var _a, _b, _c, _d;
+  const binding = readLarkBinding(source);
+  if (!binding.doc) {
+    throw new Error("\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002");
+  }
+  const syncState = await readSyncState(plugin);
+  const docState = findDocumentState(syncState, binding.doc);
+  if (!docState || !docState.units.length) {
+    throw new Error("\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002");
+  }
+  const blockId = findRemoteBlockId(source, docState.units, mark.anchor.startOffset, mark.anchor.endOffset);
+  if (!blockId) {
+    throw new Error("\u6CA1\u6709\u627E\u5230\u8BE5\u6807\u6CE8\u547D\u4E2D\u7684\u7B2C\u4E00\u4E2A\u98DE\u4E66 block\u3002");
+  }
+  const replies = getReplies(mark);
+  const [firstReply, ...restReplies] = replies.length ? replies : [{ content: "\uFF08\u65E0\u8BC4\u8BBA\uFF09" }];
+  const result = await runLarkCreateComment(plugin.settings.larkCliPath, {
+    doc: binding.doc,
+    blockId,
+    content: buildCommentElements(firstReply.content)
+  });
+  if (!result.ok) {
+    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002");
+  }
+  const commentId = (_c = result.data) == null ? void 0 : _c.comment_id;
+  if (commentId) {
+    for (const reply of restReplies) {
+      await runLarkCreateReply(plugin.settings.larkCliPath, {
+        doc: binding.doc,
+        commentId,
+        content: buildReplyBody(reply.content)
+      });
+    }
+  }
+  return {
+    status: "synced",
+    larkDocToken: binding.token,
+    larkDocUrl: binding.url,
+    larkCommentId: commentId,
+    larkReplyId: (_d = result.data) == null ? void 0 : _d.reply_id,
+    blockId,
+    syncedHash: `${mark.anchor.selectedText}
+${getThreadContent(replies)}`,
+    syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function readLarkBinding(source) {
+  const frontmatter = source.match(/^---\n([\s\S]*?)\n---/);
+  const body = (frontmatter == null ? void 0 : frontmatter[1]) || "";
+  const url = readYamlScalar(body, "lark_doc_url");
+  const token = readYamlScalar(body, "lark_doc_token");
+  return {
+    doc: token || url,
+    token,
+    url
+  };
+}
+function readYamlScalar(frontmatter, key) {
+  var _a;
+  const match = frontmatter.match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+)["']?\\s*$`, "m"));
+  return ((_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) || "";
+}
+async function readSyncState(plugin) {
+  const adapter = plugin.app.vault.adapter;
+  if (!(adapter instanceof import_obsidian8.FileSystemAdapter)) {
+    return null;
+  }
+  const statePath = `${plugin.app.vault.configDir}/plugins/${SYNC_PLUGIN_ID}/${SYNC_STATE_FILE}`;
+  if (!await adapter.exists(statePath)) {
+    return null;
+  }
+  const parsed = JSON.parse(await adapter.read(statePath));
+  if (!parsed || typeof parsed !== "object" || !("documents" in parsed)) {
+    return null;
+  }
+  return parsed;
+}
+function findDocumentState(state, doc) {
+  if (!state) {
+    return null;
+  }
+  const token = extractDocumentToken(doc);
+  return state.documents[token] || state.documents[doc] || null;
+}
+function extractDocumentToken(doc) {
+  var _a, _b;
+  try {
+    const url = new URL(doc);
+    return ((_a = url.pathname.match(/\/(?:wiki|docx|doc)\/([^/?#]+)/)) == null ? void 0 : _a[1]) || doc;
+  } catch (e) {
+    return ((_b = doc.match(/\/(?:wiki|docx|doc)\/([^/?#]+)/)) == null ? void 0 : _b[1]) || doc;
+  }
+}
+function buildCommentElements(text) {
+  return JSON.stringify([{ type: "text", text }]);
+}
+function buildReplyBody(text) {
+  return JSON.stringify({
+    content: {
+      elements: [{
+        type: "text_run",
+        text_run: { text }
+      }]
+    }
+  });
+}
+function getReplies(mark) {
+  var _a;
+  return ((_a = mark.replies) == null ? void 0 : _a.length) ? mark.replies : mark.note.content.trim() ? [{
+    authorName: "\u6211",
+    content: mark.note.content,
+    createdAt: mark.note.createdAt
+  }] : [];
+}
+function getThreadContent(replies) {
+  return replies.map((reply) => reply.content).join("\n\n");
+}
+async function runLarkCreateComment(larkCliPath, input) {
+  const cliPath = resolveLarkCliPath(larkCliPath);
+  let stdout = "";
+  try {
+    ({ stdout } = await execLarkCli(cliPath, [
+      "drive",
+      "file.comments",
+      "create_v2",
+      "--as",
+      "user",
+      "--file-token",
+      extractDocumentToken(input.doc),
+      "--data",
+      JSON.stringify({
+        file_type: "docx",
+        reply_elements: JSON.parse(input.content),
+        anchor: {
+          block_id: input.blockId
+        }
+      }),
+      "--json"
+    ]));
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      throw new Error(`\u627E\u4E0D\u5230 lark-cli \u6216 node\uFF1A${cliPath}\u3002\u8BF7\u786E\u8BA4 /opt/homebrew/bin/node \u548C /Users/wanghuan/.npm-global/bin/lark-cli \u5B58\u5728\u3002`);
+    }
+    const message = getExecErrorMessage(error);
+    if (message) {
+      throw new Error(message);
+    }
+    throw error;
+  }
+  return normalizeLarkCommentResult(JSON.parse(stdout));
+}
+async function runLarkCreateReply(larkCliPath, input) {
+  const cliPath = resolveLarkCliPath(larkCliPath);
+  try {
+    await execLarkCli(cliPath, [
+      "drive",
+      "file.comment.replys",
+      "create",
+      "--as",
+      "user",
+      "--file-token",
+      extractDocumentToken(input.doc),
+      "--file-type",
+      "docx",
+      "--comment-id",
+      input.commentId,
+      "--data",
+      input.content,
+      "--json"
+    ]);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      throw new Error(`\u627E\u4E0D\u5230 lark-cli \u6216 node\uFF1A${cliPath}\u3002\u8BF7\u786E\u8BA4 /opt/homebrew/bin/node \u548C /Users/wanghuan/.npm-global/bin/lark-cli \u5B58\u5728\u3002`);
+    }
+    const message = getExecErrorMessage(error);
+    if (message) {
+      throw new Error(message);
+    }
+    throw error;
+  }
+}
+async function execLarkCli(cliPath, args) {
+  const { stdout } = await execFileAsync(cliPath, args, {
+    env: {
+      ...process.env,
+      PATH: buildLarkCliPathEnv()
+    },
+    maxBuffer: 1024 * 1024
+  });
+  return { stdout };
+}
+function resolveLarkCliPath(larkCliPath) {
+  if (larkCliPath && larkCliPath !== "lark-cli") {
+    return larkCliPath;
+  }
+  const candidates = [
+    "/Users/wanghuan/.npm-global/bin/lark-cli",
+    "/opt/homebrew/bin/lark-cli",
+    "/usr/local/bin/lark-cli"
+  ];
+  return candidates.find((candidate) => (0, import_fs.existsSync)(candidate)) || "lark-cli";
+}
+function buildLarkCliPathEnv() {
+  const extraPaths = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/Users/wanghuan/.npm-global/bin"
+  ];
+  return [...extraPaths, process.env.PATH || ""].filter(Boolean).join(":");
+}
+function isNotFoundError(error) {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
+}
+function getExecErrorMessage(error) {
+  if (!error || typeof error !== "object") {
+    return "";
+  }
+  const execError = error;
+  return (execError.stderr || execError.stdout || execError.message || "").trim();
+}
+function normalizeLarkCommentResult(result) {
+  if (typeof result.ok === "boolean") {
+    return result;
+  }
+  if (result.comment_id || result.reply_id) {
+    return {
+      ok: true,
+      data: {
+        comment_id: result.comment_id,
+        reply_id: result.reply_id
+      }
+    };
+  }
+  return {
+    ok: false,
+    error: {
+      message: "lark-cli \u672A\u8FD4\u56DE comment_id\u3002"
+    }
+  };
+}
+
+// src/reading-view-renderer.ts
+function renderReadingMarks(container, source, marks, onClick) {
+  const activeMarks = marks.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText).map((mark) => ({ mark }));
+  for (const item of activeMarks) {
+    wrapReadingMark(container, item.mark, onClick);
+  }
+}
+function wrapReadingMark(container, mark, onClick) {
+  const ranges = collectTextNodes(container);
+  const fullText = ranges.map((range) => range.node.data).join("");
+  const match = findBestRenderedMatch(fullText, mark);
+  if (!match) {
+    return;
+  }
+  const start = match.start;
+  const end = match.end;
+  const startRange = ranges.find((range) => range.start <= start && range.end >= start);
+  const endRange = ranges.find((range) => range.start <= end && range.end >= end);
+  if (!startRange || !endRange) {
+    return;
+  }
+  const domRange = document.createRange();
+  domRange.setStart(startRange.node, start - startRange.start);
+  domRange.setEnd(endRange.node, end - endRange.start);
+  const wrapper = document.createElement("span");
+  wrapper.className = `side-mark side-mark-reading side-mark--${mark.mark.kind} side-mark--${mark.mark.color}`;
+  wrapper.dataset.sideMarkReadingId = mark.id;
+  wrapper.title = mark.note.content || "FloatMark";
+  wrapper.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick(mark.id);
+  });
+  try {
+    wrapper.append(domRange.extractContents());
+    domRange.insertNode(wrapper);
+  } catch (e) {
+    domRange.detach();
+  }
+}
+function collectTextNodes(container) {
+  const nodes = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node2) {
+      var _a;
+      const parent = node2.parentElement;
+      if (!parent || parent.closest(".side-mark-reading")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      if (parent.closest("script, style")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return ((_a = node2.textContent) == null ? void 0 : _a.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
+  });
+  let offset = 0;
+  let node = walker.nextNode();
+  while (node) {
+    const text = node;
+    const length = text.data.length;
+    nodes.push({ node: text, start: offset, end: offset + length });
+    offset += length;
+    node = walker.nextNode();
+  }
+  return nodes;
+}
+function findBestRenderedMatch(renderedText, mark) {
+  for (const selectedText of toRenderedTextCandidates(mark.anchor.selectedText)) {
+    const start = findBestRenderedTextStart(renderedText, selectedText, mark.anchor.position.lineStart);
+    if (start >= 0) {
+      return { start, end: start + selectedText.length };
+    }
+    const flexibleMatch = findWhitespaceInsensitiveMatch(renderedText, selectedText, mark.anchor.position.lineStart);
+    if (flexibleMatch) {
+      return flexibleMatch;
+    }
+  }
+  return null;
+}
+function findBestRenderedTextStart(renderedText, selectedText, lineStart) {
+  const candidates = [];
+  let searchFrom = 0;
+  while (searchFrom <= renderedText.length) {
+    const index = renderedText.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    candidates.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  if (candidates.length === 0) {
+    return -1;
+  }
+  if (candidates.length === 1) {
+    return candidates[0] || 0;
+  }
+  const preferredLineOffset = estimateRenderedLineOffset(renderedText, lineStart);
+  return candidates.sort(
+    (left, right) => Math.abs(left - preferredLineOffset) - Math.abs(right - preferredLineOffset)
+  )[0] || candidates[0] || 0;
+}
+function toRenderedTextCandidates(selectedText) {
+  const normalized = normalizeWhitespace(selectedText).trim();
+  const stripped = normalizeWhitespace(stripMarkdownSyntax(selectedText)).trim();
+  const candidates = [
+    selectedText,
+    normalized,
+    stripped
+  ].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+function stripMarkdownSyntax(text) {
+  return text.replace(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+/gm, "").replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, "").replace(/^[\t ]{0,3}>[\t ]?/gm, "").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/(\*\*|__)(.*?)\1/g, "$2").replace(/(\*|_)(.*?)\1/g, "$2").replace(/~~(.*?)~~/g, "$1").replace(/<[^>]+>/g, "");
+}
+function normalizeWhitespace(text) {
+  return text.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");
+}
+function findWhitespaceInsensitiveMatch(renderedText, selectedText, lineStart) {
+  const rendered = buildNonWhitespaceIndex(renderedText);
+  const selected = selectedText.replace(/\s+/g, "");
+  if (!selected) {
+    return null;
+  }
+  const start = findBestRenderedTextStart(rendered.text, selected, lineStart);
+  if (start < 0) {
+    return null;
+  }
+  const originalStart = rendered.offsets[start];
+  const originalEnd = rendered.offsets[start + selected.length - 1];
+  if (originalStart === void 0 || originalEnd === void 0) {
+    return null;
+  }
+  return {
+    start: originalStart,
+    end: originalEnd + 1
+  };
+}
+function buildNonWhitespaceIndex(text) {
+  let indexedText = "";
+  const offsets = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] || "";
+    if (/\s/.test(char)) {
+      continue;
+    }
+    indexedText += char;
+    offsets.push(index);
+  }
+  return { text: indexedText, offsets };
+}
+function estimateRenderedLineOffset(renderedText, lineNumber) {
+  var _a;
+  if (lineNumber <= 1) {
+    return 0;
+  }
+  const lines = renderedText.split(/\n/);
+  let offset = 0;
+  for (let index = 0; index < Math.min(lineNumber - 1, lines.length); index += 1) {
+    offset += (((_a = lines[index]) == null ? void 0 : _a.length) || 0) + 1;
+  }
+  return offset;
+}
+
+// src/main.ts
+var SideMarkPlugin = class extends import_obsidian9.Plugin {
+  constructor() {
+    super(...arguments);
+    this.currentDocument = null;
+    this.activeEditorView = null;
+    this.readingSelection = null;
+    this.lastMarkdownFilePath = "";
+  }
+  async onload() {
+    await this.loadSettings();
+    this.store = new SideMarkStore(this.app, this.settings);
+    this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
+    this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
+    this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target));
+    this.commentPopover = new CommentPopover();
+    this.registerEditorExtension(createSideMarkEditorExtension(this));
+    this.registerMarkdownPostProcessor((element, context) => {
+      void this.renderReadingModeMarks(element, context.sourcePath);
+    });
+    this.registerView(SIDE_MARK_VIEW_TYPE, (leaf) => new SideMarkSidebarView(leaf, this));
+    this.addRibbonIcon("highlighter", "\u6253\u5F00\u6B63\u6587\u6807\u6CE8", () => void this.openSidebar());
+    this.addCommand({
+      id: "open-side-mark-sidebar",
+      name: "\u6253\u5F00\u6B63\u6587\u6807\u6CE8",
+      callback: () => void this.openSidebar()
+    });
+    this.addCommand({
+      id: "create-side-comment",
+      name: "\u4ECE\u5F53\u524D\u9009\u533A\u521B\u5EFA\u8BC4\u8BBA",
+      editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
+    });
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => void this.reloadCurrentDocument()));
+    this.registerDomEvent(document, "selectionchange", () => this.handleReadingSelectionChange());
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      var _a;
+      if (file instanceof import_obsidian9.TFile && file.extension === "md" && file.path === ((_a = this.getActiveMarkdownFile()) == null ? void 0 : _a.path)) {
+        void this.reloadCurrentDocument();
+      }
+    }));
+    this.addSettingTab(new SideMarkSettingTab(this));
+    await this.reloadCurrentDocument();
+  }
+  onunload() {
+    var _a, _b, _c, _d;
+    (_a = this.toolbar) == null ? void 0 : _a.destroy();
+    (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
+    (_c = this.blockToolbar) == null ? void 0 : _c.destroy();
+    (_d = this.commentPopover) == null ? void 0 : _d.destroy();
+  }
+  async loadSettings() {
+    const saved = await this.loadData();
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...saved || {}
+    };
+    if (!(saved == null ? void 0 : saved.larkCliPath) || saved.larkCliPath === "lark-cli") {
+      this.settings.larkCliPath = detectLarkCliPath();
+    }
+  }
+  async saveSettings() {
+    var _a;
+    await this.saveData(this.settings);
+    (_a = this.store) == null ? void 0 : _a.updateSettings(this.settings);
+  }
+  getActiveMarkdownFile() {
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView);
+    const file = view == null ? void 0 : view.file;
+    if (file instanceof import_obsidian9.TFile && file.extension === "md") {
+      this.lastMarkdownFilePath = file.path;
+      return file;
+    }
+    if (!this.lastMarkdownFilePath) {
+      return null;
+    }
+    const lastFile = this.app.vault.getFileByPath(this.lastMarkdownFilePath);
+    return lastFile instanceof import_obsidian9.TFile && lastFile.extension === "md" ? lastFile : null;
+  }
+  showSelectionToolbar(view, rect, boundary) {
+    this.activeEditorView = view;
+    this.blockToolbar.hide();
+    this.toolbar.show(rect, boundary);
+  }
+  hideSelectionToolbar() {
+    this.toolbar.hide();
+  }
+  showBlockToolbar(view, target) {
+    if (this.toolbar.isVisible()) {
+      this.blockToolbar.hide();
+      return;
+    }
+    this.activeEditorView = view;
+    this.blockToolbar.show(target);
+  }
+  scheduleHideBlockToolbar() {
+    this.blockToolbar.scheduleHide();
+  }
+  hideBlockToolbar() {
+    this.blockToolbar.hide();
+  }
+  async reloadCurrentDocument() {
+    const file = this.getActiveMarkdownFile();
+    if (!file) {
+      this.currentDocument = null;
+      await this.refreshSidebar();
+      return;
+    }
+    const source = await this.app.vault.read(file);
+    this.currentDocument = await this.store.relocateDocument(file.path, source);
+    await this.refreshSidebar();
+  }
+  async focusMark(markId) {
+    await this.openSidebar();
+    const view = this.getSidebarView();
+    view == null ? void 0 : view.focusMark(markId);
+  }
+  async updateMarkNote(markId, noteContent) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return;
+    this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
+    await this.refreshSidebar();
+  }
+  async addMarkReply(markId, content) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return;
+    this.currentDocument = await this.store.addReply(file.path, markId, content);
+    await this.refreshSidebar();
+    this.syncMarkToLarkInBackground(markId);
+  }
+  async updateMarkReply(markId, replyId, content) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return;
+    this.currentDocument = await this.store.updateReply(file.path, markId, replyId, content);
+    await this.refreshSidebar();
+  }
+  async toggleResolved(markId) {
+    var _a;
+    const file = this.getActiveMarkdownFile();
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) return;
+    this.currentDocument = await this.store.updateMark(file.path, markId, {
+      status: mark.status === "resolved" ? "active" : "resolved"
+    });
+    await this.refreshSidebar();
+  }
+  async updateMarkColor(markId, color) {
+    var _a, _b;
+    const file = this.getActiveMarkdownFile();
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) return;
+    this.currentDocument = await this.store.updateMark(file.path, markId, {
+      mark: {
+        ...mark.mark,
+        color
+      }
+    });
+    (_b = this.activeEditorView) == null ? void 0 : _b.dispatch({ effects: [] });
+    await this.refreshSidebar();
+  }
+  async deleteMark(markId) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return;
+    this.currentDocument = await this.store.deleteMark(file.path, markId);
+    await this.refreshSidebar();
+  }
+  async jumpToMark(markId) {
+    var _a;
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!mark) return;
+    const view = await this.ensureMarkdownViewForFile(mark.filePath);
+    if (!mark || !view) return;
+    if (view.getMode() === "preview") {
+      if (this.jumpToReadingMark(markId)) {
+        return;
+      }
+      await this.setMarkdownViewMode(view, "source");
+    }
+    view.editor.setSelection(
+      view.editor.offsetToPos(mark.anchor.startOffset),
+      view.editor.offsetToPos(mark.anchor.endOffset)
+    );
+    view.editor.scrollIntoView({
+      from: view.editor.offsetToPos(mark.anchor.startOffset),
+      to: view.editor.offsetToPos(mark.anchor.endOffset)
+    }, true);
+  }
+  async syncMarkToLark(markId) {
+    var _a;
+    const file = this.getActiveMarkdownFile();
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) {
+      return;
+    }
+    const source = await this.app.vault.read(file);
+    try {
+      const remote = await syncMarkToLark(this, file, source, mark);
+      this.currentDocument = await this.store.updateMark(file.path, markId, { remote });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.currentDocument = await this.store.updateMark(file.path, markId, {
+        remote: {
+          ...mark.remote,
+          status: "failed",
+          error: message
+        }
+      });
+      throw error;
+    } finally {
+      await this.refreshSidebar();
+    }
+  }
+  async handleToolbarAction(action) {
+    const view = this.activeEditorView;
+    if (!view) return;
+    if (action === "highlight") {
+      await this.createMarkFromView(view, "highlight", "");
+      return;
+    }
+    if (action === "comment") {
+      this.showCommentPopover(view);
+      return;
+    }
+    if (isSelectionBlockAction(action)) {
+      this.applySelectionBlockStyle(view, action);
+      return;
+    }
+    this.applyMarkdownStyle(action);
+  }
+  handleReadingSelectionChange() {
+    window.setTimeout(() => void this.updateReadingSelectionToolbar(), 0);
+  }
+  async updateReadingSelectionToolbar() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    if (!range) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    const view = this.findMarkdownPreviewView(range.commonAncestorContainer);
+    const file = view == null ? void 0 : view.file;
+    if (!view || !(file instanceof import_obsidian9.TFile) || view.getMode() !== "preview") {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    const selectedText = selection.toString().trim();
+    const source = await this.app.vault.read(file);
+    const sourceRange = findSourceRangeForReadingSelection(source, selectedText);
+    if (!sourceRange) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    this.readingSelection = {
+      file,
+      source,
+      from: sourceRange.from,
+      to: sourceRange.to,
+      rect
+    };
+    this.readingToolbar.show(rect, view.contentEl.getBoundingClientRect());
+  }
+  findMarkdownPreviewView(node) {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (view instanceof import_obsidian9.MarkdownView && view.getMode() === "preview" && view.contentEl.contains(node)) {
+        return view;
+      }
+    }
+    return null;
+  }
+  async handleReadingToolbarAction(action) {
+    const selection = this.readingSelection;
+    if (!selection) {
+      return;
+    }
+    if (action === "highlight") {
+      await this.createReadingMark(selection, "highlight", "");
+      return;
+    }
+    this.commentPopover.show(selection.rect, (content) => {
+      void this.createReadingMark(selection, "comment", content);
+    });
+  }
+  async handleBlockAction(action, target) {
+    const view = this.activeEditorView;
+    if (!view) return;
+    if (action === "comment") {
+      await this.createMarkFromOffsets(view, target.from, target.to, "comment", "");
+      return;
+    }
+    if (action === "copy") {
+      await navigator.clipboard.writeText(view.state.doc.sliceString(target.from, target.to));
+      new import_obsidian9.Notice("\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002");
+      return;
+    }
+    this.applyBlockStyle(view, target, action);
+  }
+  applyBlockStyle(view, target, action) {
+    const doc = view.state.doc;
+    const line = doc.lineAt(target.from);
+    const text = line.text;
+    const stripped = stripBlockPrefix(text);
+    let replacement = text;
+    switch (action) {
+      case "paragraph":
+        replacement = stripped;
+        break;
+      case "heading-1":
+      case "heading-2":
+      case "heading-3":
+      case "heading-4":
+      case "heading-5":
+        replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
+        break;
+      case "bullet-list":
+        replacement = `- ${stripped}`;
+        break;
+      case "number-list":
+        replacement = `1. ${stripped}`;
+        break;
+      case "task-list":
+        replacement = `- [ ] ${stripped}`;
+        break;
+      case "quote":
+        replacement = `> ${stripped}`;
+        break;
+      case "code-block":
+        replacement = `\`\`\`
+${stripped}
+\`\`\``;
+        break;
+      case "delete": {
+        const deleteTo = line.to < doc.length ? line.to + 1 : line.to;
+        view.dispatch({ changes: { from: line.from, to: deleteTo, insert: "" } });
+        return;
+      }
+    }
+    view.dispatch({
+      changes: {
+        from: line.from,
+        to: line.to,
+        insert: replacement
+      }
+    });
+  }
+  applyMarkdownStyle(action) {
+    const editor = this.getActiveEditor();
+    if (!editor) return;
+    const selected = editor.getSelection();
+    if (!selected) return;
+    const wrappers = {
+      bold: ["**", "**"],
+      italic: ["*", "*"],
+      strike: ["~~", "~~"],
+      underline: ["<u>", "</u>"],
+      link: ["[", "](https://)"],
+      code: ["`", "`"]
+    };
+    const wrapper = wrappers[action];
+    if (!wrapper) return;
+    editor.replaceSelection(`${wrapper[0]}${selected}${wrapper[1]}`);
+  }
+  applySelectionBlockStyle(view, action) {
+    const selection = view.state.selection.main;
+    const doc = view.state.doc;
+    const fromLine = doc.lineAt(selection.from);
+    const toLine = doc.lineAt(selection.to);
+    const changes = [];
+    for (let lineNumber = fromLine.number; lineNumber <= toLine.number; lineNumber++) {
+      const line = doc.line(lineNumber);
+      const stripped = stripBlockPrefix(line.text);
+      let replacement = stripped;
+      switch (action) {
+        case "paragraph":
+          replacement = stripped;
+          break;
+        case "heading-1":
+        case "heading-2":
+        case "heading-3":
+          replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
+          break;
+        case "bullet-list":
+          replacement = `- ${stripped}`;
+          break;
+        case "number-list":
+          replacement = `1. ${stripped}`;
+          break;
+        case "task-list":
+          replacement = `- [ ] ${stripped}`;
+          break;
+        case "quote":
+          replacement = `> ${stripped}`;
+          break;
+        case "code-block":
+          if (fromLine.number === toLine.number) {
+            replacement = `\`\`\`
+${stripped}
+\`\`\``;
+          } else {
+            continue;
+          }
+          break;
+        default:
+          continue;
+      }
+      changes.push({ from: line.from, to: line.to, insert: replacement });
+    }
+    if (changes.length > 0) {
+      view.dispatch({ changes });
+    }
+  }
+  showCommentPopover(view) {
+    const selection = view.state.selection.main;
+    const rect = view.coordsAtPos(selection.to);
+    if (!rect) return;
+    const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    this.commentPopover.show(popoverRect, (content) => {
+      void this.createMarkFromView(view, "comment", content);
+    });
+  }
+  async createCommentFromActiveSelection(noteContent) {
+    const view = this.activeEditorView;
+    if (!view) {
+      new import_obsidian9.Notice("\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002");
+      return;
+    }
+    await this.createMarkFromView(view, "comment", noteContent);
+  }
+  async createMarkFromView(view, kind, noteContent) {
+    const file = this.getActiveMarkdownFile();
+    const selection = view.state.selection.main;
+    if (!file || selection.empty) {
+      return;
+    }
+    await this.createMarkFromOffsets(view, selection.from, selection.to, kind, noteContent);
+  }
+  async createReadingMark(selection, kind, noteContent) {
+    var _a, _b;
+    const previousMarkIds = new Set((((_a = this.currentDocument) == null ? void 0 : _a.marks) || []).map((mark) => mark.id));
+    this.currentDocument = await this.store.createMark({
+      filePath: selection.file.path,
+      source: selection.source,
+      startOffset: selection.from,
+      endOffset: selection.to,
+      kind,
+      color: "yellow",
+      noteContent
+    });
+    const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
+    await this.refreshSidebar();
+    await this.renderPreviewMarksForFile(selection.file.path);
+    this.readingSelection = null;
+    (_b = window.getSelection()) == null ? void 0 : _b.removeAllRanges();
+    if (this.settings.autoOpenSidebar) {
+      await this.openSidebar();
+    }
+    if (kind === "comment" && createdMark && noteContent.trim()) {
+      this.syncMarkToLarkInBackground(createdMark.id);
+    }
+  }
+  async createMarkFromOffsets(view, from, to, kind, noteContent) {
+    var _a;
+    const file = this.getActiveMarkdownFile();
+    if (!file || from === to) {
+      return;
+    }
+    const previousMarkIds = new Set((((_a = this.currentDocument) == null ? void 0 : _a.marks) || []).map((mark) => mark.id));
+    this.currentDocument = await this.store.createMark({
+      filePath: file.path,
+      source: view.state.doc.toString(),
+      startOffset: from,
+      endOffset: to,
+      kind,
+      color: "yellow",
+      noteContent
+    });
+    const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
+    await this.refreshSidebar();
+    if (this.settings.autoOpenSidebar) {
+      await this.openSidebar();
+    }
+    if (kind === "comment" && createdMark && noteContent.trim()) {
+      this.syncMarkToLarkInBackground(createdMark.id);
+    }
+  }
+  syncMarkToLarkInBackground(markId) {
+    if (!this.settings.autoSyncToLark) {
+      return;
+    }
+    void this.syncMarkToLark(markId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian9.Notice(`\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A${message}`, 8e3);
+    });
+  }
+  getActiveEditor() {
+    var _a;
+    return ((_a = this.app.workspace.getActiveViewOfType(import_obsidian9.MarkdownView)) == null ? void 0 : _a.editor) || null;
+  }
+  async renderReadingModeMarks(container, sourcePath) {
+    const file = this.app.vault.getFileByPath(sourcePath);
+    if (!file || file.extension !== "md") {
+      return;
+    }
+    const [source, document2] = await Promise.all([
+      this.app.vault.read(file),
+      this.store.loadDocument(file.path)
+    ]);
+    renderReadingMarks(container, source, document2.marks, (markId) => void this.focusMark(markId));
+  }
+  async renderPreviewMarksForFile(filePath) {
+    var _a;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof import_obsidian9.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
+        continue;
+      }
+      await this.renderReadingModeMarks(view.contentEl, filePath);
+    }
+  }
+  jumpToReadingMark(markId) {
+    var _a;
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!mark) {
+      return false;
+    }
+    const markEl = this.findReadingMarkElement(markId, mark.filePath);
+    if (!markEl) {
+      return false;
+    }
+    markEl.scrollIntoView({ block: "center", behavior: "smooth" });
+    markEl.addClass("side-mark-reading-flash");
+    window.setTimeout(() => markEl.removeClass("side-mark-reading-flash"), 1200);
+    return true;
+  }
+  findReadingMarkElement(markId, filePath) {
+    var _a;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof import_obsidian9.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
+        continue;
+      }
+      const element = view.contentEl.querySelector(`[data-side-mark-reading-id="${markId}"]`);
+      if (element) {
+        this.app.workspace.revealLeaf(leaf);
+        return element;
+      }
+    }
+    return null;
+  }
+  async ensureMarkdownViewForFile(filePath) {
+    var _a;
+    for (const leaf2 of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf2.view;
+      if (view instanceof import_obsidian9.MarkdownView && ((_a = view.file) == null ? void 0 : _a.path) === filePath) {
+        this.app.workspace.revealLeaf(leaf2);
+        return view;
+      }
+    }
+    const file = this.app.vault.getFileByPath(filePath);
+    if (!file) {
+      return null;
+    }
+    const leaf = this.app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    return leaf.view instanceof import_obsidian9.MarkdownView ? leaf.view : null;
+  }
+  async setMarkdownViewMode(view, mode) {
+    const state = view.leaf.getViewState();
+    await view.leaf.setViewState({
+      ...state,
+      state: {
+        ...state.state || {},
+        mode
+      }
+    });
+  }
+  async openSidebar() {
+    let leaf = this.app.workspace.getLeavesOfType(SIDE_MARK_VIEW_TYPE)[0] || null;
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false);
+      await (leaf == null ? void 0 : leaf.setViewState({ type: SIDE_MARK_VIEW_TYPE, active: true }));
+    }
+    if (leaf) {
+      this.app.workspace.revealLeaf(leaf);
+      await this.refreshSidebar();
+    }
+  }
+  getSidebarView() {
+    var _a;
+    return (_a = this.app.workspace.getLeavesOfType(SIDE_MARK_VIEW_TYPE)[0]) == null ? void 0 : _a.view;
+  }
+  async refreshSidebar() {
+    var _a;
+    await ((_a = this.getSidebarView()) == null ? void 0 : _a.render());
+  }
+};
+function stripBlockPrefix(text) {
+  return text.replace(/^#{1,6}\s+/, "").replace(/^\s*>\s?/, "").replace(/^\s*\[(?: |x|X)\]\s+/, "").replace(/^\s*[-+*]\s+\[(?: |x|X)\]\s+/, "").replace(/^\s*(?:[-+*]|\d+\.)\s+/, "").trim();
+}
+function isSelectionBlockAction(action) {
+  return [
+    "paragraph",
+    "heading-1",
+    "heading-2",
+    "heading-3",
+    "bullet-list",
+    "number-list",
+    "task-list",
+    "quote",
+    "code-block"
+  ].includes(action);
+}
+function findSourceRangeForReadingSelection(source, selectedText) {
+  const directIndex = source.indexOf(selectedText);
+  if (directIndex >= 0) {
+    return {
+      from: directIndex,
+      to: directIndex + selectedText.length
+    };
+  }
+  const sourceIndex = buildRenderedSourceIndex(source);
+  const renderedSelection = normalizeReadingSelection(selectedText);
+  const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
+  if (renderedIndex < 0) {
+    return null;
+  }
+  const from = sourceIndex.offsets[renderedIndex];
+  const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
+  if (from === void 0 || to === void 0) {
+    return null;
+  }
+  return {
+    from,
+    to: to + 1
+  };
+}
+function buildRenderedSourceIndex(source) {
+  let rendered = "";
+  const offsets = [];
+  let index = 0;
+  const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
+  while (index < source.length) {
+    const lineStart = index === 0 || source[index - 1] === "\n";
+    if (lineStart) {
+      const prefix = source.slice(index).match(linePrefixPattern);
+      if (prefix == null ? void 0 : prefix[0]) {
+        index += prefix[0].length;
+        continue;
+      }
+    }
+    const char = source[index] || "";
+    if (isMarkdownMarkerAt(source, index)) {
+      index += markerLengthAt(source, index);
+      continue;
+    }
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    rendered += char;
+    offsets.push(index);
+    index += 1;
+  }
+  return { text: rendered, offsets };
+}
+function normalizeReadingSelection(text) {
+  return text.replace(/\s+/g, "");
+}
+function isMarkdownMarkerAt(source, index) {
+  return markerLengthAt(source, index) > 0;
+}
+function markerLengthAt(source, index) {
+  const marker = source.slice(index, index + 2);
+  if (marker === "**" || marker === "__" || marker === "~~") {
+    return 2;
+  }
+  const char = source[index];
+  if (char === "*" || char === "_" || char === "`") {
+    return 1;
+  }
+  return 0;
+}
+function detectLarkCliPath() {
+  const candidates = [
+    "/Users/wanghuan/.npm-global/bin/lark-cli",
+    "/opt/homebrew/bin/lark-cli",
+    "/usr/local/bin/lark-cli"
+  ];
+  return candidates.find((candidate) => (0, import_fs2.existsSync)(candidate)) || "lark-cli";
+}
+var SideMarkSettingTab = class extends import_obsidian9.PluginSettingTab {
+  constructor(plugin) {
+    super(plugin.app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "FloatMark" });
+    new import_obsidian9.Setting(containerEl).setName("lark-cli \u8DEF\u5F84").setDesc("\u7528\u4E8E\u540C\u6B65\u8BC4\u8BBA\u5230\u98DE\u4E66\u3002\u9ED8\u8BA4\u4F7F\u7528 PATH \u4E2D\u7684 lark-cli\u3002").addText((text) => {
+      text.setValue(this.plugin.settings.larkCliPath).onChange(async (value) => {
+        this.plugin.settings.larkCliPath = value.trim() || "lark-cli";
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian9.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
+      toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
+        this.plugin.settings.autoOpenSidebar = value;
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian9.Setting(containerEl).setName("\u8BC4\u8BBA\u540E\u81EA\u52A8\u540C\u6B65\u5230\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u540E\u4F1A\u5728\u540E\u53F0\u540C\u6B65\u5230\u98DE\u4E66\u3002").addToggle((toggle) => {
+      toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+        this.plugin.settings.autoSyncToLark = value;
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian9.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
+      text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
+        this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
+        await this.plugin.saveSettings();
+      });
+    });
+  }
+};

@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-float-mark",
+	"name": "FloatMark",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Feishu-like floating selection actions, side comments, and optional Lark sync for Obsidian.",
+	"author": "wanghuan",
+	"isDesktopOnly": true
+}
