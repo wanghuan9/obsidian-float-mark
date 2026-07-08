@@ -685,6 +685,10 @@
 	border-radius: 2px;
 }
 
+::highlight(side-mark-reading-selection) {
+	background: rgba(47, 109, 246, 0.24);
+}
+
 .side-mark-reading {
 	border-radius: 2px;
 	transition: box-shadow 160ms ease, background-color 160ms ease;
@@ -692,6 +696,10 @@
 
 .side-mark-reading:hover {
 	box-shadow: 0 0 0 2px rgba(47, 109, 246, 0.2);
+}
+
+.side-mark-reading.side-mark--highlight * {
+	color: inherit;
 }
 
 .side-mark-reading-flash {

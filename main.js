@@ -280,6 +280,7 @@ var CommentPopover = class {
     this.onSave = null;
     this.onHide = null;
     this.hideTimer = null;
+    this.outsideMouseDownHandler = (event) => this.handleOutsideMouseDown(event);
     this.el = document.body.createDiv({ cls: "side-mark-comment-popover" });
     this.el.hide();
     this.el.addEventListener("mouseenter", () => this.cancelHide());
@@ -323,24 +324,29 @@ var CommentPopover = class {
       this.hide();
     });
   }
-  show(rect, onSave, onHide) {
+  show(rect, onSave, onHide, options) {
     this.cancelHide();
     this.onSave = onSave;
     this.onHide = onHide || null;
     this.textarea.value = "";
     this.el.show();
     this.el.removeClass("is-visible");
+    document.addEventListener("mousedown", this.outsideMouseDownHandler);
     const width = this.el.offsetWidth;
-    const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
-    const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+    const height = this.el.offsetHeight;
+    const left = getPopoverAxisPosition(rect.right + 12, width, rect.left - width - 12, window.innerWidth);
+    const top = getPopoverAxisPosition(rect.bottom + 12, height, rect.top - height - 12, window.innerHeight);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
-    this.textarea.focus();
+    if ((options == null ? void 0 : options.focus) !== false) {
+      this.textarea.focus();
+    }
   }
   hide() {
     var _a;
     this.cancelHide();
+    document.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.removeClass("is-visible");
     this.onSave = null;
     (_a = this.onHide) == null ? void 0 : _a.call(this);
@@ -353,6 +359,7 @@ var CommentPopover = class {
   }
   destroy() {
     this.cancelHide();
+    document.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.remove();
   }
   scheduleHide() {
@@ -368,9 +375,26 @@ var CommentPopover = class {
       this.hideTimer = null;
     }
   }
+  handleOutsideMouseDown(event) {
+    if (this.el.contains(event.target)) {
+      return;
+    }
+    this.hide();
+  }
 };
 function clamp(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+function getPopoverAxisPosition(preferred, size, fallback, viewportSize) {
+  const padding = 8;
+  const max = viewportSize - size - padding;
+  if (preferred <= max) {
+    return clamp(preferred, padding, max);
+  }
+  if (fallback >= padding) {
+    return fallback;
+  }
+  return clamp(preferred, padding, max);
 }
 
 // src/hover-block-toolbar.ts
@@ -676,6 +700,7 @@ var MarkStylePopover = class {
     this.onChange = null;
     this.onReset = null;
     this.hideTimer = null;
+    this.outsideMouseDownHandler = (event) => this.handleOutsideMouseDown(event);
     this.el = document.body.createDiv({ cls: "side-mark-style-popover" });
     this.el.hide();
     this.el.addEventListener("mouseenter", () => this.cancelHide());
@@ -701,6 +726,7 @@ var MarkStylePopover = class {
     this.renderActiveState();
     this.el.show();
     this.el.removeClass("is-visible");
+    document.addEventListener("mousedown", this.outsideMouseDownHandler);
     const width = this.el.offsetWidth;
     const left = clamp3(rect.right + 12, 8, window.innerWidth - width - 8);
     const top = clamp3(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
@@ -710,6 +736,7 @@ var MarkStylePopover = class {
   }
   hide() {
     this.cancelHide();
+    document.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.removeClass("is-visible");
     this.onChange = null;
     this.onReset = null;
@@ -721,6 +748,7 @@ var MarkStylePopover = class {
   }
   destroy() {
     this.cancelHide();
+    document.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.remove();
   }
   renderTextColors() {
@@ -798,6 +826,12 @@ var MarkStylePopover = class {
       window.clearTimeout(this.hideTimer);
       this.hideTimer = null;
     }
+  }
+  handleOutsideMouseDown(event) {
+    if (this.el.contains(event.target)) {
+      return;
+    }
+    this.hide();
   }
 };
 function clamp3(value, min, max) {
@@ -3012,8 +3046,14 @@ function normalizeLarkCommentResult(result) {
 function renderReadingMarks(container, source, marks, onClick) {
   clearReadingMarks(container);
   const activeMarks = marks.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText).map((mark) => ({ mark }));
-  for (const item of activeMarks) {
-    wrapReadingMark(container, item.mark, onClick);
+  const ranges = collectTextNodes(container);
+  const fullText = ranges.map((range) => range.node.data).join("");
+  const plannedMarks = activeMarks.map(({ mark }) => {
+    const match = findBestRenderedMatch(fullText, mark);
+    return match ? { mark, match } : null;
+  }).filter((item) => item !== null).sort((left, right) => right.match.start - left.match.start || right.match.end - left.match.end);
+  for (const item of plannedMarks) {
+    wrapReadingMark(ranges, item.mark, item.match, onClick);
   }
 }
 function clearReadingMarks(container) {
@@ -3023,13 +3063,7 @@ function clearReadingMarks(container) {
   }
   container.normalize();
 }
-function wrapReadingMark(container, mark, onClick) {
-  const ranges = collectTextNodes(container);
-  const fullText = ranges.map((range) => range.node.data).join("");
-  const match = findBestRenderedMatch(fullText, mark);
-  if (!match) {
-    return;
-  }
+function wrapReadingMark(ranges, mark, match, onClick) {
   const start = match.start;
   const end = match.end;
   const startRange = ranges.find((range) => range.start <= start && range.end >= start);
@@ -3225,11 +3259,18 @@ function getReadingSelectionRect(range) {
     const rect = range.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 ? rect : null;
   }
+  return getBoundingRect(rects);
+}
+function getBoundingRect(rects) {
   const first = rects[0];
   if (!first) {
     return null;
   }
-  return new DOMRect(first.left, first.top, first.width, first.height);
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
 }
 function buildRenderedSourceIndex(source) {
   let rendered = "";
@@ -3352,6 +3393,7 @@ function isIgnoredSpacing(char) {
 
 // src/main.ts
 var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
+var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
@@ -3374,7 +3416,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.markStylePopover = new MarkStylePopover();
     this.registerEditorExtension(createSideMarkEditorExtension(this));
     this.registerMarkdownPostProcessor((element, context) => {
-      void this.renderReadingModeMarks(element, context.sourcePath);
+      void this.renderReadingModeMarks(element, context.sourcePath, context);
     });
     this.registerView(SIDE_MARK_VIEW_TYPE, (leaf) => new SideMarkSidebarView(leaf, this));
     this.addRibbonIcon(FLOAT_MARK_ICON_ID, "\u6253\u5F00\u6B63\u6587\u6807\u6CE8", () => void this.openSidebar());
@@ -3402,6 +3444,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   onunload() {
     var _a, _b, _c, _d, _e;
     this.clearReadingSelectionTimer();
+    this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
     (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
     (_c = this.blockToolbar) == null ? void 0 : _c.destroy();
@@ -3537,6 +3580,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const file = this.getActiveMarkdownFile();
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!file || !mark) return;
+    if (isDefaultHighlightAppearance(choice)) {
+      this.currentDocument = await this.store.deleteMark(file.path, markId);
+      this.markStylePopover.hide();
+      await this.refreshMarkViews(file.path);
+      return;
+    }
     this.currentDocument = await this.store.updateMark(file.path, markId, {
       mark: {
         ...mark.mark,
@@ -3691,7 +3740,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       source,
       from: sourceRange.from,
       to: sourceRange.to,
-      rect
+      rect,
+      range: range.cloneRange()
     };
     this.readingToolbar.show(rect, view.contentEl.getBoundingClientRect());
   }
@@ -3739,19 +3789,17 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       this.showMarkStylePopoverForReadingSelection(selection);
       return;
     }
-    const createdMark = await this.createReadingMark(selection, "comment", "", defaultHighlightAppearance(), false);
-    if (!createdMark) {
-      return;
-    }
-    let submitted = false;
+    const hasPersistentHighlight = this.showReadingSelectionHighlight(selection);
     this.commentPopover.show(selection.rect, (content) => {
-      submitted = true;
-      void this.saveReadingComment(selection.file.path, createdMark.id, content);
-    }, () => {
-      if (!submitted) {
-        void this.deleteReadingTemporaryComment(selection.file.path, createdMark.id);
+      if (!content.trim()) {
+        return;
       }
-    });
+      this.clearReadingSelectionHighlight();
+      void this.createReadingMark(selection, "comment", content);
+    }, () => {
+      this.clearReadingSelectionHighlight();
+      this.clearReadingSelection();
+    }, { focus: hasPersistentHighlight });
   }
   async handleBlockAction(action, target) {
     const view = this.activeEditorView;
@@ -4014,22 +4062,6 @@ ${stripped}
     }
     return createdMark || null;
   }
-  async saveReadingComment(filePath, markId, content) {
-    if (!content.trim()) {
-      await this.deleteReadingTemporaryComment(filePath, markId);
-      return;
-    }
-    this.currentDocument = await this.store.addReply(filePath, markId, content);
-    await this.refreshMarkViews(filePath);
-    this.syncMarkToLarkInBackground(markId);
-    if (this.settings.autoOpenSidebar) {
-      await this.openSidebar();
-    }
-  }
-  async deleteReadingTemporaryComment(filePath, markId) {
-    this.currentDocument = await this.store.deleteMark(filePath, markId);
-    await this.refreshMarkViews(filePath);
-  }
   async createMarkFromOffsets(view, from, to, kind, noteContent, appearance = defaultHighlightAppearance(), autoOpenSidebar = true) {
     var _a;
     const file = this.getActiveMarkdownFile();
@@ -4070,6 +4102,25 @@ ${stripped}
     this.pendingCommentSelection = null;
     this.refreshEditorDecorations();
   }
+  clearReadingSelection() {
+    var _a;
+    this.readingSelection = null;
+    (_a = window.getSelection()) == null ? void 0 : _a.removeAllRanges();
+  }
+  showReadingSelectionHighlight(selection) {
+    const highlights = getCssHighlights();
+    const Highlight = getHighlightConstructor();
+    if (!highlights || !Highlight) {
+      return false;
+    }
+    this.clearReadingSelectionHighlight();
+    highlights.set(READING_SELECTION_HIGHLIGHT_NAME, new Highlight(selection.range.cloneRange()));
+    return true;
+  }
+  clearReadingSelectionHighlight() {
+    var _a;
+    (_a = getCssHighlights()) == null ? void 0 : _a.delete(READING_SELECTION_HIGHLIGHT_NAME);
+  }
   async refreshMarkViews(filePath) {
     this.refreshEditorDecorations();
     await this.refreshSidebar();
@@ -4099,16 +4150,16 @@ ${stripped}
     var _a;
     return ((_a = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView)) == null ? void 0 : _a.editor) || null;
   }
-  async renderReadingModeMarks(container, sourcePath) {
+  async renderReadingModeMarks(container, sourcePath, context) {
     const file = this.app.vault.getFileByPath(sourcePath);
     if (!file || file.extension !== "md") {
       return;
     }
-    const [source, document2] = await Promise.all([
-      this.app.vault.read(file),
-      this.store.loadDocument(file.path)
-    ]);
-    renderReadingMarks(container, source, document2.marks, (markId, rect) => void this.openMark(markId, rect));
+    const source = await this.app.vault.read(file);
+    const document2 = await this.store.relocateDocument(file.path, source);
+    const section = context == null ? void 0 : context.getSectionInfo(container);
+    const marks = section ? getMarksInRenderedSection(document2.marks, section.lineStart, section.lineEnd) : document2.marks;
+    renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
   }
   async renderPreviewMarksForFile(filePath) {
     var _a;
@@ -4258,14 +4309,45 @@ function getEditorSelectionRect(view) {
     const rect = range.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 ? rect : null;
   }
+  return getBoundingRect2(rects);
+}
+function getBoundingRect2(rects) {
   const first = rects[0];
-  return first ? new DOMRect(first.left, first.top, first.width, first.height) : null;
+  if (!first) {
+    return null;
+  }
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
 }
 function defaultHighlightAppearance() {
   return {
     textColor: "default",
     backgroundColor: "none"
   };
+}
+function isDefaultHighlightAppearance(choice) {
+  return choice.textColor === "default" && choice.backgroundColor === "none";
+}
+function getMarksInRenderedSection(marks, sectionLineStart, sectionLineEnd) {
+  return marks.filter((mark) => {
+    const markLineStart = mark.anchor.position.lineStart - 1;
+    const markLineEnd = mark.anchor.position.lineEnd - 1;
+    return markLineEnd >= sectionLineStart && markLineStart <= sectionLineEnd;
+  });
+}
+function getCssHighlights() {
+  if (typeof CSS === "undefined") {
+    return null;
+  }
+  const css = CSS;
+  return css.highlights || null;
+}
+function getHighlightConstructor() {
+  const globalWindow = window;
+  return typeof globalWindow.Highlight === "function" ? globalWindow.Highlight : null;
 }
 var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   constructor(plugin) {

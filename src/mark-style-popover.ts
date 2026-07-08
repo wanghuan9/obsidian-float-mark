@@ -54,6 +54,7 @@ export class MarkStylePopover {
 	private onChange: ((choice: MarkStyleChoice) => void) | null = null;
 	private onReset: (() => void) | null = null;
 	private hideTimer: number | null = null;
+	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
 	constructor() {
 		this.el = document.body.createDiv({ cls: "side-mark-style-popover" });
@@ -88,6 +89,7 @@ export class MarkStylePopover {
 		this.renderActiveState();
 		this.el.show();
 		this.el.removeClass("is-visible");
+		document.addEventListener("mousedown", this.outsideMouseDownHandler);
 		const width = this.el.offsetWidth;
 		const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
 		const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
@@ -98,6 +100,7 @@ export class MarkStylePopover {
 
 	hide(): void {
 		this.cancelHide();
+		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.removeClass("is-visible");
 		this.onChange = null;
 		this.onReset = null;
@@ -110,6 +113,7 @@ export class MarkStylePopover {
 
 	destroy(): void {
 		this.cancelHide();
+		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.remove();
 	}
 
@@ -192,6 +196,13 @@ export class MarkStylePopover {
 			window.clearTimeout(this.hideTimer);
 			this.hideTimer = null;
 		}
+	}
+
+	private handleOutsideMouseDown(event: MouseEvent): void {
+		if (this.el.contains(event.target as Node | null)) {
+			return;
+		}
+		this.hide();
 	}
 }
 

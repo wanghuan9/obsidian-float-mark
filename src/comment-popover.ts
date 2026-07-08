@@ -6,6 +6,7 @@ export class CommentPopover {
 	private onSave: ((content: string) => void) | null = null;
 	private onHide: (() => void) | null = null;
 	private hideTimer: number | null = null;
+	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
 	constructor() {
 		this.el = document.body.createDiv({ cls: "side-mark-comment-popover" });
@@ -51,24 +52,29 @@ export class CommentPopover {
 		});
 	}
 
-	show(rect: DOMRect, onSave: (content: string) => void, onHide?: () => void): void {
+	show(rect: DOMRect, onSave: (content: string) => void, onHide?: () => void, options?: { focus?: boolean }): void {
 		this.cancelHide();
 		this.onSave = onSave;
 		this.onHide = onHide || null;
 		this.textarea.value = "";
 		this.el.show();
 		this.el.removeClass("is-visible");
+		document.addEventListener("mousedown", this.outsideMouseDownHandler);
 		const width = this.el.offsetWidth;
-		const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
-		const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+		const height = this.el.offsetHeight;
+		const left = getPopoverAxisPosition(rect.right + 12, width, rect.left - width - 12, window.innerWidth);
+		const top = getPopoverAxisPosition(rect.bottom + 12, height, rect.top - height - 12, window.innerHeight);
 		this.el.style.left = `${left}px`;
 		this.el.style.top = `${top}px`;
 		window.requestAnimationFrame(() => this.el.addClass("is-visible"));
-		this.textarea.focus();
+		if (options?.focus !== false) {
+			this.textarea.focus();
+		}
 	}
 
 	hide(): void {
 		this.cancelHide();
+		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.removeClass("is-visible");
 		this.onSave = null;
 		this.onHide?.();
@@ -82,6 +88,7 @@ export class CommentPopover {
 
 	destroy(): void {
 		this.cancelHide();
+		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.remove();
 	}
 
@@ -99,8 +106,27 @@ export class CommentPopover {
 			this.hideTimer = null;
 		}
 	}
+
+	private handleOutsideMouseDown(event: MouseEvent): void {
+		if (this.el.contains(event.target as Node | null)) {
+			return;
+		}
+		this.hide();
+	}
 }
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+function getPopoverAxisPosition(preferred: number, size: number, fallback: number, viewportSize: number): number {
+	const padding = 8;
+	const max = viewportSize - size - padding;
+	if (preferred <= max) {
+		return clamp(preferred, padding, max);
+	}
+	if (fallback >= padding) {
+		return fallback;
+	}
+	return clamp(preferred, padding, max);
 }

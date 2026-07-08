@@ -6,6 +6,11 @@ interface TextNodeRange {
 	end: number;
 }
 
+interface PlannedReadingMark {
+	mark: SideMark;
+	match: RenderedMatch;
+}
+
 export function renderReadingMarks(
 	container: HTMLElement,
 	source: string,
@@ -16,9 +21,18 @@ export function renderReadingMarks(
 	const activeMarks = marks
 		.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText)
 		.map((mark) => ({ mark }));
+	const ranges = collectTextNodes(container);
+	const fullText = ranges.map((range) => range.node.data).join("");
+	const plannedMarks = activeMarks
+		.map(({ mark }) => {
+			const match = findBestRenderedMatch(fullText, mark);
+			return match ? { mark, match } : null;
+		})
+		.filter((item): item is PlannedReadingMark => item !== null)
+		.sort((left, right) => right.match.start - left.match.start || right.match.end - left.match.end);
 
-	for (const item of activeMarks) {
-		wrapReadingMark(container, item.mark, onClick);
+	for (const item of plannedMarks) {
+		wrapReadingMark(ranges, item.mark, item.match, onClick);
 	}
 }
 
@@ -31,16 +45,11 @@ function clearReadingMarks(container: HTMLElement): void {
 }
 
 function wrapReadingMark(
-	container: HTMLElement,
+	ranges: TextNodeRange[],
 	mark: SideMark,
+	match: RenderedMatch,
 	onClick: (markId: string, rect: DOMRect) => void
 ): void {
-	const ranges = collectTextNodes(container);
-	const fullText = ranges.map((range) => range.node.data).join("");
-	const match = findBestRenderedMatch(fullText, mark);
-	if (!match) {
-		return;
-	}
 	const start = match.start;
 	const end = match.end;
 	const startRange = ranges.find((range) => range.start <= start && range.end >= start);

@@ -42,11 +42,19 @@ export function getReadingSelectionRect(range: Range): DOMRect | null {
 		const rect = range.getBoundingClientRect();
 		return rect.width > 0 && rect.height > 0 ? rect : null;
 	}
+	return getBoundingRect(rects);
+}
+
+function getBoundingRect(rects: DOMRect[]): DOMRect | null {
 	const first = rects[0];
 	if (!first) {
 		return null;
 	}
-	return new DOMRect(first.left, first.top, first.width, first.height);
+	const left = Math.min(...rects.map((rect) => rect.left));
+	const top = Math.min(...rects.map((rect) => rect.top));
+	const right = Math.max(...rects.map((rect) => rect.right));
+	const bottom = Math.max(...rects.map((rect) => rect.bottom));
+	return new DOMRect(left, top, right - left, bottom - top);
 }
 
 function buildRenderedSourceIndex(source: string): { text: string; offsets: number[] } {
