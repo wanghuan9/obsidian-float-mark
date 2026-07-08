@@ -91,8 +91,8 @@ Click the ribbon highlighter icon or open FloatMark from the command palette. Th
 Local comments can be synced from the sidebar to a published Feishu / Lark document with one click. After syncing, they appear as native Feishu / Lark comment threads for remote collaboration.
 
 <p align="center">
-  <img src="docs/screenshots/local-comments.png" alt="Local comment threads in Obsidian" width="48%">
-  <img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="48%">
+  <img src="docs/screenshots/local-comment-sidebar.png" alt="Local comment sidebar in Obsidian" height="320">
+  <img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" height="320">
 </p>
 
 The left image shows local comment threads in Obsidian; the right image shows the native Feishu / Lark comments after one-click sync.
