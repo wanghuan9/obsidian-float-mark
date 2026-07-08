@@ -42,27 +42,38 @@ Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
 
 ### Floating Quick-Action Toolbars
 
-Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments.
+Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments. Move the mouse to the left side of a content block to open block-level quick actions.
 
-<img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="760">
+<p align="center">
+  <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" height="260">
+  <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" height="260">
+</p>
 
-Move the mouse to the left side of a paragraph, heading, list, quote, or code block to open the block-level quick-action menu. You can convert the current block to body text, headings, lists, tasks, quotes, or code blocks, or comment, copy, and delete it.
+After selecting text, the quick-action toolbar appears first. Open the format menu to switch body text, headings, lists, quotes, and more.
 
-<img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="520">
+<p align="center">
+  <img src="docs/screenshots/block-hover-entry.png" alt="Block hover entry on the left side of a content block" width="38%">
+  <img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="34%">
+</p>
 
-When creating highlight marks, the style popover lets you choose text and background colors so different types of information are easier to distinguish.
+The block entry stays compact until expanded, then exposes block format changes, comments, copy, and delete actions.
 
-<img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="760">
+<p align="center">
+  <img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="58%">
+</p>
+
+When creating highlight marks, choose text and background colors to distinguish different types of information.
 
 ### Inline Highlight Marks
 
 Inline highlight marks are rendered directly on the source text, making it easy to separate highlights, risks, open questions, and passages worth revisiting. Marks stay anchored to the source text in both editing mode and reading mode.
 
-<img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="920">
+<p align="center">
+  <img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="64%">
+  <img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="28%">
+</p>
 
-The sidebar can switch to a highlight-mark list, so you can review all highlights in the current document, adjust colors or notes, and jump back to the original text.
-
-<img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="520">
+Multi-color highlights render directly in the document body. The sidebar collects highlight marks for review, color or note edits, and jump-back navigation.
 
 Markdown formatting actions update the note body. Comments and visual marks are stored in sidecar JSON by default, so they do not pollute the Markdown content.
 
@@ -74,9 +85,12 @@ Click the ribbon highlighter icon or open FloatMark from the command palette. Th
 
 Local comments can be synced from the sidebar to a published Feishu / Lark document with one click. After syncing, they appear as native Feishu / Lark comment threads for remote collaboration.
 
-<img src="docs/screenshots/local-comments.png" alt="Local comment threads in Obsidian" width="920">
+<p align="center">
+  <img src="docs/screenshots/local-comments.png" alt="Local comment threads in Obsidian" width="48%">
+  <img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="48%">
+</p>
 
-<img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="920">
+The left image shows local comment threads in Obsidian; the right image shows the native Feishu / Lark comments after one-click sync.
 
 ## Relationship With Feishu Lark CLI Sync
 

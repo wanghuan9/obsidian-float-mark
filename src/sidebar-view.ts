@@ -561,9 +561,9 @@ export class SideMarkSidebarView extends ItemView {
 			attr: { type: "button", title: "更多", "aria-label": "更多" }
 		});
 		setIcon(more, "more-horizontal");
-		const menu = card.createDiv({ cls: "side-mark-card-menu" });
+		const menu = card.createDiv({ cls: "side-mark-card-menu is-compact" });
 		menu.hide();
-		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id), true);
+		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id));
 		more.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -856,17 +856,14 @@ export class SideMarkSidebarView extends ItemView {
 		button.addEventListener("click", () => void this.syncMark(mark.id));
 	}
 
-	private addMenuAction(container: HTMLElement, icon: string, label: string, onClick: () => void, iconOnly = false): void {
-		if (iconOnly) {
-			container.addClass("has-icon-only-action");
-		}
+	private addMenuAction(container: HTMLElement, icon: string, label: string, onClick: () => void): void {
 		const button = container.createEl("button", {
-			cls: `side-mark-card-menu-item is-danger${iconOnly ? " is-icon-only" : ""}`,
+			cls: "side-mark-card-menu-item is-danger",
 			attr: { type: "button", title: label, "aria-label": label }
 		});
 		const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
 		setIcon(iconEl, icon);
-		const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: iconOnly ? "" : label });
+		const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
 		let isConfirming = false;
 		let resetTimer = 0;
 		const clearResetTimer = () => {
@@ -883,7 +880,7 @@ export class SideMarkSidebarView extends ItemView {
 			button.setAttr("aria-label", label);
 			iconEl.empty();
 			setIcon(iconEl, icon);
-			labelEl.setText(iconOnly ? "" : label);
+			labelEl.setText(label);
 		};
 		const scheduleReset = () => {
 			clearResetTimer();
