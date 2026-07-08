@@ -2,9 +2,9 @@
 
 [简体中文](./README.md) | [English](./README.en.md)
 
-FloatMark brings Feishu-like floating selection actions, block-level hover actions, inline marks, side comments, and optional Lark sync to Obsidian.
+FloatMark is an Obsidian plugin for inline marks, comments, and floating quick-action toolbars, bringing a Feishu / Lark Docs-like experience to local notes.
 
-It is designed for users who want the document interaction style of Feishu / Lark Docs inside a local Obsidian vault: select text, act immediately from a floating toolbar, use a left-side hover menu for block actions, keep comments in a side panel, and optionally sync those comments back to a published Lark document.
+It focuses on three core workflows: highlight or annotate text, manage comment discussions in a sidebar, and use selection or block-level floating toolbars for fast text and block actions. Comments can also be synced to Feishu / Lark when needed.
 
 ## Features
 
