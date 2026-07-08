@@ -45,28 +45,27 @@ styles.css
 在编辑模式或阅读模式中选中文本后，FloatMark 会在选区附近显示浮动工具栏，可直接执行加粗、斜体、删除线、行内代码、高亮标注和评论操作。鼠标移动到内容块左侧时，也可以通过块级浮动菜单快速调整块格式。
 
 <p align="center">
-  <img src="docs/screenshots/selection-toolbar.png" alt="选中文本后的浮动快速操作工具栏" height="260">
-  <img src="docs/screenshots/selection-format-menu.png" alt="选区工具栏中的格式菜单" height="260">
+  <img src="docs/screenshots/selection-toolbar.png" alt="选中文本后的浮动快速操作工具栏" width="58%">
+  <img src="docs/screenshots/selection-format-menu.png" alt="选区工具栏中的格式菜单" width="32%">
 </p>
 
 选中文本后先显示快速操作工具栏；展开格式菜单后，可以继续切换正文、标题、列表、引用等格式。
 
 <p align="center">
-  <img src="docs/screenshots/block-hover-entry.png" alt="内容块左侧的浮动入口" width="38%">
-  <img src="docs/screenshots/block-menu.png" alt="内容块左侧的快捷操作菜单" width="34%">
+  <img src="docs/screenshots/selection-flow-entry.png" alt="块左侧浮动入口" height="260">
+  <img src="docs/screenshots/selection-flow-format-menu.png" alt="展开后的格式菜单" height="260">
 </p>
 
 块级入口保持轻量，展开后才显示完整操作：切换块格式、评论、复制或删除当前块。
 
+### 正文高亮标注
+
+正文高亮标注会直接显示在原文中，适合区分重点、风险、待确认内容和后续需要回看的片段。标注在编辑模式和阅读模式中都会定位到原文。
 <p align="center">
   <img src="docs/screenshots/highlight-style-popover.png" alt="高亮标注的文字色与背景色选择" width="58%">
 </p>
 
 创建高亮标注时，可以选择文字色和背景色，让不同类型的信息更容易区分。
-
-### 正文高亮标注
-
-正文高亮标注会直接显示在原文中，适合区分重点、风险、待确认内容和后续需要回看的片段。标注在编辑模式和阅读模式中都会定位到原文。
 
 <p align="center">
   <img src="docs/screenshots/inline-marks.png" alt="正文中的多颜色高亮标注效果" width="64%">

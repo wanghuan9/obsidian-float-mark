@@ -45,18 +45,23 @@ Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
 Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments. Move the mouse to the left side of a content block to open block-level quick actions.
 
 <p align="center">
-  <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" height="260">
-  <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" height="260">
+  <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="58%">
+  <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" width="32%">
 </p>
 
 After selecting text, the quick-action toolbar appears first. Open the format menu to switch body text, headings, lists, quotes, and more.
 
 <p align="center">
-  <img src="docs/screenshots/block-hover-entry.png" alt="Block hover entry on the left side of a content block" width="38%">
-  <img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="34%">
+  <img src="docs/screenshots/selection-flow-entry.png" alt="Block hover entry beside the document heading" height="260">
+  <img src="docs/screenshots/selection-flow-format-menu.png" alt="Expanded format menu" height="260">
 </p>
 
 The block entry stays compact until expanded, then exposes block format changes, comments, copy, and delete actions.
+
+<p align="center">
+  <img src="docs/screenshots/block-hover-entry.png" alt="Block hover entry on the left side of a content block" width="38%">
+  <img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="34%">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="58%">

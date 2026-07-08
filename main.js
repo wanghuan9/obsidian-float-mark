@@ -2115,9 +2115,9 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
     });
     (0, import_obsidian8.setIcon)(more, "more-horizontal");
-    const menu = card.createDiv({ cls: "side-mark-card-menu" });
+    const menu = card.createDiv({ cls: "side-mark-card-menu is-compact" });
     menu.hide();
-    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id), true);
+    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
     more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2394,17 +2394,14 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     }
     button.addEventListener("click", () => void this.syncMark(mark.id));
   }
-  addMenuAction(container, icon, label, onClick, iconOnly = false) {
-    if (iconOnly) {
-      container.addClass("has-icon-only-action");
-    }
+  addMenuAction(container, icon, label, onClick) {
     const button = container.createEl("button", {
-      cls: `side-mark-card-menu-item is-danger${iconOnly ? " is-icon-only" : ""}`,
+      cls: "side-mark-card-menu-item is-danger",
       attr: { type: "button", title: label, "aria-label": label }
     });
     const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
     (0, import_obsidian8.setIcon)(iconEl, icon);
-    const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: iconOnly ? "" : label });
+    const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
     let isConfirming = false;
     let resetTimer = 0;
     const clearResetTimer = () => {
@@ -2421,7 +2418,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       button.setAttr("aria-label", label);
       iconEl.empty();
       (0, import_obsidian8.setIcon)(iconEl, icon);
-      labelEl.setText(iconOnly ? "" : label);
+      labelEl.setText(label);
     };
     const scheduleReset = () => {
       clearResetTimer();
