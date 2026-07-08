@@ -144,8 +144,8 @@ export class SideMarkSidebarView extends ItemView {
 		filteredMarks: SideMark[]
 	): void {
 		this.renderSelect(controls, "状态", this.filter, [
-			{ value: "all", label: "全部" },
 			{ value: "active", label: "活动" },
+			{ value: "all", label: "全部" },
 			{ value: "resolved", label: "已解决" },
 			{ value: "orphaned", label: "失联" }
 		], (value) => {
@@ -563,7 +563,7 @@ export class SideMarkSidebarView extends ItemView {
 		setIcon(more, "more-horizontal");
 		const menu = card.createDiv({ cls: "side-mark-card-menu" });
 		menu.hide();
-		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id));
+		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id), true);
 		more.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -856,14 +856,17 @@ export class SideMarkSidebarView extends ItemView {
 		button.addEventListener("click", () => void this.syncMark(mark.id));
 	}
 
-	private addMenuAction(container: HTMLElement, icon: string, label: string, onClick: () => void): void {
+	private addMenuAction(container: HTMLElement, icon: string, label: string, onClick: () => void, iconOnly = false): void {
+		if (iconOnly) {
+			container.addClass("has-icon-only-action");
+		}
 		const button = container.createEl("button", {
-			cls: "side-mark-card-menu-item is-danger",
+			cls: `side-mark-card-menu-item is-danger${iconOnly ? " is-icon-only" : ""}`,
 			attr: { type: "button", title: label, "aria-label": label }
 		});
 		const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
 		setIcon(iconEl, icon);
-		const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
+		const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: iconOnly ? "" : label });
 		let isConfirming = false;
 		let resetTimer = 0;
 		const clearResetTimer = () => {
@@ -880,7 +883,7 @@ export class SideMarkSidebarView extends ItemView {
 			button.setAttr("aria-label", label);
 			iconEl.empty();
 			setIcon(iconEl, icon);
-			labelEl.setText(label);
+			labelEl.setText(iconOnly ? "" : label);
 		};
 		const scheduleReset = () => {
 			clearResetTimer();

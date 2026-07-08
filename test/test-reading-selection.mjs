@@ -41,4 +41,9 @@ assert.ok(numberedRange);
 assert.equal(numberedRange.from, range.from);
 assert.equal(numberedRange.to, range.to);
 
+const repeatedSource = "重复内容\n\n重复内容";
+const repeatedRange = findSourceRangeForReadingSelection(repeatedSource, "重复内容", 4);
+assert.ok(repeatedRange);
+assert.equal(repeatedRange.from, repeatedSource.lastIndexOf("重复内容"));
+
 console.log("reading selection tests passed");

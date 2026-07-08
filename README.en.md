@@ -10,7 +10,7 @@ It focuses on three core workflows: highlight or annotate text, manage comment d
 
 - **Feishu-like selection toolbar**: select text and run bold, italic, strikethrough, inline code, highlight, and comment actions near the selection.
 - **Left-side block hover menu**: move the mouse to the left side of a paragraph, heading, list, quote, or code block to format the current block as body text, a heading, a list, a task, a quote, or a code block, or to comment, copy, or delete it.
-- **Inline marks**: highlights and comment marks stay anchored to the original text in both editing mode and reading mode, with configurable text and background colors.
+- **Inline highlight marks**: highlights stay anchored to the original text in both editing mode and reading mode, with configurable text and background colors.
 - **Comments and Lark sync**: manage document-level comment threads in the sidebar, including edit, reply, resolve, delete, jump back to source, and optional Feishu / Lark comment sync.
 - **Local sidecar storage**: comments and visual marks are stored under `.obsidian-float-marks/` instead of being written into the Markdown body.
 - **Anchor relocation**: after small text edits, FloatMark tries to relocate marks by offset, context, and selected text.
@@ -40,34 +40,43 @@ Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
 
 ## Usage
 
-### Floating Selection Actions
+### Floating Quick-Action Toolbars
 
-Select text in editing mode or reading mode. FloatMark will show a floating toolbar where you can:
+Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments.
 
-- Apply bold, italic, strikethrough, or inline code.
-- Create a highlight or comment mark.
-- Write the first comment from a compact popover.
+<img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="760">
+
+Move the mouse to the left side of a paragraph, heading, list, quote, or code block to open the block-level quick-action menu. You can convert the current block to body text, headings, lists, tasks, quotes, or code blocks, or comment, copy, and delete it.
+
+<img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="520">
+
+When creating highlight marks, the style popover lets you choose text and background colors so different types of information are easier to distinguish.
+
+<img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="760">
+
+### Inline Highlight Marks
+
+Inline highlight marks are rendered directly on the source text, making it easy to separate highlights, risks, open questions, and passages worth revisiting. Marks stay anchored to the source text in both editing mode and reading mode.
+
+<img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="920">
+
+The sidebar can switch to a highlight-mark list, so you can review all highlights in the current document, adjust colors or notes, and jump back to the original text.
+
+<img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="520">
 
 Markdown formatting actions update the note body. Comments and visual marks are stored in sidecar JSON by default, so they do not pollute the Markdown content.
 
-### Left-Side Block Actions
+### Comments and Feishu / Lark Sync
 
-In editing mode, move the mouse to the left side of a paragraph, heading, list, quote, or code block. FloatMark will show a compact block hover menu where you can:
+Click the ribbon highlighter icon or open FloatMark from the command palette. The sidebar lists comment threads for the current document and supports editing, replying, resolving, deleting, and jumping back to the source text.
 
-- Convert the current block to body text, heading levels 1-5, ordered list, unordered list, task list, quote, or code block.
-- Create a comment mark for the current block.
-- Copy or delete the current block.
+<img src="docs/screenshots/comment-sidebar.png" alt="Comment threads and actions in the FloatMark sidebar" width="520">
 
-### Side Comment Management
+Local comments can be synced from the sidebar to a published Feishu / Lark document with one click. After syncing, they appear as native Feishu / Lark comment threads for remote collaboration.
 
-Click the ribbon highlighter icon or open FloatMark from the command palette. The sidebar lists marks and comment threads for the current document. It supports:
+<img src="docs/screenshots/local-comments.png" alt="Local comment threads in Obsidian" width="920">
 
-- Editing comment content.
-- Adding replies.
-- Resolving or reopening comment threads.
-- Deleting local marks.
-- Jumping back to the selected text.
-- Manually syncing a comment to Feishu / Lark.
+<img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="920">
 
 ## Relationship With Feishu Lark CLI Sync
 

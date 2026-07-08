@@ -1,14 +1,18 @@
-export function findSourceRangeForReadingSelection(source: string, selectedText: string): { from: number; to: number } | null {
-	const directIndex = source.indexOf(selectedText);
+export function findSourceRangeForReadingSelection(
+	source: string,
+	selectedText: string,
+	preferredRenderedOffset = 0
+): { from: number; to: number } | null {
+	const sourceIndex = buildRenderedSourceIndex(source);
+	const directIndex = findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset);
 	if (directIndex >= 0) {
 		return {
 			from: directIndex,
 			to: directIndex + selectedText.length
 		};
 	}
-	const sourceIndex = buildRenderedSourceIndex(source);
 	const renderedSelection = normalizeReadingSelection(selectedText);
-	const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
+	const renderedIndex = findBestRenderedTextStart(sourceIndex.text, renderedSelection, preferredRenderedOffset);
 	if (renderedIndex < 0) {
 		return null;
 	}
@@ -23,17 +27,26 @@ export function findSourceRangeForReadingSelection(source: string, selectedText:
 	};
 }
 
+export function getReadingSelectionRenderedOffset(container: HTMLElement, range: Range): number {
+	const prefixRange = document.createRange();
+	prefixRange.selectNodeContents(container);
+	prefixRange.setEnd(range.startContainer, range.startOffset);
+	const offset = normalizeReadingSelection(prefixRange.toString()).length;
+	prefixRange.detach();
+	return offset;
+}
+
 export function getReadingSelectionRect(range: Range): DOMRect | null {
-	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
 	if (rects.length === 0) {
 		const rect = range.getBoundingClientRect();
-		return rect.width === 0 && rect.height === 0 ? null : rect;
+		return rect.width > 0 && rect.height > 0 ? rect : null;
 	}
-	const left = Math.min(...rects.map((rect) => rect.left));
-	const top = Math.min(...rects.map((rect) => rect.top));
-	const right = Math.max(...rects.map((rect) => rect.right));
-	const bottom = Math.max(...rects.map((rect) => rect.bottom));
-	return new DOMRect(left, top, right - left, bottom - top);
+	const first = rects[0];
+	if (!first) {
+		return null;
+	}
+	return new DOMRect(first.left, first.top, first.width, first.height);
 }
 
 function buildRenderedSourceIndex(source: string): { text: string; offsets: number[] } {
@@ -64,6 +77,69 @@ function buildRenderedSourceIndex(source: string): { text: string; offsets: numb
 		index += 1;
 	}
 	return { text: rendered, offsets };
+}
+
+function findBestSourceTextStart(
+	source: string,
+	sourceIndex: { text: string; offsets: number[] },
+	selectedText: string,
+	preferredRenderedOffset: number
+): number {
+	const candidates: number[] = [];
+	let searchFrom = 0;
+	while (searchFrom <= source.length) {
+		const index = source.indexOf(selectedText, searchFrom);
+		if (index < 0) {
+			break;
+		}
+		candidates.push(index);
+		searchFrom = index + Math.max(1, selectedText.length);
+	}
+	return chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset);
+}
+
+function chooseSourceCandidate(
+	candidates: number[],
+	sourceIndex: { offsets: number[] },
+	preferredRenderedOffset: number
+): number {
+	if (candidates.length === 0) {
+		return -1;
+	}
+	if (candidates.length === 1) {
+		return candidates[0] || 0;
+	}
+	return candidates.sort((left, right) =>
+		Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, left) - preferredRenderedOffset)
+			- Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, right) - preferredRenderedOffset)
+	)[0] || candidates[0] || 0;
+}
+
+function renderedOffsetForSourceOffset(offsets: number[], sourceOffset: number): number {
+	const index = offsets.findIndex((offset) => offset >= sourceOffset);
+	return index >= 0 ? index : offsets.length;
+}
+
+function findBestRenderedTextStart(renderedText: string, selectedText: string, preferredOffset: number): number {
+	const candidates: number[] = [];
+	let searchFrom = 0;
+	while (searchFrom <= renderedText.length) {
+		const index = renderedText.indexOf(selectedText, searchFrom);
+		if (index < 0) {
+			break;
+		}
+		candidates.push(index);
+		searchFrom = index + Math.max(1, selectedText.length);
+	}
+	if (candidates.length === 0) {
+		return -1;
+	}
+	if (candidates.length === 1) {
+		return candidates[0] || 0;
+	}
+	return candidates.sort((left, right) =>
+		Math.abs(left - preferredOffset) - Math.abs(right - preferredOffset)
+	)[0] || candidates[0] || 0;
 }
 
 function expandStartToOpeningMarker(source: string, offset: number | undefined): number | undefined {

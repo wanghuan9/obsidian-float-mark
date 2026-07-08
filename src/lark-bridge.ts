@@ -13,6 +13,7 @@ interface LarkSyncStateFile {
 	documents: Record<string, {
 		doc: string;
 		revisionId?: number;
+		titleBlockId?: string;
 		units: RemoteUnit[];
 	}>;
 }
@@ -58,18 +59,28 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		throw new Error("当前笔记没有 lark_doc_url 或 lark_doc_token。请先用 Feishu Lark CLI Sync 同步这篇文档。");
 	}
 
+	const replies = getReplies(mark);
+	if (mark.remote?.larkCommentId) {
+		return await syncRepliesToExistingLarkComment(plugin, binding, mark, replies);
+	}
+
 	const syncState = await readSyncState(plugin);
 	const docState = findDocumentState(syncState, binding.doc);
-	if (!docState || !docState.units.length) {
+	if (!docState || (!docState.titleBlockId && !docState.units.length)) {
 		throw new Error("没有找到飞书 block 映射。请先用 Feishu Lark CLI Sync 同步一次当前文档。");
 	}
 
-	const blockId = findRemoteBlockId(source, docState.units, mark.anchor.startOffset, mark.anchor.endOffset);
+	const blockId = findRemoteBlockId(
+		source,
+		docState.units,
+		mark.anchor.startOffset,
+		mark.anchor.endOffset,
+		docState.titleBlockId
+	);
 	if (!blockId) {
 		throw new Error("没有找到该标注命中的第一个飞书 block。");
 	}
 
-	const replies = getReplies(mark);
 	const [firstReply, ...restReplies] = replies.length
 		? replies
 		: [{ content: "（无评论）" }];
@@ -84,11 +95,14 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 	const commentId = result.data?.comment_id;
 	if (commentId) {
 		for (const reply of restReplies) {
-			await runLarkCreateReply(plugin, {
+			const replyResult = await runLarkCreateReply(plugin, {
 				doc: binding.doc,
 				commentId,
 				content: buildReplyBody(reply.content)
 			});
+			if (!replyResult.ok) {
+				throw new Error(replyResult.error?.message || replyResult.error?.hint || "lark-cli 添加回复失败。");
+			}
 		}
 	}
 
@@ -99,9 +113,20 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		larkCommentId: commentId,
 		larkReplyId: result.data?.reply_id,
 		blockId,
-		syncedHash: `${mark.anchor.selectedText}\n${getThreadContent(replies)}`,
+		syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
 		syncedAt: new Date().toISOString()
 	};
+}
+
+export async function canSyncMarkToLark(plugin: SideMarkPlugin, source: string): Promise<boolean> {
+	const binding = readLarkBinding(source);
+	if (!binding.doc) {
+		return false;
+	}
+
+	const syncState = await readSyncState(plugin);
+	const docState = findDocumentState(syncState, binding.doc);
+	return Boolean(docState?.titleBlockId || docState?.units.length);
 }
 
 export function getLarkSyncPluginStatus(plugin: SideMarkPlugin): LarkSyncPluginStatus {
@@ -210,6 +235,70 @@ function buildReplyBody(text: string): string {
 	});
 }
 
+async function syncRepliesToExistingLarkComment(
+	plugin: SideMarkPlugin,
+	binding: { doc: string; token?: string; url?: string },
+	mark: SideMark,
+	replies: LarkReply[]
+): Promise<RemoteSyncState> {
+	const commentId = mark.remote?.larkCommentId;
+	if (!commentId) {
+		throw new Error("缺少飞书评论 ID，无法追加回复。");
+	}
+
+	const pendingReplies = findPendingReplies(mark, replies);
+	let lastReplyId = mark.remote?.larkReplyId;
+	for (const reply of pendingReplies) {
+		const result = await runLarkCreateReply(plugin, {
+			doc: binding.doc,
+			commentId,
+			content: buildReplyBody(reply.content)
+		});
+		if (!result.ok) {
+			throw new Error(result.error?.message || result.error?.hint || "lark-cli 添加回复失败。");
+		}
+		lastReplyId = result.data?.reply_id || lastReplyId;
+	}
+
+	return {
+		...mark.remote,
+		status: "synced",
+		larkDocToken: binding.token || mark.remote?.larkDocToken,
+		larkDocUrl: binding.url || mark.remote?.larkDocUrl,
+		larkCommentId: commentId,
+		larkReplyId: lastReplyId,
+		syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
+		syncedAt: new Date().toISOString(),
+		error: undefined
+	};
+}
+
+function findPendingReplies(mark: SideMark, replies: LarkReply[]): LarkReply[] {
+	const syncedHash = mark.remote?.syncedHash;
+	if (syncedHash === undefined) {
+		throw new Error("缺少上次同步记录，无法判断哪些回复已同步。请在飞书中确认后重新创建评论。");
+	}
+	const syncedThreadContent = readSyncedThreadContent(syncedHash, mark.anchor.selectedText);
+	if (syncedThreadContent === null) {
+		throw new Error("评论定位文本已变化，无法安全追加飞书回复。请重新创建评论。");
+	}
+
+	for (let index = 0; index <= replies.length; index++) {
+		if (getThreadContent(replies.slice(0, index)) === syncedThreadContent) {
+			return replies.slice(index);
+		}
+	}
+	throw new Error("已同步的旧评论内容发生变化，暂不支持同步编辑或删除后的回复。");
+}
+
+function readSyncedThreadContent(syncedHash: string, selectedText: string): string | null {
+	const prefix = `${selectedText}\n`;
+	if (!syncedHash.startsWith(prefix)) {
+		return null;
+	}
+	return syncedHash.slice(prefix.length);
+}
+
 function getReplies(mark: SideMark): LarkReply[] {
 	return mark.replies?.length
 		? mark.replies
@@ -224,6 +313,10 @@ function getReplies(mark: SideMark): LarkReply[] {
 
 function getThreadContent(replies: LarkReply[]): string {
 	return replies.map((reply) => reply.content).join("\n\n");
+}
+
+function buildSyncedHash(selectedText: string, replies: LarkReply[]): string {
+	return `${selectedText}\n${getThreadContent(replies)}`;
 }
 
 async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string; blockId: string; content: string }): Promise<LarkCliResult> {
@@ -255,9 +348,9 @@ async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string
 	}
 }
 
-async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; content: string }): Promise<void> {
+async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; content: string }): Promise<LarkCliResult> {
 	try {
-		await runLarkCliViaSyncPlugin(plugin, [
+		return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comment.replys",
 			"create",
@@ -272,7 +365,7 @@ async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; 
 			"--data",
 			input.content,
 			"--json"
-		]);
+		]));
 	} catch (error) {
 		const message = getExecErrorMessage(error);
 		if (message) {

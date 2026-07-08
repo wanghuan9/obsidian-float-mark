@@ -194,7 +194,7 @@ function createSideMarkEditorExtension(plugin) {
           plugin.scheduleHideBlockToolbar();
           return;
         }
-        const lineRect = this.getLineRect(event.target);
+        const lineRect = this.getLineRect(event.target, line.text);
         plugin.showBlockToolbar(this.view, {
           from: line.from,
           to: line.to,
@@ -202,7 +202,7 @@ function createSideMarkEditorExtension(plugin) {
           rect: lineRect || new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
         });
       }
-      getLineRect(target) {
+      getLineRect(target, lineText) {
         const lineEl = target.closest(".cm-line");
         if (!lineEl || !this.view.dom.contains(lineEl)) {
           return null;
@@ -211,7 +211,24 @@ function createSideMarkEditorExtension(plugin) {
         if (lineRect.height <= 0) {
           return null;
         }
-        return lineRect;
+        if (/^#{1,6}\s+/.test(lineText)) {
+          const headingRects = Array.from(lineEl.querySelectorAll(".cm-header")).map((element) => element.getBoundingClientRect()).filter((rect) => rect.height > 0);
+          if (headingRects.length === 0) {
+            return lineRect;
+          }
+          const top = Math.min(...headingRects.map((rect) => rect.top));
+          const bottom = Math.max(...headingRects.map((rect) => rect.bottom));
+          return new DOMRect(lineRect.left, top, lineRect.width, bottom - top);
+        }
+        const contentEl = target.closest(".cm-line > span, .cm-header, .cm-strong, .cm-emphasis");
+        if (!contentEl || !lineEl.contains(contentEl)) {
+          return lineRect;
+        }
+        const contentRect = contentEl.getBoundingClientRect();
+        if (contentRect.height <= 0) {
+          return lineRect;
+        }
+        return new DOMRect(lineRect.left, contentRect.top, lineRect.width, contentRect.height);
       }
     },
     {
@@ -358,12 +375,17 @@ function clamp(value, min, max) {
 
 // src/hover-block-toolbar.ts
 var import_obsidian3 = require("obsidian");
+var HEADING_SUBMENU_BUTTONS = [
+  { action: "heading-4", label: "\u56DB\u7EA7\u6807\u9898", shortcut: "H4", compact: true },
+  { action: "heading-5", label: "\u4E94\u7EA7\u6807\u9898", shortcut: "H5", compact: true },
+  { action: "heading-6", label: "\u516D\u7EA7\u6807\u9898", shortcut: "H6", compact: true }
+];
 var FORMAT_BUTTONS = [
   { action: "paragraph", label: "\u6B63\u6587", shortcut: "T", compact: true },
   { action: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1", compact: true },
   { action: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2", compact: true },
   { action: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3", compact: true },
-  { action: "heading-4", label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", compact: true },
+  { label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", compact: true, submenu: HEADING_SUBMENU_BUTTONS },
   { action: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
   { action: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
   { action: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
@@ -375,6 +397,10 @@ var ACTION_BUTTONS = [
   { action: "copy", icon: "copy", label: "\u590D\u5236" },
   { action: "delete", icon: "trash-2", label: "\u5220\u9664", danger: true }
 ];
+var MENU_VIEWPORT_PADDING = 8;
+var MENU_PILL_GAP = 6;
+var MENU_DEFAULT_MAX_HEIGHT = 360;
+var MENU_MIN_HEIGHT = 120;
 var HoverBlockToolbar = class {
   constructor(onAction) {
     this.onAction = onAction;
@@ -401,7 +427,13 @@ var HoverBlockToolbar = class {
     this.menu.addEventListener("mousedown", (event) => event.preventDefault());
     this.menu.addEventListener("mouseenter", () => this.cancelHide());
     this.menu.addEventListener("mouseleave", () => this.scheduleHide());
+    this.submenu = document.body.createDiv({ cls: "side-mark-block-menu side-mark-block-submenu" });
+    this.submenu.hide();
+    this.submenu.addEventListener("mousedown", (event) => event.preventDefault());
+    this.submenu.addEventListener("mouseenter", () => this.cancelHide());
+    this.submenu.addEventListener("mouseleave", () => this.scheduleHide());
     this.renderMenu();
+    this.renderHeadingSubmenu();
   }
   show(target) {
     var _a;
@@ -415,8 +447,7 @@ var HoverBlockToolbar = class {
     (_a = this.pill.querySelector(".side-mark-block-pill-label")) == null ? void 0 : _a.setText(target.label);
     const left = clamp2(target.rect.left - 58, 8, window.innerWidth - 82);
     const pillHeight = this.pill.offsetHeight || 22;
-    const visualOffset = target.label.startsWith("H") ? 2 : 0;
-    const top = clamp2(target.rect.top + target.rect.height / 2 - pillHeight / 2 + visualOffset, 8, window.innerHeight - pillHeight - 8);
+    const top = clamp2(target.rect.top + target.rect.height / 2 - pillHeight / 2, 8, window.innerHeight - pillHeight - 8);
     this.pill.style.left = `${left}px`;
     this.pill.style.top = `${top}px`;
   }
@@ -427,12 +458,16 @@ var HoverBlockToolbar = class {
     this.pill.removeClass("is-visible");
     this.pill.removeClass("is-open");
     this.menu.removeClass("is-open");
+    this.submenu.removeClass("is-open");
     window.setTimeout(() => {
       if (!this.pill.hasClass("is-visible")) {
         this.pill.hide();
       }
       if (!this.menu.hasClass("is-open")) {
         this.menu.hide();
+      }
+      if (!this.submenu.hasClass("is-open")) {
+        this.submenu.hide();
       }
     }, 140);
     this.target = null;
@@ -450,23 +485,21 @@ var HoverBlockToolbar = class {
     document.removeEventListener("mousemove", this.pointerMoveHandler);
     this.pill.remove();
     this.menu.remove();
+    this.submenu.remove();
   }
   renderMenu() {
     const list = this.menu.createDiv({ cls: "side-mark-block-menu-list" });
     for (const item of FORMAT_BUTTONS) {
-      this.renderButton(list, item);
+      this.renderButton(list, item, true);
     }
-    this.menu.createDiv({ cls: "side-mark-block-menu-separator" });
-    this.renderSubmenuRow(list, "align-start-horizontal", "\u7F29\u8FDB\u548C\u5BF9\u9F50");
-    this.renderSubmenuRow(list, "paintbrush", "\u989C\u8272");
     this.menu.createDiv({ cls: "side-mark-block-menu-separator" });
     for (const item of ACTION_BUTTONS) {
-      this.renderButton(list, item);
+      this.renderButton(list, item, true);
     }
   }
-  renderButton(container, item) {
+  renderButton(container, item, closeSubmenuOnHover) {
     const button = container.createEl("button", {
-      cls: item.compact ? "side-mark-block-menu-compact" : `side-mark-block-menu-row${item.danger ? " is-danger" : ""}`,
+      cls: item.compact ? `side-mark-block-menu-compact${item.submenu ? " has-submenu" : ""}` : `side-mark-block-menu-row${item.danger ? " is-danger" : ""}`,
       attr: {
         type: "button",
         title: item.label,
@@ -480,22 +513,36 @@ var HoverBlockToolbar = class {
       icon.setText(item.shortcut || item.label);
     }
     button.createSpan({ cls: "side-mark-block-menu-row-label", text: item.label });
+    const arrow = button.createSpan({ cls: "side-mark-block-menu-row-arrow" });
+    if (item.submenu) {
+      (0, import_obsidian3.setIcon)(arrow, "chevron-right");
+      button.addEventListener("mouseenter", () => this.openSubmenu(button));
+      button.addEventListener("mousemove", () => this.openSubmenu(button));
+      button.addEventListener("focus", () => this.openSubmenu(button));
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.openSubmenu(button);
+      });
+      return;
+    }
+    if (closeSubmenuOnHover) {
+      button.addEventListener("mouseenter", () => this.closeSubmenu());
+    }
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (this.target) {
+      if (this.target && item.action) {
         this.onAction(item.action, this.target);
       }
       this.hide();
     });
   }
-  renderSubmenuRow(container, icon, label) {
-    const row = container.createDiv({ cls: "side-mark-block-menu-row is-disabled" });
-    const iconEl = row.createSpan({ cls: "side-mark-block-menu-row-icon" });
-    (0, import_obsidian3.setIcon)(iconEl, icon);
-    row.createSpan({ cls: "side-mark-block-menu-row-label", text: label });
-    const arrow = row.createSpan({ cls: "side-mark-block-menu-row-arrow" });
-    (0, import_obsidian3.setIcon)(arrow, "chevron-right");
+  renderHeadingSubmenu() {
+    const list = this.submenu.createDiv({ cls: "side-mark-block-menu-list" });
+    for (const item of HEADING_SUBMENU_BUTTONS) {
+      this.renderButton(list, item, false);
+    }
   }
   scheduleOpen() {
     this.cancelHide();
@@ -509,13 +556,27 @@ var HoverBlockToolbar = class {
     this.pill.addClass("is-open");
     document.addEventListener("mousemove", this.pointerMoveHandler);
     this.menu.show();
+    this.menu.scrollTop = 0;
+    this.submenu.scrollTop = 0;
     this.positionMenu();
     window.requestAnimationFrame(() => this.menu.addClass("is-open"));
   }
   positionMenu() {
-    if (!this.target) return;
-    const left = clamp2(this.target.rect.left - 58, 8, window.innerWidth - 240);
-    const top = clamp2(this.target.rect.top + 22, 8, window.innerHeight - 340);
+    if (!this.target) {
+      return;
+    }
+    const pillRect = this.pill.getBoundingClientRect();
+    const menuWidth = this.menu.offsetWidth || 240;
+    const naturalMenuHeight = Math.min(this.menu.scrollHeight || this.menu.offsetHeight, MENU_DEFAULT_MAX_HEIGHT);
+    const spaceBelow = window.innerHeight - pillRect.bottom - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
+    const spaceAbove = pillRect.top - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
+    const openAbove = spaceBelow < naturalMenuHeight && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(MENU_MIN_HEIGHT, openAbove ? spaceAbove : spaceBelow);
+    const menuHeight = Math.min(naturalMenuHeight, availableHeight);
+    const left = clamp2(pillRect.left, MENU_VIEWPORT_PADDING, window.innerWidth - menuWidth - MENU_VIEWPORT_PADDING);
+    const preferredTop = openAbove ? pillRect.top - MENU_PILL_GAP - menuHeight : pillRect.bottom + MENU_PILL_GAP;
+    const top = clamp2(preferredTop, MENU_VIEWPORT_PADDING, window.innerHeight - menuHeight - MENU_VIEWPORT_PADDING);
+    this.menu.style.maxHeight = `${availableHeight}px`;
     this.menu.style.left = `${left}px`;
     this.menu.style.top = `${top}px`;
   }
@@ -526,11 +587,32 @@ var HoverBlockToolbar = class {
     if (!this.isMenuOpen()) {
       return;
     }
-    if (isInsideWithPadding(event, this.pill, 8) || isInsideWithPadding(event, this.menu, 8)) {
+    if (isInsideWithPadding(event, this.pill, 8) || isInsideWithPadding(event, this.menu, 18) || isInsideWithPadding(event, this.submenu, 18)) {
       this.cancelHide();
       return;
     }
     this.scheduleHide();
+  }
+  openSubmenu(row) {
+    this.cancelHide();
+    const rowRect = row.getBoundingClientRect();
+    this.submenu.show();
+    const submenuWidth = this.submenu.offsetWidth;
+    const submenuHeight = this.submenu.offsetHeight;
+    const preferredLeft = rowRect.right + 8;
+    const fallbackLeft = rowRect.left - submenuWidth - 8;
+    const left = preferredLeft + submenuWidth <= window.innerWidth - 8 ? preferredLeft : fallbackLeft;
+    this.submenu.style.left = `${clamp2(left, 8, window.innerWidth - submenuWidth - 8)}px`;
+    this.submenu.style.top = `${clamp2(rowRect.top, 8, window.innerHeight - submenuHeight - 8)}px`;
+    window.requestAnimationFrame(() => this.submenu.addClass("is-open"));
+  }
+  closeSubmenu() {
+    this.submenu.removeClass("is-open");
+    window.setTimeout(() => {
+      if (!this.submenu.hasClass("is-open")) {
+        this.submenu.hide();
+      }
+    }, 120);
   }
   cancelHide() {
     if (this.hideTimer !== null) {
@@ -805,11 +887,17 @@ function clamp4(value, min, max) {
 
 // src/selection-toolbar.ts
 var import_obsidian6 = require("obsidian");
+var HEADING_SUBMENU_ITEMS = [
+  { id: "heading-4", label: "\u56DB\u7EA7\u6807\u9898", shortcut: "H4" },
+  { id: "heading-5", label: "\u4E94\u7EA7\u6807\u9898", shortcut: "H5" },
+  { id: "heading-6", label: "\u516D\u7EA7\u6807\u9898", shortcut: "H6" }
+];
 var FORMAT_ITEMS = [
   { id: "paragraph", label: "\u6B63\u6587", shortcut: "T" },
   { id: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1" },
   { id: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2" },
   { id: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3" },
+  { label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", submenu: HEADING_SUBMENU_ITEMS },
   { id: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
   { id: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
   { id: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
@@ -826,9 +914,26 @@ var BUTTONS = [
   { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
   { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
 ];
+var FORMAT_LABELS = {
+  paragraph: "T",
+  "heading-1": "H1",
+  "heading-2": "H2",
+  "heading-3": "H3",
+  "heading-4": "H4",
+  "heading-5": "H5",
+  "heading-6": "H6"
+};
+var FORMAT_ICONS = {
+  "number-list": "list-ordered",
+  "bullet-list": "list",
+  "task-list": "square-check",
+  quote: "quote",
+  "code-block": "braces"
+};
 var SelectionToolbar = class {
   constructor(onAction) {
     this.onAction = onAction;
+    this.formatRows = /* @__PURE__ */ new Map();
     this.hideTimer = null;
     this.el = document.body.createDiv({ cls: "side-mark-toolbar" });
     this.el.hide();
@@ -874,9 +979,15 @@ var SelectionToolbar = class {
     this.menu.addEventListener("mousedown", (event) => event.preventDefault());
     this.menu.addEventListener("mouseenter", () => this.cancelHide());
     this.menu.addEventListener("mouseleave", () => this.scheduleHide());
+    this.submenu = document.body.createDiv({ cls: "side-mark-selection-menu side-mark-selection-submenu" });
+    this.submenu.hide();
+    this.submenu.addEventListener("mousedown", (event) => event.preventDefault());
+    this.submenu.addEventListener("mouseenter", () => this.cancelHide());
+    this.submenu.addEventListener("mouseleave", () => this.scheduleHide());
+    this.renderHeadingSubmenu();
     for (const item of FORMAT_ITEMS) {
       const row = this.menu.createEl("button", {
-        cls: "side-mark-selection-menu-row",
+        cls: item.submenu ? "side-mark-selection-menu-row has-submenu" : "side-mark-selection-menu-row",
         attr: { type: "button", title: item.label, "aria-label": item.label }
       });
       const iconWrap = row.createSpan({ cls: "side-mark-selection-menu-icon" });
@@ -887,25 +998,43 @@ var SelectionToolbar = class {
       }
       row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
       const check = row.createSpan({ cls: "side-mark-selection-menu-check" });
+      if (item.submenu) {
+        (0, import_obsidian6.setIcon)(check, "chevron-right");
+        row.addEventListener("mouseenter", () => this.openSubmenu(row));
+        row.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.openSubmenu(row);
+        });
+        continue;
+      }
       if (item.id === "paragraph") {
         (0, import_obsidian6.setIcon)(check, "check");
         row.addClass("is-active");
       }
+      if (isSelectionFormatAction(item.id)) {
+        this.formatRows.set(item.id, row);
+      }
+      row.addEventListener("mouseenter", () => this.closeSubmenu());
       row.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.formatLabel.setText(item.shortcut || item.label);
-        this.onAction(item.id);
+        if (item.id) {
+          this.formatLabel.setText(item.shortcut || item.label);
+          this.onAction(item.id);
+        }
         this.hide();
       });
     }
   }
-  show(rect, boundary) {
+  show(rect, boundary, format = "paragraph") {
     var _a, _b, _c, _d;
     this.cancelHide();
     document.addEventListener("mousemove", this.pointerMoveHandler);
     this.el.show();
     this.el.removeClass("is-visible");
+    this.closeSubmenu();
+    this.setCurrentFormat(format);
     const width = this.el.offsetWidth;
     const height = this.el.offsetHeight;
     const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
@@ -926,12 +1055,16 @@ var SelectionToolbar = class {
     document.removeEventListener("mousemove", this.pointerMoveHandler);
     this.el.removeClass("is-visible");
     this.menu.removeClass("is-open");
+    this.submenu.removeClass("is-open");
     window.setTimeout(() => {
       if (!this.el.hasClass("is-visible")) {
         this.el.hide();
       }
       if (!this.menu.hasClass("is-open")) {
         this.menu.hide();
+      }
+      if (!this.submenu.hasClass("is-open")) {
+        this.submenu.hide();
       }
     }, 140);
   }
@@ -943,6 +1076,7 @@ var SelectionToolbar = class {
     document.removeEventListener("mousemove", this.pointerMoveHandler);
     this.el.remove();
     this.menu.remove();
+    this.submenu.remove();
   }
   scheduleHide() {
     this.cancelHide();
@@ -960,6 +1094,7 @@ var SelectionToolbar = class {
     }
     const rect = this.el.getBoundingClientRect();
     const menuRect = this.menu.isShown() ? this.menu.getBoundingClientRect() : null;
+    const submenuRect = this.submenu.isShown() ? this.submenu.getBoundingClientRect() : null;
     const safeRect = {
       left: rect.left - 22,
       right: rect.right + 22,
@@ -974,19 +1109,62 @@ var SelectionToolbar = class {
       this.cancelHide();
       return;
     }
+    if (submenuRect && event.clientX >= submenuRect.left - 16 && event.clientX <= submenuRect.right + 16 && event.clientY >= submenuRect.top - 16 && event.clientY <= submenuRect.bottom + 16) {
+      this.cancelHide();
+      return;
+    }
     this.scheduleHide();
   }
   toggleMenu() {
     if (this.menu.hasClass("is-open")) {
       this.menu.removeClass("is-open");
+      this.submenu.removeClass("is-open");
       window.setTimeout(() => {
         if (!this.menu.hasClass("is-open")) {
           this.menu.hide();
+        }
+        if (!this.submenu.hasClass("is-open")) {
+          this.submenu.hide();
         }
       }, 120);
       return;
     }
     this.openMenu();
+  }
+  renderHeadingSubmenu() {
+    for (const item of HEADING_SUBMENU_ITEMS) {
+      const row = this.submenu.createEl("button", {
+        cls: "side-mark-selection-menu-row",
+        attr: { type: "button", title: item.label, "aria-label": item.label }
+      });
+      row.createSpan({ cls: "side-mark-selection-menu-icon", text: item.shortcut || "" });
+      row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+      row.createSpan({ cls: "side-mark-selection-menu-check" });
+      if (isSelectionFormatAction(item.id)) {
+        this.formatRows.set(item.id, row);
+      }
+      row.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (item.id) {
+          this.formatLabel.setText(item.shortcut || item.label);
+          this.onAction(item.id);
+        }
+        this.hide();
+      });
+    }
+  }
+  setCurrentFormat(format) {
+    this.formatLabel.empty();
+    const icon = FORMAT_ICONS[format];
+    if (icon) {
+      (0, import_obsidian6.setIcon)(this.formatLabel, icon);
+    } else {
+      this.formatLabel.setText(FORMAT_LABELS[format] || "T");
+    }
+    for (const [action, row] of this.formatRows) {
+      row.toggleClass("is-active", action === format);
+    }
   }
   openMenu() {
     this.cancelHide();
@@ -996,9 +1174,32 @@ var SelectionToolbar = class {
     this.menu.style.top = `${clamp5(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
     window.requestAnimationFrame(() => this.menu.addClass("is-open"));
   }
+  openSubmenu(row) {
+    const rowRect = row.getBoundingClientRect();
+    this.submenu.show();
+    const submenuWidth = this.submenu.offsetWidth;
+    const submenuHeight = this.submenu.offsetHeight;
+    const preferredLeft = rowRect.right + 8;
+    const fallbackLeft = rowRect.left - submenuWidth - 8;
+    const left = preferredLeft + submenuWidth <= window.innerWidth - 8 ? preferredLeft : fallbackLeft;
+    this.submenu.style.left = `${clamp5(left, 8, window.innerWidth - submenuWidth - 8)}px`;
+    this.submenu.style.top = `${clamp5(rowRect.top, 8, window.innerHeight - submenuHeight - 8)}px`;
+    window.requestAnimationFrame(() => this.submenu.addClass("is-open"));
+  }
+  closeSubmenu() {
+    this.submenu.removeClass("is-open");
+    window.setTimeout(() => {
+      if (!this.submenu.hasClass("is-open")) {
+        this.submenu.hide();
+      }
+    }, 120);
+  }
 };
 function clamp5(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+function isSelectionFormatAction(action) {
+  return action === "paragraph" || action === "heading-1" || action === "heading-2" || action === "heading-3" || action === "heading-4" || action === "heading-5" || action === "heading-6" || action === "number-list" || action === "bullet-list" || action === "task-list" || action === "quote" || action === "code-block";
 }
 
 // src/storage.ts
@@ -1520,8 +1721,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   renderFilters(container, controls, allMarks, filteredMarks) {
     this.renderSelect(controls, "\u72B6\u6001", this.filter, [
-      { value: "all", label: "\u5168\u90E8" },
       { value: "active", label: "\u6D3B\u52A8" },
+      { value: "all", label: "\u5168\u90E8" },
       { value: "resolved", label: "\u5DF2\u89E3\u51B3" },
       { value: "orphaned", label: "\u5931\u8054" }
     ], (value) => {
@@ -1916,7 +2117,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     (0, import_obsidian8.setIcon)(more, "more-horizontal");
     const menu = card.createDiv({ cls: "side-mark-card-menu" });
     menu.hide();
-    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
+    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id), true);
     more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2193,14 +2394,17 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     }
     button.addEventListener("click", () => void this.syncMark(mark.id));
   }
-  addMenuAction(container, icon, label, onClick) {
+  addMenuAction(container, icon, label, onClick, iconOnly = false) {
+    if (iconOnly) {
+      container.addClass("has-icon-only-action");
+    }
     const button = container.createEl("button", {
-      cls: "side-mark-card-menu-item is-danger",
+      cls: `side-mark-card-menu-item is-danger${iconOnly ? " is-icon-only" : ""}`,
       attr: { type: "button", title: label, "aria-label": label }
     });
     const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
     (0, import_obsidian8.setIcon)(iconEl, icon);
-    const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
+    const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: iconOnly ? "" : label });
     let isConfirming = false;
     let resetTimer = 0;
     const clearResetTimer = () => {
@@ -2217,7 +2421,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       button.setAttr("aria-label", label);
       iconEl.empty();
       (0, import_obsidian8.setIcon)(iconEl, icon);
-      labelEl.setText(label);
+      labelEl.setText(iconOnly ? "" : label);
     };
     const scheduleReset = () => {
       clearResetTimer();
@@ -2289,20 +2493,58 @@ function formatReplyTime(value) {
 var import_obsidian9 = require("obsidian");
 
 // src/block-map.ts
-function splitMarkdownBlocks(markdown) {
+var LARK_BINDING_KEYS = /* @__PURE__ */ new Set([
+  "lark_doc_url",
+  "lark_doc_token",
+  "lark_remote_root",
+  "lark_remote_parent_path"
+]);
+function findRemoteBlockId(markdown, units, startOffset, endOffset, titleBlockId) {
   var _a;
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const block = findFirstHitRemoteBlock(markdown, startOffset, endOffset);
+  if (!block) {
+    return null;
+  }
+  if (block.kind === "title") {
+    return titleBlockId || null;
+  }
+  return ((_a = units[block.index]) == null ? void 0 : _a.blockId) || null;
+}
+function findFirstHitRemoteBlock(markdown, startOffset, endOffset) {
+  const start = Math.min(startOffset, endOffset);
+  const end = Math.max(startOffset, endOffset);
+  return splitRemoteMarkdownBlocks(markdown).find((block) => block.endOffset > start && block.startOffset < end) || null;
+}
+function splitRemoteMarkdownBlocks(markdown) {
+  const normalized = markdown.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const lineStarts = createLineStarts(normalized);
+  const hiddenLines = findHiddenFrontmatterLines(lines);
+  const metadataBlock = findMetadataFrontmatterBlock(lines, hiddenLines);
+  const titleLine = findDocumentTitleLine(lines, hiddenLines, metadataBlock);
   const blocks = [];
-  const lineStarts = createLineStarts(markdown.replace(/\r\n/g, "\n"));
-  let index = 0;
+  if (titleLine !== null) {
+    pushRemoteBlock(blocks, markdown, lineStarts, titleLine, titleLine + 1, "title", -1);
+  }
+  if (metadataBlock) {
+    pushRemoteBlock(blocks, markdown, lineStarts, metadataBlock.startLine, metadataBlock.endLine, "blockquote", 0);
+  }
+  let index = titleLine !== null ? titleLine + 1 : 0;
+  if (metadataBlock && index < metadataBlock.endLine) {
+    index = metadataBlock.endLine;
+  }
+  while (index < lines.length && (hiddenLines.has(index) || (lines[index] || "").trim() === "")) {
+    index += 1;
+  }
+  let remoteBlockIndex = metadataBlock ? 1 : 0;
   while (index < lines.length) {
     const line = lines[index] || "";
-    if (line.trim() === "") {
+    if (line.trim() === "" || hiddenLines.has(index)) {
       index += 1;
       continue;
     }
     const startLine = index;
-    const kind = readBlockKind(line);
+    const kind = readRemoteBlockKind(line);
     if (kind === "heading" || kind === "hr") {
       index += 1;
     } else if (kind === "code") {
@@ -2315,44 +2557,108 @@ function splitMarkdownBlocks(markdown) {
       }
     } else if (kind === "list") {
       index += 1;
-      while (index < lines.length && (lines[index] || "").trim() !== "" && (readBlockKind(lines[index] || "") === "list" || /^\s+/.test(lines[index] || ""))) {
+      while (index < lines.length && (lines[index] || "").trim() !== "" && readRemoteBlockKind(lines[index] || "") === "paragraph" && !isMarkdownParagraphLabelBoundary(lines[index] || "")) {
         index += 1;
       }
     } else if (kind === "blockquote" || kind === "table") {
       index += 1;
-      while (index < lines.length && readBlockKind(lines[index] || "") === kind) {
+      while (index < lines.length && readRemoteBlockKind(lines[index] || "") === kind) {
         index += 1;
       }
     } else {
       index += 1;
-      while (index < lines.length && (lines[index] || "").trim() !== "" && readBlockKind(lines[index] || "") === "paragraph") {
+      while (index < lines.length && (lines[index] || "").trim() !== "" && !isRemoteBlockBoundary(lines[index] || "") && !isMarkdownParagraphLabelBoundary(lines[index] || "")) {
         index += 1;
       }
     }
-    const startOffset = lineStarts[startLine] || 0;
-    const endOffset = (_a = lineStarts[index]) != null ? _a : markdown.length;
-    blocks.push({
-      index: blocks.length,
-      kind,
-      startOffset,
-      endOffset,
-      content: markdown.slice(startOffset, endOffset).trim()
-    });
+    pushRemoteBlock(blocks, markdown, lineStarts, startLine, index, kind, remoteBlockIndex);
+    remoteBlockIndex += 1;
   }
   return blocks;
 }
-function findFirstHitBlock(markdown, startOffset, endOffset) {
-  const start = Math.min(startOffset, endOffset);
-  const end = Math.max(startOffset, endOffset);
-  return splitMarkdownBlocks(markdown).find((block) => block.endOffset > start && block.startOffset < end) || null;
-}
-function findRemoteBlockId(markdown, units, startOffset, endOffset) {
+function pushRemoteBlock(blocks, markdown, lineStarts, startLine, endLine, kind, index) {
   var _a;
-  const block = findFirstHitBlock(markdown, startOffset, endOffset);
-  if (!block) {
+  const startOffset = lineStarts[startLine] || 0;
+  const endOffset = (_a = lineStarts[endLine]) != null ? _a : markdown.length;
+  blocks.push({
+    index,
+    kind,
+    startOffset,
+    endOffset,
+    content: markdown.slice(startOffset, endOffset).trim()
+  });
+}
+function findHiddenFrontmatterLines(lines) {
+  const hiddenLines = /* @__PURE__ */ new Set();
+  const frontmatter = readFrontmatterRange(lines);
+  if (!frontmatter) {
+    return hiddenLines;
+  }
+  const visibleLines = getVisibleFrontmatterLines(lines, frontmatter);
+  if (visibleLines.length > 0) {
+    return hiddenLines;
+  }
+  for (let index = frontmatter.startLine; index < frontmatter.endLine; index += 1) {
+    hiddenLines.add(index);
+  }
+  return hiddenLines;
+}
+function findMetadataFrontmatterBlock(lines, hiddenLines) {
+  if (hiddenLines.size > 0) {
     return null;
   }
-  return ((_a = units[block.index]) == null ? void 0 : _a.blockId) || null;
+  const frontmatter = readFrontmatterRange(lines);
+  if (!frontmatter) {
+    return null;
+  }
+  const visibleLines = getVisibleFrontmatterLines(lines, frontmatter);
+  return visibleLines.length > 0 ? frontmatter : null;
+}
+function readFrontmatterRange(lines) {
+  if ((lines[0] || "").trim() !== "---") {
+    return null;
+  }
+  for (let index = 1; index < lines.length; index += 1) {
+    if ((lines[index] || "").trim() === "---") {
+      return { startLine: 0, endLine: index + 1 };
+    }
+  }
+  return null;
+}
+function getVisibleFrontmatterLines(lines, range) {
+  return lines.slice(range.startLine + 1, range.endLine - 1).filter((line) => {
+    return !LARK_BINDING_KEYS.has(getYamlKey(line));
+  });
+}
+function getYamlKey(line) {
+  var _a;
+  const match = line.match(/^([^:#\s][^:]*):/);
+  return ((_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) || "";
+}
+function findDocumentTitleLine(lines, hiddenLines, metadataBlock) {
+  let index = 0;
+  if (metadataBlock) {
+    index = metadataBlock.endLine;
+  }
+  while (index < lines.length && (hiddenLines.has(index) || (lines[index] || "").trim() === "")) {
+    index += 1;
+  }
+  return /^#\s+/.test(lines[index] || "") ? index : null;
+}
+function isRemoteBlockBoundary(line) {
+  return readRemoteBlockKind(line) !== "paragraph";
+}
+function isMarkdownParagraphLabelBoundary(line) {
+  return /^\*\*[^*\n]+?\*\*[：:]\s*$/.test(line.trim());
+}
+function readRemoteBlockKind(line) {
+  if (/^#{2,6}\s+/.test(line)) return "heading";
+  if (/^\s{0,3}```/.test(line)) return "code";
+  if (/^\s*>/.test(line)) return "blockquote";
+  if (/^\s*(?:[-+*]|\d+\.)\s+/.test(line)) return "list";
+  if (/^\s*[|]/.test(line)) return "table";
+  if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return "hr";
+  return "paragraph";
 }
 function createLineStarts(markdown) {
   const starts = [0];
@@ -2364,35 +2670,35 @@ function createLineStarts(markdown) {
   starts.push(markdown.length);
   return starts;
 }
-function readBlockKind(line) {
-  if (/^#{1,6}\s+/.test(line)) return "heading";
-  if (/^\s{0,3}```/.test(line)) return "code";
-  if (/^\s*>/.test(line)) return "blockquote";
-  if (/^\s*(?:[-+*]|\d+\.)\s+/.test(line)) return "list";
-  if (/^\s*[|]/.test(line)) return "table";
-  if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return "hr";
-  return "paragraph";
-}
 
 // src/lark-bridge.ts
 var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
 async function syncMarkToLark(plugin, file, source, mark) {
-  var _a, _b, _c, _d;
+  var _a, _b, _c, _d, _e, _f, _g;
   const binding = readLarkBinding(source);
   if (!binding.doc) {
     throw new Error("\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002");
   }
+  const replies = getReplies(mark);
+  if ((_a = mark.remote) == null ? void 0 : _a.larkCommentId) {
+    return await syncRepliesToExistingLarkComment(plugin, binding, mark, replies);
+  }
   const syncState = await readSyncState(plugin);
   const docState = findDocumentState(syncState, binding.doc);
-  if (!docState || !docState.units.length) {
+  if (!docState || !docState.titleBlockId && !docState.units.length) {
     throw new Error("\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002");
   }
-  const blockId = findRemoteBlockId(source, docState.units, mark.anchor.startOffset, mark.anchor.endOffset);
+  const blockId = findRemoteBlockId(
+    source,
+    docState.units,
+    mark.anchor.startOffset,
+    mark.anchor.endOffset,
+    docState.titleBlockId
+  );
   if (!blockId) {
     throw new Error("\u6CA1\u6709\u627E\u5230\u8BE5\u6807\u6CE8\u547D\u4E2D\u7684\u7B2C\u4E00\u4E2A\u98DE\u4E66 block\u3002");
   }
-  const replies = getReplies(mark);
   const [firstReply, ...restReplies] = replies.length ? replies : [{ content: "\uFF08\u65E0\u8BC4\u8BBA\uFF09" }];
   const result = await runLarkCreateComment(plugin, {
     doc: binding.doc,
@@ -2400,16 +2706,19 @@ async function syncMarkToLark(plugin, file, source, mark) {
     content: buildCommentElements(firstReply.content)
   });
   if (!result.ok) {
-    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002");
+    throw new Error(((_b = result.error) == null ? void 0 : _b.message) || ((_c = result.error) == null ? void 0 : _c.hint) || "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002");
   }
-  const commentId = (_c = result.data) == null ? void 0 : _c.comment_id;
+  const commentId = (_d = result.data) == null ? void 0 : _d.comment_id;
   if (commentId) {
     for (const reply of restReplies) {
-      await runLarkCreateReply(plugin, {
+      const replyResult = await runLarkCreateReply(plugin, {
         doc: binding.doc,
         commentId,
         content: buildReplyBody(reply.content)
       });
+      if (!replyResult.ok) {
+        throw new Error(((_e = replyResult.error) == null ? void 0 : _e.message) || ((_f = replyResult.error) == null ? void 0 : _f.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+      }
     }
   }
   return {
@@ -2417,12 +2726,20 @@ async function syncMarkToLark(plugin, file, source, mark) {
     larkDocToken: binding.token,
     larkDocUrl: binding.url,
     larkCommentId: commentId,
-    larkReplyId: (_d = result.data) == null ? void 0 : _d.reply_id,
+    larkReplyId: (_g = result.data) == null ? void 0 : _g.reply_id,
     blockId,
-    syncedHash: `${mark.anchor.selectedText}
-${getThreadContent(replies)}`,
+    syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
     syncedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+async function canSyncMarkToLark(plugin, source) {
+  const binding = readLarkBinding(source);
+  if (!binding.doc) {
+    return false;
+  }
+  const syncState = await readSyncState(plugin);
+  const docState = findDocumentState(syncState, binding.doc);
+  return Boolean((docState == null ? void 0 : docState.titleBlockId) || (docState == null ? void 0 : docState.units.length));
 }
 function getLarkSyncPluginStatus(plugin) {
   var _a, _b, _c, _d;
@@ -2522,6 +2839,62 @@ function buildReplyBody(text) {
     }
   });
 }
+async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  const commentId = (_a = mark.remote) == null ? void 0 : _a.larkCommentId;
+  if (!commentId) {
+    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA ID\uFF0C\u65E0\u6CD5\u8FFD\u52A0\u56DE\u590D\u3002");
+  }
+  const pendingReplies = findPendingReplies(mark, replies);
+  let lastReplyId = (_b = mark.remote) == null ? void 0 : _b.larkReplyId;
+  for (const reply of pendingReplies) {
+    const result = await runLarkCreateReply(plugin, {
+      doc: binding.doc,
+      commentId,
+      content: buildReplyBody(reply.content)
+    });
+    if (!result.ok) {
+      throw new Error(((_c = result.error) == null ? void 0 : _c.message) || ((_d = result.error) == null ? void 0 : _d.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+    }
+    lastReplyId = ((_e = result.data) == null ? void 0 : _e.reply_id) || lastReplyId;
+  }
+  return {
+    ...mark.remote,
+    status: "synced",
+    larkDocToken: binding.token || ((_f = mark.remote) == null ? void 0 : _f.larkDocToken),
+    larkDocUrl: binding.url || ((_g = mark.remote) == null ? void 0 : _g.larkDocUrl),
+    larkCommentId: commentId,
+    larkReplyId: lastReplyId,
+    syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
+    syncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    error: void 0
+  };
+}
+function findPendingReplies(mark, replies) {
+  var _a;
+  const syncedHash = (_a = mark.remote) == null ? void 0 : _a.syncedHash;
+  if (syncedHash === void 0) {
+    throw new Error("\u7F3A\u5C11\u4E0A\u6B21\u540C\u6B65\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u5224\u65AD\u54EA\u4E9B\u56DE\u590D\u5DF2\u540C\u6B65\u3002\u8BF7\u5728\u98DE\u4E66\u4E2D\u786E\u8BA4\u540E\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002");
+  }
+  const syncedThreadContent = readSyncedThreadContent(syncedHash, mark.anchor.selectedText);
+  if (syncedThreadContent === null) {
+    throw new Error("\u8BC4\u8BBA\u5B9A\u4F4D\u6587\u672C\u5DF2\u53D8\u5316\uFF0C\u65E0\u6CD5\u5B89\u5168\u8FFD\u52A0\u98DE\u4E66\u56DE\u590D\u3002\u8BF7\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002");
+  }
+  for (let index = 0; index <= replies.length; index++) {
+    if (getThreadContent(replies.slice(0, index)) === syncedThreadContent) {
+      return replies.slice(index);
+    }
+  }
+  throw new Error("\u5DF2\u540C\u6B65\u7684\u65E7\u8BC4\u8BBA\u5185\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u6682\u4E0D\u652F\u6301\u540C\u6B65\u7F16\u8F91\u6216\u5220\u9664\u540E\u7684\u56DE\u590D\u3002");
+}
+function readSyncedThreadContent(syncedHash, selectedText) {
+  const prefix = `${selectedText}
+`;
+  if (!syncedHash.startsWith(prefix)) {
+    return null;
+  }
+  return syncedHash.slice(prefix.length);
+}
 function getReplies(mark) {
   var _a;
   return ((_a = mark.replies) == null ? void 0 : _a.length) ? mark.replies : mark.note.content.trim() ? [{
@@ -2532,6 +2905,10 @@ function getReplies(mark) {
 }
 function getThreadContent(replies) {
   return replies.map((reply) => reply.content).join("\n\n");
+}
+function buildSyncedHash(selectedText, replies) {
+  return `${selectedText}
+${getThreadContent(replies)}`;
 }
 async function runLarkCreateComment(plugin, input) {
   try {
@@ -2563,7 +2940,7 @@ async function runLarkCreateComment(plugin, input) {
 }
 async function runLarkCreateReply(plugin, input) {
   try {
-    await runLarkCliViaSyncPlugin(plugin, [
+    return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
       "drive",
       "file.comment.replys",
       "create",
@@ -2578,7 +2955,7 @@ async function runLarkCreateReply(plugin, input) {
       "--data",
       input.content,
       "--json"
-    ]);
+    ]));
   } catch (error) {
     const message = getExecErrorMessage(error);
     if (message) {
@@ -2813,17 +3190,17 @@ function estimateRenderedLineOffset(renderedText, lineNumber) {
 }
 
 // src/reading-selection.ts
-function findSourceRangeForReadingSelection(source, selectedText) {
-  const directIndex = source.indexOf(selectedText);
+function findSourceRangeForReadingSelection(source, selectedText, preferredRenderedOffset = 0) {
+  const sourceIndex = buildRenderedSourceIndex(source);
+  const directIndex = findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset);
   if (directIndex >= 0) {
     return {
       from: directIndex,
       to: directIndex + selectedText.length
     };
   }
-  const sourceIndex = buildRenderedSourceIndex(source);
   const renderedSelection = normalizeReadingSelection(selectedText);
-  const renderedIndex = sourceIndex.text.indexOf(renderedSelection);
+  const renderedIndex = findBestRenderedTextStart2(sourceIndex.text, renderedSelection, preferredRenderedOffset);
   if (renderedIndex < 0) {
     return null;
   }
@@ -2837,17 +3214,25 @@ function findSourceRangeForReadingSelection(source, selectedText) {
     to: to + 1
   };
 }
+function getReadingSelectionRenderedOffset(container, range) {
+  const prefixRange = document.createRange();
+  prefixRange.selectNodeContents(container);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const offset = normalizeReadingSelection(prefixRange.toString()).length;
+  prefixRange.detach();
+  return offset;
+}
 function getReadingSelectionRect(range) {
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
   if (rects.length === 0) {
     const rect = range.getBoundingClientRect();
-    return rect.width === 0 && rect.height === 0 ? null : rect;
+    return rect.width > 0 && rect.height > 0 ? rect : null;
   }
-  const left = Math.min(...rects.map((rect) => rect.left));
-  const top = Math.min(...rects.map((rect) => rect.top));
-  const right = Math.max(...rects.map((rect) => rect.right));
-  const bottom = Math.max(...rects.map((rect) => rect.bottom));
-  return new DOMRect(left, top, right - left, bottom - top);
+  const first = rects[0];
+  if (!first) {
+    return null;
+  }
+  return new DOMRect(first.left, first.top, first.width, first.height);
 }
 function buildRenderedSourceIndex(source) {
   let rendered = "";
@@ -2877,6 +3262,55 @@ function buildRenderedSourceIndex(source) {
     index += 1;
   }
   return { text: rendered, offsets };
+}
+function findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset) {
+  const candidates = [];
+  let searchFrom = 0;
+  while (searchFrom <= source.length) {
+    const index = source.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    candidates.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  return chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset);
+}
+function chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset) {
+  if (candidates.length === 0) {
+    return -1;
+  }
+  if (candidates.length === 1) {
+    return candidates[0] || 0;
+  }
+  return candidates.sort(
+    (left, right) => Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, left) - preferredRenderedOffset) - Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, right) - preferredRenderedOffset)
+  )[0] || candidates[0] || 0;
+}
+function renderedOffsetForSourceOffset(offsets, sourceOffset) {
+  const index = offsets.findIndex((offset) => offset >= sourceOffset);
+  return index >= 0 ? index : offsets.length;
+}
+function findBestRenderedTextStart2(renderedText, selectedText, preferredOffset) {
+  const candidates = [];
+  let searchFrom = 0;
+  while (searchFrom <= renderedText.length) {
+    const index = renderedText.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    candidates.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  if (candidates.length === 0) {
+    return -1;
+  }
+  if (candidates.length === 1) {
+    return candidates[0] || 0;
+  }
+  return candidates.sort(
+    (left, right) => Math.abs(left - preferredOffset) - Math.abs(right - preferredOffset)
+  )[0] || candidates[0] || 0;
 }
 function expandStartToOpeningMarker(source, offset) {
   if (offset === void 0) {
@@ -2920,6 +3354,7 @@ function isIgnoredSpacing(char) {
 }
 
 // src/main.ts
+var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
@@ -2927,6 +3362,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.activeEditorView = null;
     this.pendingCommentSelection = null;
     this.readingSelection = null;
+    this.readingSelectionTimer = null;
+    this.readingSelectionRequestId = 0;
     this.lastMarkdownFilePath = "";
   }
   async onload() {
@@ -2967,6 +3404,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   onunload() {
     var _a, _b, _c, _d, _e;
+    this.clearReadingSelectionTimer();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
     (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
     (_c = this.blockToolbar) == null ? void 0 : _c.destroy();
@@ -3001,7 +3439,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   showSelectionToolbar(view, rect, boundary) {
     this.activeEditorView = view;
     this.blockToolbar.hide();
-    this.toolbar.show(rect, boundary);
+    const format = getSelectionFormat(view);
+    this.toolbar.show(rect, boundary, format);
   }
   setActiveEditorView(view) {
     this.activeEditorView = view;
@@ -3198,9 +3637,21 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.applyMarkdownStyle(action);
   }
   handleReadingSelectionChange() {
-    window.setTimeout(() => void this.updateReadingSelectionToolbar(), 0);
+    this.clearReadingSelectionTimer();
+    const requestId = ++this.readingSelectionRequestId;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    this.readingToolbar.hide();
+    this.readingSelectionTimer = window.setTimeout(() => {
+      this.readingSelectionTimer = null;
+      void this.updateReadingSelectionToolbar(requestId);
+    }, READING_SELECTION_TOOLBAR_DELAY_MS);
   }
-  async updateReadingSelectionToolbar() {
+  async updateReadingSelectionToolbar(requestId) {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       this.readingSelection = null;
@@ -3222,7 +3673,11 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     }
     const selectedText = selection.toString().trim();
     const source = await this.app.vault.read(file);
-    const sourceRange = findSourceRangeForReadingSelection(source, selectedText);
+    if (requestId !== this.readingSelectionRequestId) {
+      return;
+    }
+    const renderedOffset = getReadingSelectionRenderedOffset(view.contentEl, range);
+    const sourceRange = findSourceRangeForReadingSelection(source, selectedText, renderedOffset);
     if (!sourceRange) {
       this.readingSelection = null;
       this.readingToolbar.hide();
@@ -3242,6 +3697,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       rect
     };
     this.readingToolbar.show(rect, view.contentEl.getBoundingClientRect());
+  }
+  clearReadingSelectionTimer() {
+    if (this.readingSelectionTimer !== null) {
+      window.clearTimeout(this.readingSelectionTimer);
+      this.readingSelectionTimer = null;
+    }
   }
   findMarkdownPreviewView(node) {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
@@ -3281,8 +3742,18 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       this.showMarkStylePopoverForReadingSelection(selection);
       return;
     }
+    const createdMark = await this.createReadingMark(selection, "comment", "", defaultHighlightAppearance(), false);
+    if (!createdMark) {
+      return;
+    }
+    let submitted = false;
     this.commentPopover.show(selection.rect, (content) => {
-      void this.createReadingMark(selection, "comment", content);
+      submitted = true;
+      void this.saveReadingComment(selection.file.path, createdMark.id, content);
+    }, () => {
+      if (!submitted) {
+        void this.deleteReadingTemporaryComment(selection.file.path, createdMark.id);
+      }
     });
   }
   async handleBlockAction(action, target) {
@@ -3314,6 +3785,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       case "heading-3":
       case "heading-4":
       case "heading-5":
+      case "heading-6":
         replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
         break;
       case "bullet-list":
@@ -3381,6 +3853,9 @@ ${stripped}
         case "heading-1":
         case "heading-2":
         case "heading-3":
+        case "heading-4":
+        case "heading-5":
+        case "heading-6":
           replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
           break;
         case "bullet-list":
@@ -3415,7 +3890,7 @@ ${stripped}
   }
   showCommentPopover(view) {
     const selection = view.state.selection.main;
-    const rect = view.coordsAtPos(selection.to);
+    const rect = getEditorSelectionRect(view) || view.coordsAtPos(selection.to);
     const file = this.getActiveMarkdownFile();
     if (!rect || selection.empty || !file) return;
     const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
@@ -3542,6 +4017,22 @@ ${stripped}
     }
     return createdMark || null;
   }
+  async saveReadingComment(filePath, markId, content) {
+    if (!content.trim()) {
+      await this.deleteReadingTemporaryComment(filePath, markId);
+      return;
+    }
+    this.currentDocument = await this.store.addReply(filePath, markId, content);
+    await this.refreshMarkViews(filePath);
+    this.syncMarkToLarkInBackground(markId);
+    if (this.settings.autoOpenSidebar) {
+      await this.openSidebar();
+    }
+  }
+  async deleteReadingTemporaryComment(filePath, markId) {
+    this.currentDocument = await this.store.deleteMark(filePath, markId);
+    await this.refreshMarkViews(filePath);
+  }
   async createMarkFromOffsets(view, from, to, kind, noteContent, appearance = defaultHighlightAppearance(), autoOpenSidebar = true) {
     var _a;
     const file = this.getActiveMarkdownFile();
@@ -3588,13 +4079,24 @@ ${stripped}
     await this.renderPreviewMarksForFile(filePath);
   }
   syncMarkToLarkInBackground(markId) {
-    if (!this.settings.autoSyncToLark) {
+    if (!this.settings.autoSyncToLark || getLarkSyncPluginStatus(this) !== "enabled") {
       return;
     }
-    void this.syncMarkToLark(markId).catch((error) => {
+    void this.syncMarkToLarkIfReady(markId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       new import_obsidian10.Notice(`\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A${message}`, 8e3);
     });
+  }
+  async syncMarkToLarkIfReady(markId) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) {
+      return;
+    }
+    const source = await this.app.vault.read(file);
+    if (!await canSyncMarkToLark(this, source)) {
+      return;
+    }
+    await this.syncMarkToLark(markId);
   }
   getActiveEditor() {
     var _a;
@@ -3707,12 +4209,60 @@ function isSelectionBlockAction(action) {
     "heading-1",
     "heading-2",
     "heading-3",
+    "heading-4",
+    "heading-5",
+    "heading-6",
     "bullet-list",
     "number-list",
     "task-list",
     "quote",
     "code-block"
   ].includes(action);
+}
+function getSelectionFormat(view) {
+  var _a;
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.from);
+  const heading = line.text.match(/^(#{1,6})\s+/);
+  if (heading) {
+    const level = ((_a = heading[1]) == null ? void 0 : _a.length) || 1;
+    return `heading-${level}`;
+  }
+  if (/^\s*[-+*]\s+\[(?: |x|X)\]\s+/.test(line.text)) {
+    return "task-list";
+  }
+  if (/^\s*\d+\.\s+/.test(line.text)) {
+    return "number-list";
+  }
+  if (/^\s*[-+*]\s+/.test(line.text)) {
+    return "bullet-list";
+  }
+  if (/^\s*>/.test(line.text)) {
+    return "quote";
+  }
+  if (/^\s*```/.test(line.text)) {
+    return "code-block";
+  }
+  return "paragraph";
+}
+function getEditorSelectionRect(view) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  const element = common instanceof HTMLElement ? common : common.parentElement;
+  if (!element || !view.dom.contains(element)) {
+    return null;
+  }
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
+  }
+  const first = rects[0];
+  return first ? new DOMRect(first.left, first.top, first.width, first.height) : null;
 }
 function defaultHighlightAppearance() {
   return {
@@ -3745,8 +4295,16 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   }
   renderLarkSyncSetting(containerEl) {
     const status = getLarkSyncPluginStatus(this.plugin);
+    const canEnableSync = status === "enabled";
     const setting = new import_obsidian10.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
-      toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+      toggle.setValue(canEnableSync && this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+        if (value && !canEnableSync) {
+          toggle.setValue(false);
+          this.plugin.settings.autoSyncToLark = false;
+          await this.plugin.saveSettings();
+          new import_obsidian10.Notice(`${getLarkSyncPluginStatusText(status)} \u65E0\u6CD5\u5F00\u542F\u6807\u6CE8\u540C\u6B65\uFF0C\u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`, 8e3);
+          return;
+        }
         this.plugin.settings.autoSyncToLark = value;
         await this.plugin.saveSettings();
       });

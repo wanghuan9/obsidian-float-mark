@@ -5,14 +5,16 @@ import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
-import { SelectionToolbar, type ToolbarAction } from "./selection-toolbar";
+import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
 import { SideMarkStore } from "./storage";
 import { DEFAULT_SETTINGS, type MarkBackgroundColor, type MarkColor, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
-import { getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
+import { canSyncMarkToLark, getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";
-import { findSourceRangeForReadingSelection, getReadingSelectionRect } from "./reading-selection";
+import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
+
+const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 
 export default class SideMarkPlugin extends Plugin {
 	settings!: SideMarkSettings;
@@ -36,6 +38,8 @@ export default class SideMarkPlugin extends Plugin {
 		to: number;
 		rect: DOMRect;
 	} | null = null;
+	private readingSelectionTimer: number | null = null;
+	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
 
 	override async onload(): Promise<void> {
@@ -76,6 +80,7 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	override onunload(): void {
+		this.clearReadingSelectionTimer();
 		this.toolbar?.destroy();
 		this.readingToolbar?.destroy();
 		this.blockToolbar?.destroy();
@@ -113,7 +118,8 @@ export default class SideMarkPlugin extends Plugin {
 	showSelectionToolbar(view: EditorView, rect: DOMRect, boundary?: DOMRect): void {
 		this.activeEditorView = view;
 		this.blockToolbar.hide();
-		this.toolbar.show(rect, boundary);
+		const format = getSelectionFormat(view);
+		this.toolbar.show(rect, boundary, format);
 	}
 
 	setActiveEditorView(view: EditorView): void {
@@ -325,10 +331,22 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	private handleReadingSelectionChange(): void {
-		window.setTimeout(() => void this.updateReadingSelectionToolbar(), 0);
+		this.clearReadingSelectionTimer();
+		const requestId = ++this.readingSelectionRequestId;
+		const selection = window.getSelection();
+		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+			this.readingSelection = null;
+			this.readingToolbar.hide();
+			return;
+		}
+		this.readingToolbar.hide();
+		this.readingSelectionTimer = window.setTimeout(() => {
+			this.readingSelectionTimer = null;
+			void this.updateReadingSelectionToolbar(requestId);
+		}, READING_SELECTION_TOOLBAR_DELAY_MS);
 	}
 
-	private async updateReadingSelectionToolbar(): Promise<void> {
+	private async updateReadingSelectionToolbar(requestId: number): Promise<void> {
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
 			this.readingSelection = null;
@@ -350,7 +368,11 @@ export default class SideMarkPlugin extends Plugin {
 		}
 		const selectedText = selection.toString().trim();
 		const source = await this.app.vault.read(file);
-		const sourceRange = findSourceRangeForReadingSelection(source, selectedText);
+		if (requestId !== this.readingSelectionRequestId) {
+			return;
+		}
+		const renderedOffset = getReadingSelectionRenderedOffset(view.contentEl, range);
+		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, renderedOffset);
 		if (!sourceRange) {
 			this.readingSelection = null;
 			this.readingToolbar.hide();
@@ -370,6 +392,13 @@ export default class SideMarkPlugin extends Plugin {
 			rect
 		};
 		this.readingToolbar.show(rect, view.contentEl.getBoundingClientRect());
+	}
+
+	private clearReadingSelectionTimer(): void {
+		if (this.readingSelectionTimer !== null) {
+			window.clearTimeout(this.readingSelectionTimer);
+			this.readingSelectionTimer = null;
+		}
 	}
 
 	private findMarkdownPreviewView(node: Node): MarkdownView | null {
@@ -418,8 +447,18 @@ export default class SideMarkPlugin extends Plugin {
 			this.showMarkStylePopoverForReadingSelection(selection);
 			return;
 		}
+		const createdMark = await this.createReadingMark(selection, "comment", "", defaultHighlightAppearance(), false);
+		if (!createdMark) {
+			return;
+		}
+		let submitted = false;
 		this.commentPopover.show(selection.rect, (content) => {
-			void this.createReadingMark(selection, "comment", content);
+			submitted = true;
+			void this.saveReadingComment(selection.file.path, createdMark.id, content);
+		}, () => {
+			if (!submitted) {
+				void this.deleteReadingTemporaryComment(selection.file.path, createdMark.id);
+			}
 		});
 	}
 
@@ -453,6 +492,7 @@ export default class SideMarkPlugin extends Plugin {
 			case "heading-3":
 			case "heading-4":
 			case "heading-5":
+			case "heading-6":
 				replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
 				break;
 			case "bullet-list":
@@ -520,6 +560,9 @@ export default class SideMarkPlugin extends Plugin {
 				case "heading-1":
 				case "heading-2":
 				case "heading-3":
+				case "heading-4":
+				case "heading-5":
+				case "heading-6":
 					replacement = `${"#".repeat(Number(action.slice(-1)))} ${stripped}`;
 					break;
 				case "bullet-list":
@@ -553,7 +596,7 @@ export default class SideMarkPlugin extends Plugin {
 
 	private showCommentPopover(view: EditorView): void {
 		const selection = view.state.selection.main;
-		const rect = view.coordsAtPos(selection.to);
+		const rect = getEditorSelectionRect(view) || view.coordsAtPos(selection.to);
 		const file = this.getActiveMarkdownFile();
 		if (!rect || selection.empty || !file) return;
 		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
@@ -693,6 +736,24 @@ export default class SideMarkPlugin extends Plugin {
 		return createdMark || null;
 	}
 
+	private async saveReadingComment(filePath: string, markId: string, content: string): Promise<void> {
+		if (!content.trim()) {
+			await this.deleteReadingTemporaryComment(filePath, markId);
+			return;
+		}
+		this.currentDocument = await this.store.addReply(filePath, markId, content);
+		await this.refreshMarkViews(filePath);
+		this.syncMarkToLarkInBackground(markId);
+		if (this.settings.autoOpenSidebar) {
+			await this.openSidebar();
+		}
+	}
+
+	private async deleteReadingTemporaryComment(filePath: string, markId: string): Promise<void> {
+		this.currentDocument = await this.store.deleteMark(filePath, markId);
+		await this.refreshMarkViews(filePath);
+	}
+
 	private async createMarkFromOffsets(
 		view: EditorView,
 		from: number,
@@ -749,13 +810,25 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	private syncMarkToLarkInBackground(markId: string): void {
-		if (!this.settings.autoSyncToLark) {
+		if (!this.settings.autoSyncToLark || getLarkSyncPluginStatus(this) !== "enabled") {
 			return;
 		}
-		void this.syncMarkToLark(markId).catch((error) => {
+		void this.syncMarkToLarkIfReady(markId).catch((error) => {
 			const message = error instanceof Error ? error.message : String(error);
 			new Notice(`自动同步飞书失败：${message}`, 8000);
 		});
+	}
+
+	private async syncMarkToLarkIfReady(markId: string): Promise<void> {
+		const file = this.getActiveMarkdownFile();
+		if (!file) {
+			return;
+		}
+		const source = await this.app.vault.read(file);
+		if (!await canSyncMarkToLark(this, source)) {
+			return;
+		}
+		await this.syncMarkToLark(markId);
 	}
 
 	private getActiveEditor(): Editor | null {
@@ -879,12 +952,61 @@ function isSelectionBlockAction(action: ToolbarAction): boolean {
 		"heading-1",
 		"heading-2",
 		"heading-3",
+		"heading-4",
+		"heading-5",
+		"heading-6",
 		"bullet-list",
 		"number-list",
 		"task-list",
 		"quote",
 		"code-block"
 	].includes(action);
+}
+
+function getSelectionFormat(view: EditorView): SelectionFormatAction {
+	const selection = view.state.selection.main;
+	const line = view.state.doc.lineAt(selection.from);
+	const heading = line.text.match(/^(#{1,6})\s+/);
+	if (heading) {
+		const level = heading[1]?.length || 1;
+		return `heading-${level}` as SelectionFormatAction;
+	}
+	if (/^\s*[-+*]\s+\[(?: |x|X)\]\s+/.test(line.text)) {
+		return "task-list";
+	}
+	if (/^\s*\d+\.\s+/.test(line.text)) {
+		return "number-list";
+	}
+	if (/^\s*[-+*]\s+/.test(line.text)) {
+		return "bullet-list";
+	}
+	if (/^\s*>/.test(line.text)) {
+		return "quote";
+	}
+	if (/^\s*```/.test(line.text)) {
+		return "code-block";
+	}
+	return "paragraph";
+}
+
+function getEditorSelectionRect(view: EditorView): DOMRect | null {
+	const selection = window.getSelection();
+	if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+		return null;
+	}
+	const range = selection.getRangeAt(0);
+	const common = range.commonAncestorContainer;
+	const element = common instanceof HTMLElement ? common : common.parentElement;
+	if (!element || !view.dom.contains(element)) {
+		return null;
+	}
+	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+	if (rects.length === 0) {
+		const rect = range.getBoundingClientRect();
+		return rect.width > 0 && rect.height > 0 ? rect : null;
+	}
+	const first = rects[0];
+	return first ? new DOMRect(first.left, first.top, first.width, first.height) : null;
 }
 
 function defaultHighlightAppearance(): MarkStyleChoice {
@@ -928,11 +1050,19 @@ class SideMarkSettingTab extends PluginSettingTab {
 
 	private renderLarkSyncSetting(containerEl: HTMLElement): void {
 		const status = getLarkSyncPluginStatus(this.plugin);
+		const canEnableSync = status === "enabled";
 		const setting = new Setting(containerEl)
 			.setName("标注同步飞书")
 			.setDesc("开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书。CLI 配置由该插件管理。")
 			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+				toggle.setValue(canEnableSync && this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+					if (value && !canEnableSync) {
+						toggle.setValue(false);
+						this.plugin.settings.autoSyncToLark = false;
+						await this.plugin.saveSettings();
+						new Notice(`${getLarkSyncPluginStatusText(status)} 无法开启标注同步，请先安装并启用该插件。`, 8000);
+						return;
+					}
 					this.plugin.settings.autoSyncToLark = value;
 					await this.plugin.saveSettings();
 				});

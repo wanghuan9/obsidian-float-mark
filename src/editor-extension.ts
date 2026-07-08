@@ -181,7 +181,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 					plugin.scheduleHideBlockToolbar();
 					return;
 				}
-				const lineRect = this.getLineRect(event.target);
+				const lineRect = this.getLineRect(event.target, line.text);
 				plugin.showBlockToolbar(this.view, {
 					from: line.from,
 					to: line.to,
@@ -190,7 +190,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				});
 			}
 
-			private getLineRect(target: HTMLElement): DOMRect | null {
+			private getLineRect(target: HTMLElement, lineText: string): DOMRect | null {
 				const lineEl = target.closest<HTMLElement>(".cm-line");
 				if (!lineEl || !this.view.dom.contains(lineEl)) {
 					return null;
@@ -199,7 +199,26 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				if (lineRect.height <= 0) {
 					return null;
 				}
-				return lineRect;
+				if (/^#{1,6}\s+/.test(lineText)) {
+					const headingRects = Array.from(lineEl.querySelectorAll<HTMLElement>(".cm-header"))
+						.map((element) => element.getBoundingClientRect())
+						.filter((rect) => rect.height > 0);
+					if (headingRects.length === 0) {
+						return lineRect;
+					}
+					const top = Math.min(...headingRects.map((rect) => rect.top));
+					const bottom = Math.max(...headingRects.map((rect) => rect.bottom));
+					return new DOMRect(lineRect.left, top, lineRect.width, bottom - top);
+				}
+				const contentEl = target.closest<HTMLElement>(".cm-line > span, .cm-header, .cm-strong, .cm-emphasis");
+				if (!contentEl || !lineEl.contains(contentEl)) {
+					return lineRect;
+				}
+				const contentRect = contentEl.getBoundingClientRect();
+				if (contentRect.height <= 0) {
+					return lineRect;
+				}
+				return new DOMRect(lineRect.left, contentRect.top, lineRect.width, contentRect.height);
 			}
 		},
 		{

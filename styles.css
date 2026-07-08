@@ -74,8 +74,8 @@
 	border-radius: 6px;
 	background: var(--background-secondary);
 	color: var(--text-normal);
-	font-size: 18px;
-	font-weight: 500;
+	font-size: 14px;
+	font-weight: 400;
 	cursor: pointer;
 }
 
@@ -93,6 +93,11 @@
 	height: 15px;
 }
 
+.side-mark-toolbar-format > span:first-child svg {
+	width: 18px;
+	height: 18px;
+}
+
 .side-mark-toolbar-divider {
 	width: 1px;
 	height: 28px;
@@ -103,12 +108,12 @@
 .side-mark-selection-menu {
 	position: fixed;
 	z-index: 1001;
-	width: 286px;
-	padding: 8px 0;
+	width: 240px;
+	padding: 6px 0;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
+	border-radius: 7px;
 	background: var(--background-primary);
-	box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 	opacity: 0;
 	transform: translateY(-6px) scale(0.965);
 	transform-origin: top left;
@@ -123,18 +128,18 @@
 
 .side-mark-selection-menu-row {
 	display: grid;
-	grid-template-columns: 56px minmax(0, 1fr) 24px;
+	grid-template-columns: 42px minmax(0, 1fr) 18px;
 	align-items: center;
 	width: 100%;
-	min-height: 42px;
-	padding: 0 18px 0 16px;
+	min-height: 32px;
+	padding: 0 12px;
 	border: 0;
 	border-radius: 0;
 	background: transparent;
 	color: var(--text-normal);
 	text-align: left;
 	cursor: pointer;
-	font-size: 15px;
+	font-size: 13px;
 	box-shadow: none;
 }
 
@@ -151,7 +156,7 @@
 	display: inline-flex;
 	align-items: center;
 	color: var(--text-normal);
-	font-size: 23px;
+	font-size: 15px;
 	line-height: 1;
 }
 
@@ -161,8 +166,8 @@
 }
 
 .side-mark-selection-menu-icon svg {
-	width: 20px;
-	height: 20px;
+	width: 17px;
+	height: 17px;
 }
 
 .side-mark-selection-menu-label {
@@ -178,8 +183,13 @@
 }
 
 .side-mark-selection-menu-check svg {
-	width: 17px;
-	height: 17px;
+	width: 14px;
+	height: 14px;
+}
+
+.side-mark-selection-submenu {
+	z-index: 1002;
+	width: 190px;
 }
 
 .side-mark-block-pill {
@@ -277,9 +287,10 @@
 	z-index: 1002;
 	width: 240px;
 	max-height: 360px;
-	padding: 6px 0;
+	padding: 6px 0 0;
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
+	border-bottom: 0;
 	border-radius: 7px;
 	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 	overflow-y: auto;
@@ -359,7 +370,7 @@
 	display: inline-flex;
 	align-items: center;
 	color: var(--text-normal);
-	font-size: 19px;
+	font-size: 15px;
 	line-height: 1;
 }
 
@@ -397,9 +408,22 @@
 	color: var(--text-faint);
 }
 
+.side-mark-block-menu-compact.has-submenu .side-mark-block-menu-row-arrow {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+
 .side-mark-block-menu-row-arrow svg {
 	width: 14px;
 	height: 14px;
+}
+
+.side-mark-block-submenu {
+	z-index: 1003;
+	width: 190px;
+	max-height: none;
+	overflow-y: visible;
 }
 
 
@@ -1301,6 +1325,12 @@
 	box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
 }
 
+.side-mark-card-menu.has-icon-only-action {
+	min-width: 0;
+	padding: 3px;
+	border-radius: 999px;
+}
+
 .side-mark-card-menu-item {
 	display: flex;
 	align-items: center;
@@ -1315,6 +1345,20 @@
 	text-align: left;
 	cursor: pointer;
 	transition: background 120ms ease, color 120ms ease;
+}
+
+.side-mark-card-menu-item.is-icon-only {
+	justify-content: center;
+	width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border-radius: 999px;
+}
+
+.side-mark-card-menu-item.is-icon-only.is-confirming {
+	width: auto;
+	min-width: 44px;
+	padding: 0 9px;
 }
 
 .side-mark-card-menu-item:hover {
@@ -1332,6 +1376,7 @@
 }
 
 .side-mark-card-menu-item.is-confirming {
+	justify-content: center;
 	background: rgba(214, 76, 76, 0.12);
 	color: var(--text-error);
 }
