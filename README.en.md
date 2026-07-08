@@ -2,19 +2,18 @@
 
 [简体中文](./README.md) | [English](./README.en.md)
 
-FloatMark brings Feishu-like floating selection actions, inline marks, side comments, and optional Lark sync to Obsidian.
+FloatMark brings Feishu-like floating selection actions, block-level hover actions, inline marks, side comments, and optional Lark sync to Obsidian.
 
-It is designed for users who want the document interaction style of Feishu / Lark Docs inside a local Obsidian vault: select text, act immediately from a floating toolbar, keep comments in a side panel, and optionally sync those comments back to a published Lark document.
+It is designed for users who want the document interaction style of Feishu / Lark Docs inside a local Obsidian vault: select text, act immediately from a floating toolbar, use a left-side hover menu for block actions, keep comments in a side panel, and optionally sync those comments back to a published Lark document.
 
 ## Features
 
-- **Feishu-like floating toolbar**: select text and run common actions near the selection.
-- **Quick Markdown formatting**: bold, italic, strikethrough, and inline code.
-- **Inline marks**: multi-color highlights and comment marks that remain anchored to the original text.
-- **Side comments**: manage document-level comment threads in the sidebar.
+- **Feishu-like selection toolbar**: select text and run bold, italic, strikethrough, inline code, highlight, and comment actions near the selection.
+- **Left-side block hover menu**: move the mouse to the left side of a paragraph, heading, list, quote, or code block to format the current block as body text, a heading, a list, a task, a quote, or a code block, or to comment, copy, or delete it.
+- **Inline marks**: highlights and comment marks stay anchored to the original text in both editing mode and reading mode, with configurable text and background colors.
+- **Comments and Lark sync**: manage document-level comment threads in the sidebar, including edit, reply, resolve, delete, jump back to source, and optional Feishu / Lark comment sync.
 - **Local sidecar storage**: comments and visual marks are stored under `.obsidian-float-marks/` instead of being written into the Markdown body.
 - **Anchor relocation**: after small text edits, FloatMark tries to relocate marks by offset, context, and selected text.
-- **Optional Feishu / Lark sync**: when the current note has already been published by `obsidian-feishu-lark-cli-sync`, FloatMark can create a remote Lark comment on the mapped document block.
 
 ## Installation
 
@@ -50,6 +49,14 @@ Select text in editing mode or reading mode. FloatMark will show a floating tool
 - Write the first comment from a compact popover.
 
 Markdown formatting actions update the note body. Comments and visual marks are stored in sidecar JSON by default, so they do not pollute the Markdown content.
+
+### Left-Side Block Actions
+
+In editing mode, move the mouse to the left side of a paragraph, heading, list, quote, or code block. FloatMark will show a compact block hover menu where you can:
+
+- Convert the current block to body text, heading levels 1-5, ordered list, unordered list, task list, quote, or code block.
+- Create a comment mark for the current block.
+- Copy or delete the current block.
 
 ### Side Comment Management
 
@@ -99,9 +106,9 @@ Then publish the current note with [Feishu Lark CLI Sync](https://github.com/wan
 
 ## Settings
 
-- `lark-cli path`: path used for syncing comments to Feishu / Lark. Defaults to `lark-cli` from PATH.
 - `Open sidebar after creating a mark`: opens the sidebar after creating a mark or comment.
-- `Auto-sync comments to Feishu`: syncs comments and replies in the background after they are created.
+- `Sync marks to Feishu`: syncs local comments and replies through Feishu Lark CLI Sync after they are created.
+- `Feishu Lark CLI Sync`: shows the sync plugin status. The CLI path, authentication, and command execution are managed by Feishu Lark CLI Sync.
 - `Comment display name`: author name shown in local sidebar threads.
 
 ## Notes

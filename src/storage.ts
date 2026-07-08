@@ -75,7 +75,7 @@ export class SideMarkStore {
 				createdAt: now,
 				updatedAt: now
 			},
-			replies: input.noteContent?.trim()
+			replies: input.kind === "comment" && input.noteContent?.trim()
 				? [this.createReply(input.noteContent, now)]
 				: [],
 			status: "active",
@@ -177,6 +177,32 @@ export class SideMarkStore {
 		});
 	}
 
+	async deleteReply(filePath: string, markId: string, replyId: string): Promise<SideMarkDocument> {
+		const document = await this.loadDocument(filePath);
+		const now = new Date().toISOString();
+		return this.saveDocument({
+			...document,
+			marks: document.marks.map((mark) => {
+				if (mark.id !== markId) {
+					return mark;
+				}
+				const replies = this.getReplies(mark).filter((reply) => reply.id !== replyId);
+				return {
+					...mark,
+					replies,
+					note: {
+						...mark.note,
+						content: replies.map((reply) => reply.content).join("\n\n"),
+						updatedAt: now
+					},
+					remote: mark.remote?.status === "synced"
+						? { ...mark.remote, status: "pending" as const }
+						: mark.remote
+				};
+			})
+		});
+	}
+
 	async deleteMark(filePath: string, markId: string): Promise<SideMarkDocument> {
 		const document = await this.loadDocument(filePath);
 		return this.saveDocument({
@@ -232,6 +258,17 @@ export class SideMarkStore {
 	}
 
 	private normalizeMark(mark: SideMark): SideMark {
+		if (mark.mark.kind !== "comment") {
+			const legacyNoteContent = mark.note?.content || mark.replies?.[0]?.content || "";
+			return {
+				...mark,
+				replies: [],
+				note: {
+					...mark.note,
+					content: legacyNoteContent
+				}
+			};
+		}
 		const replies = this.getReplies(mark);
 		return {
 			...mark,

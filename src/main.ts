@@ -173,7 +173,7 @@ export default class SideMarkPlugin extends Plugin {
 		const file = this.getActiveMarkdownFile();
 		if (!file) return;
 		this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
-		await this.refreshSidebar();
+		await this.refreshMarkViews(file.path);
 	}
 
 	async addMarkReply(markId: string, content: string): Promise<void> {
@@ -189,6 +189,13 @@ export default class SideMarkPlugin extends Plugin {
 		if (!file) return;
 		this.currentDocument = await this.store.updateReply(file.path, markId, replyId, content);
 		await this.refreshSidebar();
+	}
+
+	async deleteMarkReply(markId: string, replyId: string): Promise<void> {
+		const file = this.getActiveMarkdownFile();
+		if (!file) return;
+		this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
+		await this.refreshMarkViews(file.path);
 	}
 
 	async toggleResolved(markId: string): Promise<void> {
@@ -906,16 +913,7 @@ class SideMarkSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl)
-			.setName("标注同步飞书")
-			.setDesc("开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书。CLI 配置由该插件管理。")
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
-					this.plugin.settings.autoSyncToLark = value;
-					await this.plugin.saveSettings();
-				});
-			});
-		this.renderLarkSyncPluginStatus(containerEl);
+		this.renderLarkSyncSetting(containerEl);
 
 		new Setting(containerEl)
 			.setName("评论显示名称")
@@ -928,11 +926,17 @@ class SideMarkSettingTab extends PluginSettingTab {
 			});
 	}
 
-	private renderLarkSyncPluginStatus(containerEl: HTMLElement): void {
+	private renderLarkSyncSetting(containerEl: HTMLElement): void {
 		const status = getLarkSyncPluginStatus(this.plugin);
 		const setting = new Setting(containerEl)
-			.setName("Feishu Lark CLI Sync")
-			.setDesc("FloatMark 只检测插件状态；飞书 CLI 路径、登录和执行能力由 Feishu Lark CLI Sync 管理。");
+			.setName("标注同步飞书")
+			.setDesc("开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书。CLI 配置由该插件管理。")
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+					this.plugin.settings.autoSyncToLark = value;
+					await this.plugin.saveSettings();
+				});
+			});
 		const statusEl = setting.descEl.createDiv({
 			cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
 			text: getLarkSyncPluginStatusText(status)

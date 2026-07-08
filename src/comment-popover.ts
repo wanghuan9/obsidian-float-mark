@@ -23,7 +23,7 @@ export class CommentPopover {
 
 		this.textarea = this.el.createEl("textarea", {
 			cls: "side-mark-comment-textarea",
-			attr: { placeholder: "填写备注" }
+			attr: { placeholder: "填写评论" }
 		});
 		const actions = this.el.createDiv({ cls: "side-mark-comment-actions" });
 		const cancel = actions.createEl("button", {
@@ -38,6 +38,14 @@ export class CommentPopover {
 			attr: { type: "button" }
 		});
 		save.addEventListener("click", () => {
+			this.onSave?.(this.textarea.value);
+			this.hide();
+		});
+		this.textarea.addEventListener("keydown", (event) => {
+			if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+				return;
+			}
+			event.preventDefault();
 			this.onSave?.(this.textarea.value);
 			this.hide();
 		});

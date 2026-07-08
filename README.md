@@ -2,11 +2,11 @@
 
 [简体中文](./README.md) | [English](./README.en.md)
 
-FloatMark 是一个为 Obsidian 准备的飞书式正文标注与评论插件：选中文本后会出现浮动快捷工具栏，可以快速加粗、斜体、删除线、行内代码、高亮或创建评论；评论会集中显示在当前文档侧边栏中，支持编辑、回复、解决、删除、跳转和可选同步到飞书 / Lark。
+FloatMark 是一个为 Obsidian 准备的飞书式正文标注与评论插件：选中文本后可以就地格式化、标注或评论；鼠标移动到段落、标题、列表等内容块左侧时，可以从块级浮动菜单快速调整块格式；评论会集中显示在当前文档侧边栏中，支持编辑、回复、解决、删除、跳转和可选同步到飞书 / Lark。
 
-它适合希望在 Obsidian 里获得类似飞书文档「选中即操作、正文可标注、侧边可讨论」体验的本地写作与协作工作流。
+它适合希望在 Obsidian 里获得类似飞书文档「选中即操作、块级快捷操作、正文可标注、侧边可讨论」体验的本地写作与协作工作流。
 
-FloatMark brings Feishu-like floating selection actions, inline marks, side comments, and optional Lark sync to Obsidian. It is designed for users who want fast text actions and document-level discussions without leaving their local vault.
+FloatMark brings Feishu-like floating selection actions, block-level hover actions, inline marks, side comments, and optional Lark sync to Obsidian. It is designed for users who want fast text actions, block formatting, and document-level discussions without leaving their local vault.
 
 This plugin is intentionally separate from `obsidian-feishu-lark-cli-sync`.
 It works on its own as a local marking/commenting tool. When the Feishu sync
@@ -16,13 +16,12 @@ remote block hit by the local selection.
 
 ## 功能
 
-- **飞书式选中浮窗**：选中文本后显示浮动工具栏，常用排版与评论动作就近完成。
-- **快捷格式操作**：支持加粗、斜体、删除线、行内代码等 Markdown 兼容格式。
-- **正文标注**：支持多种颜色高亮与评论型标注，在编辑模式和阅读模式中都能定位原文。
-- **侧边评论栏**：按当前文档展示评论线程，支持编辑、回复、解决、删除和跳转回正文。
+- **飞书式选区浮窗**：选中文本后在选区附近显示浮动工具栏，可以快速执行加粗、斜体、删除线、行内代码、高亮和评论等操作。
+- **块左侧快捷浮窗**：鼠标移动到段落、标题、列表、引用或代码块等模块左侧时，显示块级快捷入口，可将当前块切换为正文、标题、列表、任务、引用、代码块，也可评论、复制或删除当前块。
+- **正文标注**：支持高亮标注和评论型标注，可自定义文字色与背景色；标注在编辑模式和阅读模式中都会定位到原文。
+- **评论与飞书同步**：侧边栏按当前文档展示评论线程，支持编辑、回复、解决、删除、跳转回正文，并可将本地评论同步为飞书 / Lark 文档评论。
 - **本地 sidecar 存储**：评论和视觉标注保存到 `.obsidian-float-marks/`，不会把评论内容直接写进 Markdown 正文。
 - **锚点重定位**：当文档内容发生轻微变化时，会尝试通过偏移、上下文和选中文本重新定位标注。
-- **可选飞书 / Lark 同步**：如果当前笔记已通过 `obsidian-feishu-lark-cli-sync` 发布到飞书 / Lark，FloatMark 可以把本地评论同步为远端文档评论。
 
 ## 安装
 
@@ -58,6 +57,14 @@ styles.css
 - 从评论弹窗输入第一条评论。
 
 Markdown 格式操作会修改当前笔记正文；评论和视觉标注默认保存到 sidecar JSON，不污染 Markdown 内容。
+
+### 块左侧快捷操作
+
+在编辑模式中，将鼠标移动到段落、标题、列表、引用或代码块左侧，FloatMark 会显示一个块级快捷浮窗。你可以用它快速处理当前块：
+
+- 切换为正文、一级到五级标题、有序列表、无序列表、任务列表、引用或代码块。
+- 对当前块创建评论标注。
+- 复制或删除当前块。
 
 ### 侧边评论管理
 
@@ -107,9 +114,9 @@ lark-cli auth status
 
 ## 设置
 
-- `lark-cli 路径`：用于把评论同步到飞书 / Lark；默认使用 PATH 中的 `lark-cli`。
 - `创建标注后打开侧栏`：创建评论或标注后自动打开侧边栏。
-- `评论后自动同步到飞书`：添加评论或回复后后台同步到飞书 / Lark。
+- `标注同步飞书`：开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书 / Lark。
+- `Feishu Lark CLI Sync`：展示同步插件状态；飞书 CLI 路径、登录和执行能力由 Feishu Lark CLI Sync 管理。
 - `评论显示名称`：本地侧边栏评论线程中的作者显示名。
 
 ## 说明

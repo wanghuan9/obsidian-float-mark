@@ -277,7 +277,7 @@ var CommentPopover = class {
     closeButton.addEventListener("click", () => this.hide());
     this.textarea = this.el.createEl("textarea", {
       cls: "side-mark-comment-textarea",
-      attr: { placeholder: "\u586B\u5199\u5907\u6CE8" }
+      attr: { placeholder: "\u586B\u5199\u8BC4\u8BBA" }
     });
     const actions = this.el.createDiv({ cls: "side-mark-comment-actions" });
     const cancel = actions.createEl("button", {
@@ -293,6 +293,15 @@ var CommentPopover = class {
     });
     save.addEventListener("click", () => {
       var _a;
+      (_a = this.onSave) == null ? void 0 : _a.call(this, this.textarea.value);
+      this.hide();
+    });
+    this.textarea.addEventListener("keydown", (event) => {
+      var _a;
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+        return;
+      }
+      event.preventDefault();
       (_a = this.onSave) == null ? void 0 : _a.call(this, this.textarea.value);
       this.hide();
     });
@@ -1167,7 +1176,7 @@ var SideMarkStore = class {
         createdAt: now,
         updatedAt: now
       },
-      replies: ((_a = input.noteContent) == null ? void 0 : _a.trim()) ? [this.createReply(input.noteContent, now)] : [],
+      replies: input.kind === "comment" && ((_a = input.noteContent) == null ? void 0 : _a.trim()) ? [this.createReply(input.noteContent, now)] : [],
       status: "active",
       remote: {
         status: "pending"
@@ -1258,6 +1267,30 @@ var SideMarkStore = class {
       })
     });
   }
+  async deleteReply(filePath, markId, replyId) {
+    const document2 = await this.loadDocument(filePath);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.saveDocument({
+      ...document2,
+      marks: document2.marks.map((mark) => {
+        var _a;
+        if (mark.id !== markId) {
+          return mark;
+        }
+        const replies = this.getReplies(mark).filter((reply) => reply.id !== replyId);
+        return {
+          ...mark,
+          replies,
+          note: {
+            ...mark.note,
+            content: replies.map((reply) => reply.content).join("\n\n"),
+            updatedAt: now
+          },
+          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+        };
+      })
+    });
+  }
   async deleteMark(filePath, markId) {
     const document2 = await this.loadDocument(filePath);
     return this.saveDocument({
@@ -1307,6 +1340,18 @@ var SideMarkStore = class {
     return (0, import_obsidian7.normalizePath)(`${this.settings.dataDir || DEFAULT_SETTINGS.dataDir}/files`);
   }
   normalizeMark(mark) {
+    var _a, _b, _c;
+    if (mark.mark.kind !== "comment") {
+      const legacyNoteContent = ((_a = mark.note) == null ? void 0 : _a.content) || ((_c = (_b = mark.replies) == null ? void 0 : _b[0]) == null ? void 0 : _c.content) || "";
+      return {
+        ...mark,
+        replies: [],
+        note: {
+          ...mark.note,
+          content: legacyNoteContent
+        }
+      };
+    }
     const replies = this.getReplies(mark);
     return {
       ...mark,
@@ -1441,8 +1486,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   renderTabs(container, marks) {
     const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
-    this.renderTab(tabs, "comments", "\u8BC4\u8BBA", marks.filter((mark) => mark.mark.kind === "comment").length);
-    this.renderTab(tabs, "marks", "\u6807\u8BB0", marks.filter((mark) => mark.mark.kind === "highlight").length);
+    this.renderTab(tabs, "comments", "\u8BC4\u8BBA", this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
+    this.renderTab(tabs, "marks", "\u6807\u8BB0", this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
   }
   renderTab(container, tab, label, count) {
     const button = container.createEl("button", {
@@ -1593,7 +1638,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     menu.addEventListener("mouseenter", clearHideTimer);
     menu.addEventListener("mouseleave", scheduleHideMenu);
   }
-  getFilteredMarks(marks) {
+  getFilteredMarks(marks, tab = this.activeTab) {
     const query = this.searchQuery.trim().toLowerCase();
     return marks.filter((mark) => {
       if (this.filter === "active" && mark.status !== "active") {
@@ -1605,7 +1650,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       if (this.filter === "orphaned" && mark.status !== "orphaned") {
         return false;
       }
-      if (this.activeTab === "comments" && this.colorFilter !== "all" && mark.mark.color !== this.colorFilter) {
+      if (tab === "comments" && this.colorFilter !== "all" && mark.mark.color !== this.colorFilter) {
         return false;
       }
       if (!query) {
@@ -1619,8 +1664,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       return haystack.includes(query);
     });
   }
-  getTabMarks(marks) {
-    return marks.filter((mark) => this.activeTab === "comments" ? mark.mark.kind === "comment" : mark.mark.kind === "highlight");
+  getTabMarks(marks, tab = this.activeTab) {
+    return marks.filter((mark) => tab === "comments" ? mark.mark.kind === "comment" : mark.mark.kind === "highlight");
   }
   updateSearchQuery(search) {
     this.searchQuery = search.value;
@@ -1683,7 +1728,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     }
     card.addEventListener("click", (event) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
-      const interactive = target == null ? void 0 : target.closest("button, a, .side-mark-card-menu");
+      const interactive = target == null ? void 0 : target.closest("button, textarea, input, a, .side-mark-card-menu, .side-mark-marker-note");
       if (interactive) {
         return;
       }
@@ -1696,6 +1741,12 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       const rect = card.getBoundingClientRect();
       void this.plugin.openMark(mark.id, rect);
     });
+    this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? "\u7F16\u8F91\u5907\u6CE8" : "\u6DFB\u52A0\u5907\u6CE8", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.renderMarkerNoteEditor(card, mark);
+    });
+    this.addDeleteIconAction(toolbar, "\u5220\u9664", () => void this.deleteMark(mark.id));
     const more = toolbar.createEl("button", {
       cls: "side-mark-card-icon-button",
       attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
@@ -1721,6 +1772,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       cls: "side-mark-card-quote-text",
       text: mark.anchor.selectedText
     });
+    this.renderMarkerNote(card, mark);
     const meta = card.createDiv({ cls: "side-mark-marker-meta" });
     const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
     textSwatch.setAttr("aria-hidden", "true");
@@ -1728,6 +1780,88 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
     backgroundSwatch.setAttr("aria-hidden", "true");
     meta.createSpan({ text: "\u80CC\u666F" });
+  }
+  renderMarkerNote(card, mark) {
+    const content = mark.note.content.trim();
+    if (!content) {
+      return;
+    }
+    const note = card.createDiv({ cls: "side-mark-marker-note" });
+    const display = note.createDiv({ cls: "side-mark-marker-note-display" });
+    const body = display.createDiv({
+      cls: "side-mark-marker-note-body",
+      text: content,
+      attr: { title: "\u53CC\u51FB\u4FEE\u6539\u5907\u6CE8" }
+    });
+    this.addInlineDeleteAction(display, "\u5220\u9664\u5907\u6CE8", () => {
+      void this.deleteMarkerNote(mark.id);
+    });
+    body.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.renderMarkerNoteEditor(card, mark);
+    });
+  }
+  renderMarkerNoteEditor(card, mark) {
+    var _a;
+    card.addClass("is-composing");
+    (_a = card.querySelector(".side-mark-marker-note")) == null ? void 0 : _a.remove();
+    const quote = card.querySelector(".side-mark-card-quote");
+    const note = card.createDiv({ cls: "side-mark-marker-note is-editing" });
+    const textarea = note.createEl("textarea", {
+      text: mark.note.content,
+      attr: { placeholder: "\u5199\u4E00\u6761\u5907\u6CE8" }
+    });
+    const actions = note.createDiv({ cls: "side-mark-marker-note-actions" });
+    const cancel = actions.createEl("button", {
+      text: "\u53D6\u6D88",
+      cls: "side-mark-secondary-button",
+      attr: { type: "button" }
+    });
+    const save = actions.createEl("button", {
+      text: "\u4FDD\u5B58",
+      cls: "side-mark-primary-button",
+      attr: { type: "button" }
+    });
+    const close = () => {
+      void this.render();
+    };
+    const submit = async () => {
+      const next = textarea.value.trim();
+      if (next === mark.note.content.trim()) {
+        close();
+        return;
+      }
+      await this.plugin.updateMarkNote(mark.id, next);
+    };
+    cancel.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    });
+    save.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void submit();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        void submit();
+      }
+    });
+    if (quote == null ? void 0 : quote.nextSibling) {
+      card.insertBefore(note, quote.nextSibling);
+    } else {
+      card.appendChild(note);
+    }
+    textarea.focus();
+    textarea.select();
   }
   renderColorPicker(card, mark) {
     const menu = card.createDiv({ cls: "side-mark-color-menu" });
@@ -1808,15 +1942,30 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       thread.createDiv({ cls: "side-mark-empty-thread", text: "\u8FD8\u6CA1\u6709\u8BC4\u8BBA\uFF0C\u7EE7\u7EED\u8F93\u5165\u7B2C\u4E00\u6761\u3002" });
       return;
     }
-    for (const reply of replies) {
-      const row = thread.createDiv({ cls: "side-mark-reply" });
+    for (const [index, reply] of replies.entries()) {
+      const isThreadHead = index === 0;
+      const row = thread.createDiv({ cls: `side-mark-reply${isThreadHead ? " is-thread-head" : " is-continuation"}` });
+      if (isThreadHead) {
+        const authorName = reply.authorName || this.plugin.settings.commentAuthorName || "\u6211";
+        const avatar = row.createDiv({ cls: "side-mark-avatar", text: authorName.slice(0, 1) || "\u6211" });
+        avatar.setAttr("aria-hidden", "true");
+      }
       const body = row.createDiv({ cls: "side-mark-reply-body" });
       const meta = body.createDiv({ cls: "side-mark-reply-meta" });
+      if (isThreadHead) {
+        meta.createSpan({
+          cls: "side-mark-reply-author",
+          text: reply.authorName || this.plugin.settings.commentAuthorName || "\u6211"
+        });
+      }
       meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt) });
       const content = body.createDiv({
         cls: "side-mark-reply-content",
         text: reply.content,
         attr: { title: "\u53CC\u51FB\u4FEE\u6539\u8BC4\u8BBA" }
+      });
+      this.addInlineDeleteAction(content, "\u5220\u9664\u8BC4\u8BBA", () => {
+        void this.deleteReply(mark, replies, reply.id);
       });
       content.addEventListener("dblclick", (event) => {
         event.preventDefault();
@@ -1873,7 +2022,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
         close();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         void submit();
       }
@@ -1954,7 +2103,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
         closeComposer();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         submit.click();
       }
@@ -1967,6 +2116,67 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     (0, import_obsidian8.setIcon)(button, icon);
     button.addEventListener("click", onClick);
+  }
+  addInlineDeleteAction(container, label, onConfirm) {
+    const button = container.createEl("button", {
+      cls: "side-mark-card-icon-button side-mark-inline-delete",
+      attr: { type: "button", title: label, "aria-label": label }
+    });
+    (0, import_obsidian8.setIcon)(button, "trash-2");
+    this.bindConfirmDeleteButton(button, label, onConfirm);
+  }
+  addDeleteIconAction(container, label, onConfirm) {
+    const button = container.createEl("button", {
+      cls: "side-mark-card-icon-button",
+      attr: { type: "button", title: label, "aria-label": label }
+    });
+    (0, import_obsidian8.setIcon)(button, "trash-2");
+    this.bindConfirmDeleteButton(button, label, onConfirm);
+  }
+  bindConfirmDeleteButton(button, label, onConfirm) {
+    let isConfirming = false;
+    let resetTimer = 0;
+    const clearResetTimer = () => {
+      if (resetTimer) {
+        window.clearTimeout(resetTimer);
+        resetTimer = 0;
+      }
+    };
+    const reset = () => {
+      clearResetTimer();
+      isConfirming = false;
+      button.removeClass("is-confirming");
+      button.setAttr("title", label);
+      button.setAttr("aria-label", label);
+      button.empty();
+      (0, import_obsidian8.setIcon)(button, "trash-2");
+    };
+    const confirm = () => {
+      clearResetTimer();
+      isConfirming = true;
+      button.addClass("is-confirming");
+      button.setAttr("title", "\u786E\u8BA4\u5220\u9664");
+      button.setAttr("aria-label", "\u786E\u8BA4\u5220\u9664");
+      button.empty();
+      button.createSpan({ text: "\u786E\u8BA4" });
+    };
+    const scheduleReset = () => {
+      clearResetTimer();
+      resetTimer = window.setTimeout(reset, 1600);
+    };
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isConfirming) {
+        confirm();
+        scheduleReset();
+        return;
+      }
+      reset();
+      onConfirm();
+    });
+    button.addEventListener("mouseleave", scheduleReset);
+    button.addEventListener("blur", scheduleReset);
   }
   addSyncAction(container, mark) {
     var _a;
@@ -1990,13 +2200,49 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     const iconEl = button.createSpan({ cls: "side-mark-card-menu-item-icon" });
     (0, import_obsidian8.setIcon)(iconEl, icon);
-    button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
+    const labelEl = button.createSpan({ cls: "side-mark-card-menu-item-label", text: label });
+    let isConfirming = false;
+    let resetTimer = 0;
+    const clearResetTimer = () => {
+      if (resetTimer) {
+        window.clearTimeout(resetTimer);
+        resetTimer = 0;
+      }
+    };
+    const reset = () => {
+      clearResetTimer();
+      isConfirming = false;
+      button.removeClass("is-confirming");
+      button.setAttr("title", label);
+      button.setAttr("aria-label", label);
+      iconEl.empty();
+      (0, import_obsidian8.setIcon)(iconEl, icon);
+      labelEl.setText(label);
+    };
+    const scheduleReset = () => {
+      clearResetTimer();
+      resetTimer = window.setTimeout(reset, 1600);
+    };
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (!isConfirming) {
+        clearResetTimer();
+        isConfirming = true;
+        button.addClass("is-confirming");
+        button.setAttr("title", "\u786E\u8BA4\u5220\u9664");
+        button.setAttr("aria-label", "\u786E\u8BA4\u5220\u9664");
+        iconEl.empty();
+        labelEl.setText("\u786E\u8BA4");
+        scheduleReset();
+        return;
+      }
+      reset();
       container.hide();
       onClick();
     });
+    button.addEventListener("mouseleave", scheduleReset);
+    button.addEventListener("blur", scheduleReset);
   }
   async syncMark(markId) {
     try {
@@ -2007,10 +2253,17 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     }
     await this.render();
   }
-  async deleteMark(markId) {
-    if (!window.confirm("\u5220\u9664\u8FD9\u6761\u6807\u6CE8\uFF1F")) {
+  async deleteMarkerNote(markId) {
+    await this.plugin.updateMarkNote(markId, "");
+  }
+  async deleteReply(mark, replies, replyId) {
+    if (replies.length <= 1) {
+      await this.plugin.deleteMark(mark.id);
       return;
     }
+    await this.plugin.deleteMarkReply(mark.id, replyId);
+  }
+  async deleteMark(markId) {
     await this.plugin.deleteMark(markId);
   }
 };
@@ -2799,7 +3052,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const file = this.getActiveMarkdownFile();
     if (!file) return;
     this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
-    await this.refreshSidebar();
+    await this.refreshMarkViews(file.path);
   }
   async addMarkReply(markId, content) {
     const file = this.getActiveMarkdownFile();
@@ -2813,6 +3066,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (!file) return;
     this.currentDocument = await this.store.updateReply(file.path, markId, replyId, content);
     await this.refreshSidebar();
+  }
+  async deleteMarkReply(markId, replyId) {
+    const file = this.getActiveMarkdownFile();
+    if (!file) return;
+    this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
+    await this.refreshMarkViews(file.path);
   }
   async toggleResolved(markId) {
     var _a;
@@ -3476,13 +3735,7 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian10.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
-      toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
-        this.plugin.settings.autoSyncToLark = value;
-        await this.plugin.saveSettings();
-      });
-    });
-    this.renderLarkSyncPluginStatus(containerEl);
+    this.renderLarkSyncSetting(containerEl);
     new import_obsidian10.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
       text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
         this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
@@ -3490,9 +3743,14 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
       });
     });
   }
-  renderLarkSyncPluginStatus(containerEl) {
+  renderLarkSyncSetting(containerEl) {
     const status = getLarkSyncPluginStatus(this.plugin);
-    const setting = new import_obsidian10.Setting(containerEl).setName("Feishu Lark CLI Sync").setDesc("FloatMark \u53EA\u68C0\u6D4B\u63D2\u4EF6\u72B6\u6001\uFF1B\u98DE\u4E66 CLI \u8DEF\u5F84\u3001\u767B\u5F55\u548C\u6267\u884C\u80FD\u529B\u7531 Feishu Lark CLI Sync \u7BA1\u7406\u3002");
+    const setting = new import_obsidian10.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
+      toggle.setValue(this.plugin.settings.autoSyncToLark).onChange(async (value) => {
+        this.plugin.settings.autoSyncToLark = value;
+        await this.plugin.saveSettings();
+      });
+    });
     const statusEl = setting.descEl.createDiv({
       cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
       text: getLarkSyncPluginStatusText(status)
