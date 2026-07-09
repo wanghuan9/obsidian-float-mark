@@ -1078,7 +1078,6 @@ class SideMarkSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		new Setting(containerEl).setName("General").setHeading();
 
 		new Setting(containerEl)
 			.setName("创建标注后打开侧栏")
