@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { getActiveBody } from "./dom-utils";
 
 export type ToolbarAction =
 	| "paragraph"
@@ -110,7 +111,7 @@ export class SelectionToolbar {
 	private readonly pointerMoveHandler: (event: MouseEvent) => void;
 
 	constructor(private readonly onAction: (action: ToolbarAction) => void) {
-		this.el = document.body.createDiv({ cls: "side-mark-toolbar" });
+		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar" });
 		this.el.hide();
 		this.pointerMoveHandler = (event) => this.handlePointerMove(event);
 		this.el.addEventListener("mousedown", (event) => {
@@ -149,12 +150,12 @@ export class SelectionToolbar {
 				this.hide();
 			});
 		}
-		this.menu = document.body.createDiv({ cls: "side-mark-selection-menu" });
+		this.menu = getActiveBody().createDiv({ cls: "side-mark-selection-menu" });
 		this.menu.hide();
 		this.menu.addEventListener("mousedown", (event) => event.preventDefault());
 		this.menu.addEventListener("mouseenter", () => this.cancelHide());
 		this.menu.addEventListener("mouseleave", () => this.scheduleHide());
-		this.submenu = document.body.createDiv({ cls: "side-mark-selection-menu side-mark-selection-submenu" });
+		this.submenu = getActiveBody().createDiv({ cls: "side-mark-selection-menu side-mark-selection-submenu" });
 		this.submenu.hide();
 		this.submenu.addEventListener("mousedown", (event) => event.preventDefault());
 		this.submenu.addEventListener("mouseenter", () => this.cancelHide());
@@ -205,7 +206,7 @@ export class SelectionToolbar {
 
 	show(rect: DOMRect, boundary?: DOMRect, format = "paragraph" as SelectionFormatAction): void {
 		this.cancelHide();
-		document.addEventListener("mousemove", this.pointerMoveHandler);
+		this.el.doc.addEventListener("mousemove", this.pointerMoveHandler);
 		this.el.show();
 		this.el.removeClass("is-visible");
 		this.closeSubmenu();
@@ -228,7 +229,7 @@ export class SelectionToolbar {
 
 	hide(): void {
 		this.cancelHide();
-		document.removeEventListener("mousemove", this.pointerMoveHandler);
+		this.el.doc.removeEventListener("mousemove", this.pointerMoveHandler);
 		this.el.removeClass("is-visible");
 		this.menu.removeClass("is-open");
 		this.submenu.removeClass("is-open");
@@ -251,7 +252,7 @@ export class SelectionToolbar {
 
 	destroy(): void {
 		this.cancelHide();
-		document.removeEventListener("mousemove", this.pointerMoveHandler);
+		this.el.doc.removeEventListener("mousemove", this.pointerMoveHandler);
 		this.el.remove();
 		this.menu.remove();
 		this.submenu.remove();

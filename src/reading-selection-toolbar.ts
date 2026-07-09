@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { getActiveBody } from "./dom-utils";
 
 type ReadingSelectionAction = "highlight" | "comment";
 
@@ -18,7 +19,7 @@ export class ReadingSelectionToolbar {
 	private hideTimer: number | null = null;
 
 	constructor(private readonly onAction: (action: ReadingSelectionAction) => void) {
-		this.el = document.body.createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
+		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
 		this.el.hide();
 		this.el.addEventListener("mousedown", (event) => event.preventDefault());
 		this.el.addEventListener("mouseenter", () => this.cancelHide());

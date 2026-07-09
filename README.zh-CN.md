@@ -1,6 +1,6 @@
 # FloatMark
 
-[简体中文](./README.md) | [English](./README.en.md)
+[English](./README.md) | [简体中文](./README.zh-CN.md)
 
 FloatMark 是 Obsidian 的标注、评论与浮动快速操作工具栏插件，在本地笔记中提供类似飞书 / Lark 文档的操作体验。
 
@@ -44,17 +44,29 @@ styles.css
 
 在编辑模式或阅读模式中选中文本后，FloatMark 会在选区附近显示浮动工具栏，可直接执行加粗、斜体、删除线、行内代码、高亮标注和评论操作。鼠标移动到内容块左侧时，也可以通过块级浮动菜单快速调整块格式。
 
-<p align="center">
-  <img src="docs/screenshots/selection-toolbar.png" alt="选中文本后的浮动快速操作工具栏" width="58%">
-  <img src="docs/screenshots/selection-format-menu.png" alt="选区工具栏中的格式菜单" width="32%">
-</p>
+<table>
+  <tr>
+    <td width="62%" align="center">
+      <img src="docs/screenshots/selection-toolbar.png" alt="选中文本后的浮动快速操作工具栏" width="100%">
+    </td>
+    <td width="38%" align="center">
+      <img src="docs/screenshots/selection-format-menu.png" alt="选区工具栏中的格式菜单" width="100%">
+    </td>
+  </tr>
+</table>
 
 选中文本后先显示快速操作工具栏；展开格式菜单后，可以继续切换正文、标题、列表、引用等格式。
 
-<p align="center">
-  <img src="docs/screenshots/selection-flow-entry.png" alt="块左侧浮动入口" height="260">
-  <img src="docs/screenshots/selection-flow-format-menu.png" alt="展开后的格式菜单" height="260">
-</p>
+<table>
+  <tr>
+    <td width="42%" align="center">
+      <img src="docs/screenshots/selection-flow-entry.png" alt="块左侧浮动入口" width="100%">
+    </td>
+    <td width="58%" align="center">
+      <img src="docs/screenshots/selection-flow-format-menu.png" alt="展开后的格式菜单" width="100%">
+    </td>
+  </tr>
+</table>
 
 块级入口保持轻量，展开后才显示完整操作：切换块格式、评论、复制或删除当前块。
 
@@ -67,10 +79,16 @@ styles.css
 
 创建高亮标注时，可以选择文字色和背景色，让不同类型的信息更容易区分。
 
-<p align="center">
-  <img src="docs/screenshots/inline-marks.png" alt="正文中的多颜色高亮标注效果" width="64%">
-  <img src="docs/screenshots/highlight-sidebar.png" alt="侧边栏中的高亮标注列表" width="28%">
-</p>
+<table>
+  <tr>
+    <td width="68%" align="center">
+      <img src="docs/screenshots/inline-marks.png" alt="正文中的多颜色高亮标注效果" width="100%">
+    </td>
+    <td width="32%" align="center">
+      <img src="docs/screenshots/highlight-sidebar.png" alt="侧边栏中的高亮标注列表" width="100%">
+    </td>
+  </tr>
+</table>
 
 多颜色高亮直接显示在正文中；侧边栏可以集中查看当前文档中的高亮标注，并继续调整颜色、备注或定位到原文。
 

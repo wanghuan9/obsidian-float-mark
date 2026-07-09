@@ -1,6 +1,6 @@
 # FloatMark
 
-[简体中文](./README.md) | [English](./README.en.md)
+[English](./README.md) | [简体中文](./README.zh-CN.md)
 
 FloatMark is an Obsidian plugin for inline marks, comments, and floating quick-action toolbars, bringing a Feishu / Lark Docs-like experience to local notes.
 
@@ -44,17 +44,29 @@ Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
 
 Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments. Move the mouse to the left side of a content block to open block-level quick actions.
 
-<p align="center">
-  <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="58%">
-  <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" width="32%">
-</p>
+<table>
+  <tr>
+    <td width="62%" align="center">
+      <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="100%">
+    </td>
+    <td width="38%" align="center">
+      <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" width="100%">
+    </td>
+  </tr>
+</table>
 
 After selecting text, the quick-action toolbar appears first. Open the format menu to switch body text, headings, lists, quotes, and more.
 
-<p align="center">
-  <img src="docs/screenshots/selection-flow-entry.png" alt="Block hover entry beside the document heading" height="260">
-  <img src="docs/screenshots/selection-flow-format-menu.png" alt="Expanded format menu" height="260">
-</p>
+<table>
+  <tr>
+    <td width="42%" align="center">
+      <img src="docs/screenshots/selection-flow-entry.png" alt="Block hover entry beside the document heading" width="100%">
+    </td>
+    <td width="58%" align="center">
+      <img src="docs/screenshots/selection-flow-format-menu.png" alt="Expanded format menu" width="100%">
+    </td>
+  </tr>
+</table>
 
 The block entry stays compact until expanded, then exposes block format changes, comments, copy, and delete actions.
 
@@ -68,10 +80,16 @@ Inline highlight marks are rendered directly on the source text, making it easy 
 
 When creating highlight marks, choose text and background colors to distinguish different types of information.
 
-<p align="center">
-  <img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="64%">
-  <img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="28%">
-</p>
+<table>
+  <tr>
+    <td width="68%" align="center">
+      <img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="100%">
+    </td>
+    <td width="32%" align="center">
+      <img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="100%">
+    </td>
+  </tr>
+</table>
 
 Multi-color highlights render directly in the document body. The sidebar collects highlight marks for review, color or note edits, and jump-back navigation.
 

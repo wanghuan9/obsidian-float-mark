@@ -14,6 +14,7 @@ import { canSyncMarkToLark, getLarkSyncPluginStatus, getLarkSyncPluginStatusClas
 import { renderReadingMarks } from "./reading-view-renderer";
 import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
+import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
 
 const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -81,7 +82,7 @@ export default class SideMarkPlugin extends Plugin {
 		});
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => void this.reloadCurrentDocument()));
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.schedulePreviewMarkRender()));
-		this.registerDomEvent(document, "selectionchange", () => this.handleReadingSelectionChange());
+			this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
 		this.registerEvent(this.app.vault.on("modify", (file) => {
 			if (file instanceof TFile && file.extension === "md" && file.path === this.getActiveMarkdownFile()?.path) {
 				void this.reloadCurrentDocument();
@@ -445,13 +446,12 @@ export default class SideMarkPlugin extends Plugin {
 			if (!(view instanceof MarkdownView) || view.getMode() !== "preview") {
 				continue;
 			}
-			const contentRange = document.createRange();
+			const contentRange = getActiveDocument().createRange();
 			contentRange.selectNodeContents(view.contentEl);
 			const startsInView = range.compareBoundaryPoints(Range.START_TO_START, contentRange) >= 0
 				&& range.compareBoundaryPoints(Range.START_TO_END, contentRange) <= 0;
 			const endsInView = range.compareBoundaryPoints(Range.END_TO_START, contentRange) >= 0
 				&& range.compareBoundaryPoints(Range.END_TO_END, contentRange) <= 0;
-			contentRange.detach();
 			if (startsInView || endsInView) {
 				return view;
 			}
@@ -922,7 +922,7 @@ export default class SideMarkPlugin extends Plugin {
 			}
 			const element = view.contentEl.querySelector<HTMLElement>(`[data-side-mark-reading-id="${markId}"]`);
 			if (element) {
-				this.app.workspace.revealLeaf(leaf);
+					void this.app.workspace.revealLeaf(leaf);
 				return element;
 			}
 		}
@@ -933,7 +933,7 @@ export default class SideMarkPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (view instanceof MarkdownView && view.file?.path === filePath) {
-				this.app.workspace.revealLeaf(leaf);
+					void this.app.workspace.revealLeaf(leaf);
 				return view;
 			}
 		}
@@ -964,7 +964,7 @@ export default class SideMarkPlugin extends Plugin {
 			await leaf?.setViewState({ type: SIDE_MARK_VIEW_TYPE, active: true });
 		}
 		if (leaf) {
-			this.app.workspace.revealLeaf(leaf);
+			await this.app.workspace.revealLeaf(leaf);
 			await this.refreshSidebar();
 		}
 	}
@@ -1032,13 +1032,13 @@ function getSelectionFormat(view: EditorView): SelectionFormatAction {
 }
 
 function getEditorSelectionRect(view: EditorView): DOMRect | null {
-	const selection = window.getSelection();
+	const selection = getActiveSelection();
 	if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
 		return null;
 	}
 	const range = selection.getRangeAt(0);
 	const common = range.commonAncestorContainer;
-	const element = common instanceof HTMLElement ? common : common.parentElement;
+	const element = isHtmlElement(common) ? common : common.parentElement;
 	if (!element || !view.dom.contains(element)) {
 		return null;
 	}

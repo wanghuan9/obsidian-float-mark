@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { getActiveBody } from "./dom-utils";
 import type { MarkBackgroundColor, MarkTextColor } from "./types";
 
 export interface MarkStyleChoice {
@@ -57,7 +58,7 @@ export class MarkStylePopover {
 	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
 	constructor() {
-		this.el = document.body.createDiv({ cls: "side-mark-style-popover" });
+		this.el = getActiveBody().createDiv({ cls: "side-mark-style-popover" });
 		this.el.hide();
 		this.el.addEventListener("mouseenter", () => this.cancelHide());
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
@@ -89,7 +90,7 @@ export class MarkStylePopover {
 		this.renderActiveState();
 		this.el.show();
 		this.el.removeClass("is-visible");
-		document.addEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.addEventListener("mousedown", this.outsideMouseDownHandler);
 		const width = this.el.offsetWidth;
 		const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
 		const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
@@ -100,7 +101,7 @@ export class MarkStylePopover {
 
 	hide(): void {
 		this.cancelHide();
-		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.removeClass("is-visible");
 		this.onChange = null;
 		this.onReset = null;
@@ -113,7 +114,7 @@ export class MarkStylePopover {
 
 	destroy(): void {
 		this.cancelHide();
-		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.remove();
 	}
 

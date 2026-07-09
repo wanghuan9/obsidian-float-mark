@@ -321,6 +321,7 @@ function buildSyncedHash(selectedText: string, replies: LarkReply[]): string {
 
 async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string; blockId: string; content: string }): Promise<LarkCliResult> {
 	try {
+		const replyElements: unknown = JSON.parse(input.content);
 		return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comments",
@@ -332,7 +333,7 @@ async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string
 			"--data",
 			JSON.stringify({
 				file_type: "docx",
-				reply_elements: JSON.parse(input.content),
+				reply_elements: replyElements,
 				anchor: {
 					block_id: input.blockId
 				}

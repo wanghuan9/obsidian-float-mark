@@ -2,6 +2,7 @@ import { editorInfoField } from "obsidian";
 import { RangeSet, type Extension, type Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type SideMarkPlugin from "./main";
+import { getActiveSelection, isHtmlElement } from "./dom-utils";
 
 export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension {
 	return ViewPlugin.fromClass(
@@ -146,7 +147,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 
 			private handleMarkClick(event: MouseEvent): void {
-				const target = event.target instanceof HTMLElement ? event.target : null;
+				const target = isHtmlElement(event.target) ? event.target : null;
 				const markEl = target?.closest<HTMLElement>("[data-side-mark-id]");
 				const markId = markEl?.dataset.sideMarkId;
 				if (!markId) {
@@ -159,7 +160,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 
 			private handleMouseMove(event: MouseEvent): void {
-				if (!(event.target instanceof HTMLElement) || !this.view.dom.contains(event.target)) {
+				if (!isHtmlElement(event.target) || !this.view.dom.contains(event.target)) {
 					return;
 				}
 				if (!this.view.state.selection.main.empty) {
@@ -242,13 +243,13 @@ function getLineLabel(lineText: string): string {
 }
 
 function getDomSelectionRect(editorDom: HTMLElement): DOMRect | null {
-	const selection = window.getSelection();
+	const selection = getActiveSelection();
 	if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
 		return null;
 	}
 	const range = selection.getRangeAt(0);
 	const common = range.commonAncestorContainer;
-	const element = common instanceof HTMLElement ? common : common.parentElement;
+	const element = isHtmlElement(common) ? common : common.parentElement;
 	if (!element || !editorDom.contains(element)) {
 		return null;
 	}

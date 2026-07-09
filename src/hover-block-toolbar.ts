@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { getActiveBody } from "./dom-utils";
 
 export type HoverBlockAction =
 	| "paragraph"
@@ -75,7 +76,7 @@ export class HoverBlockToolbar {
 
 	constructor(private readonly onAction: (action: HoverBlockAction, target: HoverBlockTarget) => void) {
 		this.pointerMoveHandler = (event) => this.handlePointerMove(event);
-		this.pill = document.body.createDiv({ cls: "side-mark-block-pill" });
+		this.pill = getActiveBody().createDiv({ cls: "side-mark-block-pill" });
 		this.pill.hide();
 		this.pill.addEventListener("mousedown", (event) => event.preventDefault());
 		this.pill.addEventListener("mouseenter", () => this.scheduleOpen());
@@ -91,12 +92,12 @@ export class HoverBlockToolbar {
 		const drag = this.pill.createDiv({ cls: "side-mark-block-pill-drag" });
 		setIcon(drag, "grip-vertical");
 
-		this.menu = document.body.createDiv({ cls: "side-mark-block-menu" });
+		this.menu = getActiveBody().createDiv({ cls: "side-mark-block-menu" });
 		this.menu.hide();
 		this.menu.addEventListener("mousedown", (event) => event.preventDefault());
 		this.menu.addEventListener("mouseenter", () => this.cancelHide());
 		this.menu.addEventListener("mouseleave", () => this.scheduleHide());
-		this.submenu = document.body.createDiv({ cls: "side-mark-block-menu side-mark-block-submenu" });
+		this.submenu = getActiveBody().createDiv({ cls: "side-mark-block-menu side-mark-block-submenu" });
 		this.submenu.hide();
 		this.submenu.addEventListener("mousedown", (event) => event.preventDefault());
 		this.submenu.addEventListener("mouseenter", () => this.cancelHide());
@@ -124,7 +125,7 @@ export class HoverBlockToolbar {
 	hide(): void {
 		this.cancelOpen();
 		this.cancelHide();
-		document.removeEventListener("mousemove", this.pointerMoveHandler);
+		this.pill.doc.removeEventListener("mousemove", this.pointerMoveHandler);
 		this.pill.removeClass("is-visible");
 		this.pill.removeClass("is-open");
 		this.menu.removeClass("is-open");
@@ -154,7 +155,7 @@ export class HoverBlockToolbar {
 	destroy(): void {
 		this.cancelHide();
 		this.cancelOpen();
-		document.removeEventListener("mousemove", this.pointerMoveHandler);
+		this.pill.doc.removeEventListener("mousemove", this.pointerMoveHandler);
 		this.pill.remove();
 		this.menu.remove();
 		this.submenu.remove();
@@ -233,7 +234,7 @@ export class HoverBlockToolbar {
 			return;
 		}
 		this.pill.addClass("is-open");
-		document.addEventListener("mousemove", this.pointerMoveHandler);
+		this.pill.doc.addEventListener("mousemove", this.pointerMoveHandler);
 		this.menu.show();
 		this.menu.scrollTop = 0;
 		this.submenu.scrollTop = 0;

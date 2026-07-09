@@ -24,7 +24,7 @@ export class SideMarkStore {
 			schemaVersion: 1,
 			filePath: normalizedPath,
 			updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
-			marks: Array.isArray(parsed.marks) ? (parsed.marks as SideMark[]).map((mark) => this.normalizeMark(mark)) : []
+			marks: Array.isArray(parsed.marks) ? parsed.marks.map((mark) => this.normalizeMark(mark)) : []
 		};
 	}
 

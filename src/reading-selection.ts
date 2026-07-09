@@ -1,3 +1,5 @@
+import { getActiveDocument } from "./dom-utils";
+
 export function findSourceRangeForReadingSelection(
 	source: string,
 	selectedText: string,
@@ -28,11 +30,10 @@ export function findSourceRangeForReadingSelection(
 }
 
 export function getReadingSelectionRenderedOffset(container: HTMLElement, range: Range): number {
-	const prefixRange = document.createRange();
+	const prefixRange = getActiveDocument().createRange();
 	prefixRange.selectNodeContents(container);
 	prefixRange.setEnd(range.startContainer, range.startOffset);
 	const offset = normalizeReadingSelection(prefixRange.toString()).length;
-	prefixRange.detach();
 	return offset;
 }
 

@@ -2,6 +2,7 @@ import { ItemView, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type SideMarkPlugin from "./main";
 import type { CommentReply, MarkColor, SideMark } from "./types";
 import { FLOAT_MARK_ICON_ID } from "./icons";
+import { isHtmlElement, isInputEvent } from "./dom-utils";
 
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
@@ -190,7 +191,7 @@ export class SideMarkSidebarView extends ItemView {
 		});
 		search.addEventListener("input", (event) => {
 			this.searchQuery = search.value;
-			if (this.isSearchComposing || (event instanceof InputEvent && event.isComposing)) {
+				if (this.isSearchComposing || (isInputEvent(event) && event.isComposing)) {
 				return;
 			}
 			this.updateSearchQuery(search);
@@ -338,7 +339,7 @@ export class SideMarkSidebarView extends ItemView {
 			card.addClass("is-focused");
 		}
 		card.addEventListener("click", (event) => {
-			const target = event.target instanceof HTMLElement ? event.target : null;
+			const target = isHtmlElement(event.target) ? event.target : null;
 			const interactive = target?.closest(
 				"button, textarea, input, select, a, .side-mark-card-menu, .side-mark-color-menu, .side-mark-reply-content"
 			);
@@ -368,7 +369,7 @@ export class SideMarkSidebarView extends ItemView {
 			card.addClass("is-focused");
 		}
 		card.addEventListener("click", (event) => {
-			const target = event.target instanceof HTMLElement ? event.target : null;
+			const target = isHtmlElement(event.target) ? event.target : null;
 			const interactive = target?.closest("button, textarea, input, a, .side-mark-card-menu, .side-mark-marker-note");
 			if (interactive) {
 				return;
@@ -519,11 +520,11 @@ export class SideMarkSidebarView extends ItemView {
 			if (item.color === mark.mark.color) {
 				setIcon(button, "check");
 			}
-			button.addEventListener("click", async (event) => {
+			button.addEventListener("click", (event) => {
 				event.preventDefault();
 				event.stopPropagation();
 				menu.hide();
-				await this.plugin.updateMarkColor(mark.id, item.color);
+				void this.plugin.updateMarkColor(mark.id, item.color);
 			});
 		}
 		card.addEventListener("mouseleave", () => menu.hide());
@@ -682,9 +683,9 @@ export class SideMarkSidebarView extends ItemView {
 		});
 		textarea.addEventListener("blur", () => {
 			window.setTimeout(() => {
-				if (!editor.contains(document.activeElement)) {
-					void submit();
-				}
+					if (!editor.contains(editor.doc.activeElement)) {
+						void submit();
+					}
 			}, 80);
 		});
 		textarea.focus();
@@ -736,14 +737,13 @@ export class SideMarkSidebarView extends ItemView {
 			event.stopPropagation();
 			closeComposer();
 		});
-		submit.addEventListener("click", async () => {
-			const content = textarea.value.trim();
-			if (!content) {
-				return;
-			}
-			await this.plugin.addMarkReply(mark.id, content);
-			closeComposer();
-		});
+			submit.addEventListener("click", () => {
+				const content = textarea.value.trim();
+				if (!content) {
+					return;
+				}
+				void this.plugin.addMarkReply(mark.id, content).then(closeComposer);
+			});
 		textarea.addEventListener("input", () => {
 			if (textarea.value.trim()) {
 				row.show();

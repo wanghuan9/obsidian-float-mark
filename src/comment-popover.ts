@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { getActiveBody } from "./dom-utils";
 
 export class CommentPopover {
 	private readonly el: HTMLDivElement;
@@ -9,7 +10,7 @@ export class CommentPopover {
 	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
 	constructor() {
-		this.el = document.body.createDiv({ cls: "side-mark-comment-popover" });
+		this.el = getActiveBody().createDiv({ cls: "side-mark-comment-popover" });
 		this.el.hide();
 		this.el.addEventListener("mouseenter", () => this.cancelHide());
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
@@ -59,7 +60,7 @@ export class CommentPopover {
 		this.textarea.value = "";
 		this.el.show();
 		this.el.removeClass("is-visible");
-		document.addEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.addEventListener("mousedown", this.outsideMouseDownHandler);
 		const width = this.el.offsetWidth;
 		const height = this.el.offsetHeight;
 		const left = getPopoverAxisPosition(rect.right + 12, width, rect.left - width - 12, window.innerWidth);
@@ -74,7 +75,7 @@ export class CommentPopover {
 
 	hide(): void {
 		this.cancelHide();
-		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.removeClass("is-visible");
 		this.onSave = null;
 		this.onHide?.();
@@ -88,7 +89,7 @@ export class CommentPopover {
 
 	destroy(): void {
 		this.cancelHide();
-		document.removeEventListener("mousedown", this.outsideMouseDownHandler);
+		this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.remove();
 	}
 

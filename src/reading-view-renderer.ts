@@ -1,3 +1,4 @@
+import { getActiveDocument } from "./dom-utils";
 import type { SideMark } from "./types";
 
 interface TextNodeRange {
@@ -58,10 +59,11 @@ function wrapReadingMark(
 		return;
 	}
 
-	const domRange = document.createRange();
+	const activeDocument = getActiveDocument();
+	const domRange = activeDocument.createRange();
 	domRange.setStart(startRange.node, start - startRange.start);
 	domRange.setEnd(endRange.node, end - endRange.start);
-	const wrapper = document.createElement("span");
+	const wrapper = activeDocument.createElement("span");
 	wrapper.className = [
 		"side-mark",
 		"side-mark-reading",
@@ -82,13 +84,12 @@ function wrapReadingMark(
 		wrapper.append(domRange.extractContents());
 		domRange.insertNode(wrapper);
 	} catch {
-		domRange.detach();
 	}
 }
 
 function collectTextNodes(container: HTMLElement): TextNodeRange[] {
 	const nodes: TextNodeRange[] = [];
-	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+	const walker = getActiveDocument().createTreeWalker(container, NodeFilter.SHOW_TEXT, {
 		acceptNode(node) {
 			const parent = node.parentElement;
 			if (!parent || parent.closest(".side-mark-reading")) {
