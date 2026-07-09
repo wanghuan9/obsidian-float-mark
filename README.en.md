@@ -58,20 +58,15 @@ After selecting text, the quick-action toolbar appears first. Open the format me
 
 The block entry stays compact until expanded, then exposes block format changes, comments, copy, and delete actions.
 
-<p align="center">
-  <img src="docs/screenshots/block-hover-entry.png" alt="Block hover entry on the left side of a content block" width="38%">
-  <img src="docs/screenshots/block-menu.png" alt="Left-side block quick-action menu" width="34%">
-</p>
+### Inline Highlight Marks
+
+Inline highlight marks are rendered directly on the source text, making it easy to separate highlights, risks, open questions, and passages worth revisiting. Marks stay anchored to the source text in both editing mode and reading mode.
 
 <p align="center">
   <img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="58%">
 </p>
 
 When creating highlight marks, choose text and background colors to distinguish different types of information.
-
-### Inline Highlight Marks
-
-Inline highlight marks are rendered directly on the source text, making it easy to separate highlights, risks, open questions, and passages worth revisiting. Marks stay anchored to the source text in both editing mode and reading mode.
 
 <p align="center">
   <img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="64%">
@@ -86,16 +81,14 @@ Markdown formatting actions update the note body. Comments and visual marks are 
 
 Click the ribbon highlighter icon or open FloatMark from the command palette. The sidebar lists comment threads for the current document and supports editing, replying, resolving, deleting, and jumping back to the source text.
 
-<img src="docs/screenshots/comment-sidebar.png" alt="Comment threads and actions in the FloatMark sidebar" width="520">
-
 Local comments can be synced from the sidebar to a published Feishu / Lark document with one click. After syncing, they appear as native Feishu / Lark comment threads for remote collaboration.
 
 <table>
   <tr>
-    <td width="34%" align="center">
+    <td width="50%" align="center">
       <img src="docs/screenshots/local-comment-sidebar.png" alt="Local comment sidebar in Obsidian" width="100%">
     </td>
-    <td width="66%" align="center">
+    <td width="50%" align="center">
       <img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="100%">
     </td>
   </tr>
