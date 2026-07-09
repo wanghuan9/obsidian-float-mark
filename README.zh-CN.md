@@ -15,29 +15,6 @@ FloatMark 是 Obsidian 的标注、评论与浮动快速操作工具栏插件，
 - **本地 sidecar 存储**：评论和视觉标注保存到 `.obsidian-float-marks/`，不会把评论内容直接写进 Markdown 正文。
 - **锚点重定位**：当文档内容发生轻微变化时，会尝试通过偏移、上下文和选中文本重新定位标注。
 
-## 安装
-
-### 手动安装
-
-当前可以通过源码构建后手动安装到 Obsidian vault：
-
-```bash
-git clone https://github.com/wanghuan9/obsidian-float-mark.git
-cd obsidian-float-mark
-npm install
-npm run build
-```
-
-然后将以下文件复制到你的 vault 插件目录，例如 `.obsidian/plugins/float-mark/`：
-
-```text
-manifest.json
-main.js
-styles.css
-```
-
-重启 Obsidian 后，在设置 -> 社区插件中启用 `FloatMark`。
-
 ## 使用
 
 ### 浮动快速操作工具栏
@@ -161,6 +138,29 @@ lark-cli auth status
 - 本地评论和视觉标注保存在 `.obsidian-float-marks/`，不是 Markdown 正文的一部分。
 - 飞书 / Lark 同步通过本机 `lark-cli` 执行，不在插件中保存 App Secret、access token 或 OAuth 配置。
 - 远端评论同步是可选能力；没有发布到飞书 / Lark 的笔记仍可正常使用本地标注和评论。
+
+## 安装
+
+### 手动安装
+
+当前可以通过源码构建后手动安装到 Obsidian vault：
+
+```bash
+git clone https://github.com/wanghuan9/obsidian-float-mark.git
+cd obsidian-float-mark
+npm install
+npm run build
+```
+
+然后将以下文件复制到你的 vault 插件目录，例如 `.obsidian/plugins/float-mark/`：
+
+```text
+manifest.json
+main.js
+styles.css
+```
+
+重启 Obsidian 后，在设置 -> 社区插件中启用 `FloatMark`。
 
 ## 开发
 

@@ -15,29 +15,6 @@ It focuses on three core workflows: highlight or annotate text, manage comment d
 - **Local sidecar storage**: comments and visual marks are stored under `.obsidian-float-marks/` instead of being written into the Markdown body.
 - **Anchor relocation**: after small text edits, FloatMark tries to relocate marks by offset, context, and selected text.
 
-## Installation
-
-### Manual Installation
-
-Build the plugin from source:
-
-```bash
-git clone https://github.com/wanghuan9/obsidian-float-mark.git
-cd obsidian-float-mark
-npm install
-npm run build
-```
-
-Then copy these files into your vault plugin directory, for example `.obsidian/plugins/float-mark/`:
-
-```text
-manifest.json
-main.js
-styles.css
-```
-
-Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
-
 ## Usage
 
 ### Floating Quick-Action Toolbars
@@ -162,6 +139,29 @@ Then publish the current note with [Feishu Lark CLI Sync](https://github.com/wan
 - Local comments and visual marks are stored under `.obsidian-float-marks/`.
 - Feishu / Lark sync is executed through the local `lark-cli`; the plugin does not store App Secret, access tokens, or OAuth configuration.
 - Remote comment sync is optional. Notes that have not been published to Feishu / Lark can still use all local marking and commenting features.
+
+## Installation
+
+### Manual Installation
+
+Build the plugin from source:
+
+```bash
+git clone https://github.com/wanghuan9/obsidian-float-mark.git
+cd obsidian-float-mark
+npm install
+npm run build
+```
+
+Then copy these files into your vault plugin directory, for example `.obsidian/plugins/float-mark/`:
+
+```text
+manifest.json
+main.js
+styles.css
+```
+
+Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
 
 ## Development
 
