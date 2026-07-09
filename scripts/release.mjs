@@ -13,6 +13,10 @@ const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 const OFFICIAL_REPO = "obsidianmd/obsidian-releases";
 const OFFICIAL_FORK = "wanghuan9/obsidian-releases";
 const PLUGIN_REPO = "wanghuan9/obsidian-float-mark";
+const RELEASE_ASSET_WAIT_ATTEMPTS = 60;
+const RELEASE_ASSET_WAIT_MS = 10000;
+const ATTESTATION_WAIT_ATTEMPTS = 30;
+const ATTESTATION_WAIT_MS = 10000;
 const OFFICIAL_DESCRIPTION =
 	"Add Feishu-style floating selection actions, visual text highlights, side comments, and optional Lark sync support. - This plugin has not been manually reviewed by Obsidian staff.";
 
@@ -47,9 +51,7 @@ async function main() {
 	await updateVersionFiles(targetVersion, manifest.minAppVersion);
 	await runChecks(targetVersion, await readJson("package.json"), await readJson("manifest.json"), await readJson("versions.json"));
 
-	const releaseNotes = await generateReleaseNotes(targetVersion);
 	await commitTagAndPush(targetVersion);
-	await createGitHubRelease(targetVersion, releaseNotes);
 	await validateRemoteRelease(targetVersion);
 
 	if (options.submitOfficial) {
@@ -109,7 +111,7 @@ function printUsage() {
 
 Options:
   --check             Validate the current release files. Default.
-  --publish           Bump version, build, test, commit, tag, push, and create a GitHub release.
+  --publish           Bump version, build, test, commit, tag, push, and wait for the GitHub Actions release.
   --submit-official   Add the plugin to obsidianmd/obsidian-releases if it is not listed yet.
   --version <version> Publish an explicit plain semver version.
   --patch             Bump patch from package.json version. Default for --publish.
@@ -267,23 +269,6 @@ async function validateReleaseAssets() {
 	}
 }
 
-async function generateReleaseNotes(version) {
-	const previousTag = await getPreviousTag();
-	const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
-	const log = await run("git", ["log", "--pretty=format:%s", range], { silent: true });
-	const subjects = log.stdout
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
-	const bullets = subjects.length > 0 ? subjects.map((subject) => `- ${subject}`).join("\n") : "- Release build.";
-	return `Release ${version}\n\n${bullets}`;
-}
-
-async function getPreviousTag() {
-	const result = await runResult("git", ["describe", "--tags", "--abbrev=0"], { silent: true });
-	return result.ok ? result.stdout.trim() : "";
-}
-
 async function commitTagAndPush(version) {
 	const branch = (await run("git", ["branch", "--show-current"], { silent: true })).stdout.trim();
 	await run("git", ["add", ...VERSION_FILES, ...RELEASE_ASSETS]);
@@ -293,24 +278,8 @@ async function commitTagAndPush(version) {
 	await run("git", ["push", "origin", `refs/tags/${version}`]);
 }
 
-async function createGitHubRelease(version, notes) {
-	await run("gh", [
-		"release",
-		"create",
-		version,
-		...RELEASE_ASSETS,
-		"--repo",
-		PLUGIN_REPO,
-		"--title",
-		version,
-		"--notes",
-		notes,
-		"--verify-tag"
-	]);
-}
-
 async function validateRemoteRelease(version) {
-	const release = JSON.parse((await run("gh", ["release", "view", version, "--repo", PLUGIN_REPO, "--json", "assets,isDraft,isPrerelease"], { silent: true })).stdout);
+	const release = await waitForRemoteRelease(version);
 	if (release.isDraft || release.isPrerelease) {
 		throw new Error(`GitHub release ${version} must be a public stable release.`);
 	}
@@ -320,6 +289,46 @@ async function validateRemoteRelease(version) {
 	if (missingAssets.length > 0) {
 		throw new Error(`GitHub release ${version} is missing assets: ${missingAssets.join(", ")}.`);
 	}
+	await waitForAttestations();
+}
+
+async function waitForRemoteRelease(version) {
+	console.log(`Waiting for GitHub Actions release ${version}...`);
+	let lastError = "";
+	for (let attempt = 1; attempt <= RELEASE_ASSET_WAIT_ATTEMPTS; attempt += 1) {
+		const result = await runResult("gh", ["release", "view", version, "--repo", PLUGIN_REPO, "--json", "assets,isDraft,isPrerelease"], { silent: true });
+		if (result.ok) {
+			const release = JSON.parse(result.stdout);
+			const assetNames = new Set(release.assets.map((asset) => asset.name));
+			const hasAllAssets = RELEASE_ASSETS.every((asset) => assetNames.has(asset));
+			if (hasAllAssets) {
+				return release;
+			}
+			lastError = `release exists but assets are incomplete: ${Array.from(assetNames).join(", ")}`;
+		} else {
+			lastError = result.stderr || result.stdout || result.error.message;
+		}
+		await sleep(RELEASE_ASSET_WAIT_MS);
+	}
+	throw new Error(`Timed out waiting for GitHub Actions release ${version}: ${lastError}`);
+}
+
+async function waitForAttestations() {
+	console.log("Waiting for GitHub artifact attestations...");
+	const missing = new Set(RELEASE_ASSETS);
+	for (let attempt = 1; attempt <= ATTESTATION_WAIT_ATTEMPTS; attempt += 1) {
+		for (const asset of Array.from(missing)) {
+			const result = await runResult("gh", ["attestation", "verify", asset, "--repo", PLUGIN_REPO], { silent: true });
+			if (result.ok) {
+				missing.delete(asset);
+			}
+		}
+		if (missing.size === 0) {
+			return;
+		}
+		await sleep(ATTESTATION_WAIT_MS);
+	}
+	throw new Error(`Timed out waiting for GitHub artifact attestations: ${Array.from(missing).join(", ")}`);
 }
 
 async function submitOfficialPluginEntry() {
@@ -460,6 +469,12 @@ async function runResult(command, args, options = {}) {
 			error
 		};
 	}
+}
+
+function sleep(milliseconds) {
+	return new Promise((resolve) => {
+		setTimeout(resolve, milliseconds);
+	});
 }
 
 main().catch((error) => {
