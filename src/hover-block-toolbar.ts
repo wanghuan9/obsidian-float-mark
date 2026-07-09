@@ -82,7 +82,7 @@ export class HoverBlockToolbar {
 		this.pill.addEventListener("mouseenter", () => this.scheduleOpen());
 		this.pill.addEventListener("mouseleave", () => this.scheduleHide());
 
-		const label = this.pill.createEl("button", {
+		this.pill.createEl("button", {
 			cls: "side-mark-block-pill-label",
 			attr: { type: "button", "aria-label": "块格式" }
 		});

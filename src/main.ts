@@ -8,7 +8,7 @@ import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
 import { SideMarkStore } from "./storage";
-import { DEFAULT_SETTINGS, type MarkBackgroundColor, type MarkColor, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { DEFAULT_SETTINGS, type MarkColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
 import { canSyncMarkToLark, getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";

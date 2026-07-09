@@ -84,6 +84,7 @@ function wrapReadingMark(
 		wrapper.append(domRange.extractContents());
 		domRange.insertNode(wrapper);
 	} catch {
+		return;
 	}
 }
 

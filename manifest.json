@@ -1,7 +1,7 @@
 {
 	"id": "float-mark",
 	"name": "FloatMark",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"minAppVersion": "1.8.7",
 	"description": "Feishu-style floating selection actions, visual text highlights, side comments, and optional Lark sync support.",
 	"author": "wanghuan",

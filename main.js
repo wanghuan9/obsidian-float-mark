@@ -457,7 +457,7 @@ var HoverBlockToolbar = class {
     this.pill.addEventListener("mousedown", (event) => event.preventDefault());
     this.pill.addEventListener("mouseenter", () => this.scheduleOpen());
     this.pill.addEventListener("mouseleave", () => this.scheduleHide());
-    const label = this.pill.createEl("button", {
+    this.pill.createEl("button", {
       cls: "side-mark-block-pill-label",
       attr: { type: "button", "aria-label": "\u5757\u683C\u5F0F" }
     });
@@ -3115,6 +3115,7 @@ function wrapReadingMark(ranges, mark, match, onClick) {
     wrapper.append(domRange.extractContents());
     domRange.insertNode(wrapper);
   } catch (e) {
+    return;
   }
 }
 function collectTextNodes(container) {
