@@ -1078,7 +1078,7 @@ class SideMarkSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl("h2", { text: "FloatMark" });
+		new Setting(containerEl).setName("FloatMark").setHeading();
 
 		new Setting(containerEl)
 			.setName("创建标注后打开侧栏")

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-float-mark",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "飞书式选中浮动快捷操作、正文标注、侧边评论与可选 Lark 同步的 Obsidian 插件。",
 	"main": "main.js",
 	"type": "module",

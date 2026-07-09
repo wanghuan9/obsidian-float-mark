@@ -1,9 +1,9 @@
 {
 	"id": "float-mark",
 	"name": "FloatMark",
-	"version": "0.1.0",
-	"minAppVersion": "1.5.0",
-	"description": "飞书式选中浮动快捷操作、正文标注、侧边评论与可选 Lark 同步的 Obsidian 插件。",
+	"version": "0.1.1",
+	"minAppVersion": "1.8.7",
+	"description": "飞书式选中浮动快捷操作、正文标注、侧边评论与可选 Lark 同步。",
 	"author": "wanghuan",
 	"isDesktopOnly": true
 }
