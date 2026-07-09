@@ -3404,6 +3404,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.readingSelectionTimer = null;
     this.readingSelectionRequestId = 0;
     this.lastMarkdownFilePath = "";
+    this.previewMarkRenderTimer = null;
   }
   async onload() {
     await this.loadSettings();
@@ -3431,6 +3432,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
     });
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => void this.reloadCurrentDocument()));
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.schedulePreviewMarkRender()));
     this.registerDomEvent(document, "selectionchange", () => this.handleReadingSelectionChange());
     this.registerEvent(this.app.vault.on("modify", (file) => {
       var _a;
@@ -3443,6 +3445,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   onunload() {
     var _a, _b, _c, _d, _e;
+    this.clearPreviewMarkRenderTimer();
     this.clearReadingSelectionTimer();
     this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
@@ -4083,6 +4086,7 @@ ${stripped}
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
     await this.refreshSidebar();
     this.refreshEditorDecorations();
+    await this.renderPreviewMarksForFile(file.path);
     if (autoOpenSidebar && this.settings.autoOpenSidebar) {
       await this.openSidebar();
     }
@@ -4160,6 +4164,24 @@ ${stripped}
     const section = context == null ? void 0 : context.getSectionInfo(container);
     const marks = section ? getMarksInRenderedSection(document2.marks, section.lineStart, section.lineEnd) : document2.marks;
     renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+  }
+  schedulePreviewMarkRender() {
+    if (this.previewMarkRenderTimer !== null) {
+      window.clearTimeout(this.previewMarkRenderTimer);
+    }
+    this.previewMarkRenderTimer = window.setTimeout(() => {
+      this.previewMarkRenderTimer = null;
+      const file = this.getActiveMarkdownFile();
+      if (file) {
+        void this.renderPreviewMarksForFile(file.path);
+      }
+    }, 50);
+  }
+  clearPreviewMarkRenderTimer() {
+    if (this.previewMarkRenderTimer !== null) {
+      window.clearTimeout(this.previewMarkRenderTimer);
+      this.previewMarkRenderTimer = null;
+    }
   }
   async renderPreviewMarksForFile(filePath) {
     var _a;
