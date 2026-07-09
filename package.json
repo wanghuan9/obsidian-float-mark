@@ -7,6 +7,9 @@
 	"scripts": {
 		"build": "tsc --noEmit && node esbuild.config.mjs production",
 		"dev": "node esbuild.config.mjs",
+		"release:check": "node scripts/release.mjs --check",
+		"release:official": "node scripts/release.mjs --submit-official",
+		"release:publish": "node scripts/release.mjs --publish",
 		"test": "node test/test-anchors.mjs && node test/test-block-map.mjs && node test/test-reading-selection.mjs && node test/test-reading-view-renderer.mjs"
 	},
 	"keywords": [
