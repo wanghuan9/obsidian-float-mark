@@ -8,9 +8,18 @@ import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
 import { SideMarkStore } from "./storage";
-import { DEFAULT_SETTINGS, type MarkColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { DEFAULT_SETTINGS, type MarkColor, type RemoteSyncState, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
-import { canSyncMarkToLark, getLarkSyncPluginStatus, getLarkSyncPluginStatusClass, getLarkSyncPluginStatusText, syncMarkToLark as syncMarkToLarkBridge } from "./lark-bridge";
+import {
+	canSyncMarkToLark,
+	deleteLarkComment,
+	deleteLarkCommentReply,
+	getLarkSyncPluginStatus,
+	getLarkSyncPluginStatusClass,
+	getLarkSyncPluginStatusText,
+	setLarkCommentResolved,
+	syncMarkToLark as syncMarkToLarkBridge
+} from "./lark-bridge";
 import { renderReadingMarks } from "./reading-view-renderer";
 import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
@@ -214,19 +223,23 @@ export default class SideMarkPlugin extends Plugin {
 
 	async deleteMarkReply(markId: string, replyId: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
-		if (!file) return;
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
+		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
 		await this.refreshMarkViews(file.path);
+		this.deleteRemoteCommentReplyInBackground(file.path, mark, replyId);
 	}
 
 	async toggleResolved(markId: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
 		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!file || !mark) return;
+		const nextStatus = mark.status === "resolved" ? "active" : "resolved";
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
-			status: mark.status === "resolved" ? "active" : "resolved"
+			status: nextStatus
 		});
 		await this.refreshMarkViews(file.path);
+		this.syncRemoteCommentResolutionInBackground(mark, nextStatus === "resolved");
 	}
 
 	async updateMarkColor(markId: string, color: MarkColor): Promise<void> {
@@ -281,10 +294,12 @@ export default class SideMarkPlugin extends Plugin {
 
 	async deleteMark(markId: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
-		if (!file) return;
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
+		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteMark(file.path, markId);
 		this.markStylePopover.hide();
 		await this.refreshMarkViews(file.path);
+		this.deleteRemoteCommentInBackground(mark);
 	}
 
 	async jumpToMark(markId: string): Promise<void> {
@@ -331,6 +346,56 @@ export default class SideMarkPlugin extends Plugin {
 		} finally {
 			await this.refreshSidebar();
 		}
+	}
+
+	private syncRemoteCommentResolutionInBackground(mark: SideMark, isSolved: boolean): void {
+		if (!shouldSyncRemoteComment(mark)) {
+			return;
+		}
+		void (async () => {
+			await setLarkCommentResolved(this, mark, isSolved);
+		})().catch((error) => {
+			const message = error instanceof Error ? error.message : String(error);
+			new Notice(`同步飞书评论状态失败：${message}`, 8000);
+		});
+	}
+
+	private deleteRemoteCommentInBackground(mark: SideMark): void {
+		if (!shouldSyncRemoteComment(mark)) {
+			return;
+		}
+		void (async () => {
+			await deleteLarkComment(this, mark);
+		})().catch((error) => {
+			if (isMissingRemoteCommentError(error)) {
+				return;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			new Notice(`删除飞书评论失败：${message}`, 8000);
+		});
+	}
+
+	private deleteRemoteCommentReplyInBackground(filePath: string, mark: SideMark, replyId: string): void {
+		if (!shouldSyncRemoteComment(mark)) {
+			return;
+		}
+		void (async () => {
+			const remote = await deleteLarkCommentReply(this, mark, replyId);
+			if (!remote) {
+				return;
+			}
+			const document = await this.store.updateMark(filePath, mark.id, { remote });
+			if (this.currentDocument?.filePath === filePath) {
+				this.currentDocument = document;
+				await this.refreshSidebar();
+			}
+		})().catch((error) => {
+			if (isMissingRemoteCommentError(error)) {
+				return;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			new Notice(`删除飞书评论回复失败：${message}`, 8000);
+		});
 	}
 
 	private async handleToolbarAction(action: ToolbarAction): Promise<void> {
@@ -1003,6 +1068,23 @@ function isSelectionBlockAction(action: ToolbarAction): boolean {
 		"quote",
 		"code-block"
 	].includes(action);
+}
+
+function shouldSyncRemoteComment(mark: SideMark): boolean {
+	return mark.mark.kind === "comment" && Boolean(mark.remote?.larkCommentId);
+}
+
+function isMissingRemoteCommentError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	const normalized = message.toLowerCase();
+	return normalized.includes("docs had been deleted")
+		|| normalized.includes("had been deleted")
+		|| normalized.includes("not found")
+		|| normalized.includes("not exist")
+		|| normalized.includes("does not exist")
+		|| normalized.includes("1069304")
+		|| message.includes("不存在")
+		|| message.includes("已删除");
 }
 
 function getSelectionFormat(view: EditorView): SelectionFormatAction {

@@ -555,7 +555,7 @@ export class SideMarkSidebarView extends ItemView {
 			toolbar,
 			mark.status === "resolved" ? "circle" : "circle-check",
 			mark.status === "resolved" ? "恢复" : "解决",
-			() => void this.plugin.toggleResolved(mark.id)
+			() => void this.toggleResolved(mark.id)
 		);
 		const more = toolbar.createEl("button", {
 			cls: "side-mark-card-icon-button",
@@ -924,10 +924,14 @@ export class SideMarkSidebarView extends ItemView {
 
 	private async deleteReply(mark: SideMark, replies: CommentReply[], replyId: string): Promise<void> {
 		if (replies.length <= 1) {
-			await this.plugin.deleteMark(mark.id);
+			await this.deleteMark(mark.id);
 			return;
 		}
 		await this.plugin.deleteMarkReply(mark.id, replyId);
+	}
+
+	private async toggleResolved(markId: string): Promise<void> {
+		await this.plugin.toggleResolved(markId);
 	}
 
 	private async deleteMark(markId: string): Promise<void> {

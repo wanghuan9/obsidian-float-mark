@@ -289,9 +289,9 @@
 	max-height: 360px;
 	padding: 6px 0 0;
 	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-bottom: 0;
+	border: 0;
 	border-radius: 7px;
+	background-clip: padding-box;
 	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 	overflow-y: auto;
 	opacity: 0;
@@ -662,7 +662,10 @@
 .side-mark-secondary-button {
 	min-height: 28px;
 	padding: 3px 11px;
+	border: 0;
 	border-radius: 4px;
+	background-image: none;
+	box-shadow: none;
 	font-size: 13px;
 }
 
@@ -907,6 +910,14 @@
 	outline: none;
 }
 
+.side-mark-sidebar button.side-mark-sidebar-tab {
+	border: 0;
+	background: transparent;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-sidebar-tab.is-active {
 	background: transparent;
 	border: 0;
@@ -919,6 +930,14 @@
 .side-mark-sidebar-tab:active {
 	background: transparent;
 	border: 0;
+	box-shadow: none;
+}
+
+.side-mark-sidebar button.side-mark-sidebar-tab:hover,
+.side-mark-sidebar button.side-mark-sidebar-tab:focus,
+.side-mark-sidebar button.side-mark-sidebar-tab:active {
+	border: 0;
+	background-image: none;
 	box-shadow: none;
 }
 
@@ -943,18 +962,18 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	min-width: 16px;
-	height: 16px;
-	padding: 0 4px;
-	border-radius: 999px;
-	background: rgba(120, 132, 153, 0.14);
+	min-width: 0;
+	height: auto;
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
 	color: var(--text-muted);
 	font-size: 10px;
-	line-height: 16px;
+	line-height: 1;
 }
 
 .side-mark-sidebar-tab.is-active .side-mark-sidebar-tab-count {
-	background: rgba(47, 109, 246, 0.14);
+	background: transparent;
 	color: #2f6df6;
 }
 
@@ -1023,9 +1042,25 @@
 	cursor: pointer;
 }
 
+.side-mark-sidebar button.side-mark-filter-trigger {
+	border: 0;
+	background: transparent;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-filter-trigger:hover,
 .side-mark-filter-trigger:focus {
 	background: transparent;
+	box-shadow: none;
+}
+
+.side-mark-sidebar button.side-mark-filter-trigger:hover,
+.side-mark-sidebar button.side-mark-filter-trigger:focus,
+.side-mark-sidebar button.side-mark-filter-trigger:active {
+	border: 0;
+	background-image: none;
 	box-shadow: none;
 }
 
@@ -1076,9 +1111,24 @@
 	cursor: pointer;
 }
 
+.side-mark-sidebar button.side-mark-filter-menu-item {
+	border: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-filter-menu-item:hover {
 	background: rgba(47, 109, 246, 0.08);
 	color: #2f6df6;
+}
+
+.side-mark-sidebar button.side-mark-filter-menu-item:hover,
+.side-mark-sidebar button.side-mark-filter-menu-item:focus,
+.side-mark-sidebar button.side-mark-filter-menu-item:active {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
 }
 
 .side-mark-filter-menu-item.is-active {
@@ -1194,6 +1244,11 @@
 	cursor: pointer;
 }
 
+.side-mark-sidebar button.side-mark-color-option {
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-color-option:hover,
 .side-mark-color-option.is-active {
 	border-color: var(--background-primary);
@@ -1248,6 +1303,14 @@
 	cursor: pointer;
 }
 
+.side-mark-sidebar button.side-mark-card-icon-button {
+	border: 0;
+	background: transparent;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-card-icon-button svg {
 	width: 13px;
 	height: 13px;
@@ -1257,6 +1320,14 @@
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-normal);
+}
+
+.side-mark-sidebar button.side-mark-card-icon-button:hover,
+.side-mark-sidebar button.side-mark-card-icon-button:focus,
+.side-mark-sidebar button.side-mark-card-icon-button:active {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
 }
 
 .side-mark-card-icon-button.is-confirming {
@@ -1353,6 +1424,12 @@
 	transition: background 120ms ease, color 120ms ease;
 }
 
+.side-mark-sidebar button.side-mark-card-menu-item {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-card-menu.is-compact .side-mark-card-menu-item {
 	gap: 3px;
 	min-height: 24px;
@@ -1361,6 +1438,14 @@
 
 .side-mark-card-menu-item:hover {
 	background: var(--background-modifier-hover);
+}
+
+.side-mark-sidebar button.side-mark-card-menu-item:hover,
+.side-mark-sidebar button.side-mark-card-menu-item:focus,
+.side-mark-sidebar button.side-mark-card-menu-item:active {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
 }
 
 .side-mark-card-menu-item.is-danger {
@@ -1923,6 +2008,14 @@
 	pointer-events: none;
 }
 
+.side-mark-sidebar button.side-mark-reply-trigger {
+	border: 0;
+	background: transparent;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+}
+
 .side-mark-card:hover .side-mark-reply-trigger,
 .side-mark-card.is-composing .side-mark-reply-trigger {
 	color: var(--text-muted);
@@ -1938,6 +2031,14 @@
 	background-color: transparent;
 	color: var(--text-muted);
 	-webkit-text-fill-color: var(--text-muted);
+}
+
+.side-mark-sidebar button.side-mark-reply-trigger:hover,
+.side-mark-sidebar button.side-mark-reply-trigger:focus,
+.side-mark-sidebar button.side-mark-reply-trigger:active {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
 }
 
 .side-mark-reply-composer.is-editing {

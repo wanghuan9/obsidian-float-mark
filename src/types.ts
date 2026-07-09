@@ -42,6 +42,7 @@ export interface RemoteSyncState {
 	larkDocUrl?: string;
 	larkCommentId?: string;
 	larkReplyId?: string;
+	larkReplyIds?: string[];
 	blockId?: string;
 	syncedHash?: string;
 	syncedAt?: string;

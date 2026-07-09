@@ -2162,7 +2162,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       toolbar,
       mark.status === "resolved" ? "circle" : "circle-check",
       mark.status === "resolved" ? "\u6062\u590D" : "\u89E3\u51B3",
-      () => void this.plugin.toggleResolved(mark.id)
+      () => void this.toggleResolved(mark.id)
     );
     const more = toolbar.createEl("button", {
       cls: "side-mark-card-icon-button",
@@ -2512,10 +2512,13 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   async deleteReply(mark, replies, replyId) {
     if (replies.length <= 1) {
-      await this.plugin.deleteMark(mark.id);
+      await this.deleteMark(mark.id);
       return;
     }
     await this.plugin.deleteMarkReply(mark.id, replyId);
+  }
+  async toggleResolved(markId) {
+    await this.plugin.toggleResolved(markId);
   }
   async deleteMark(markId) {
     await this.plugin.deleteMark(markId);
@@ -2540,7 +2543,9 @@ function formatReplyTime(value) {
 }
 
 // src/lark-bridge.ts
+var import_child_process = require("child_process");
 var import_obsidian9 = require("obsidian");
+var import_util = require("util");
 
 // src/block-map.ts
 var LARK_BINDING_KEYS = /* @__PURE__ */ new Set([
@@ -2724,8 +2729,9 @@ function createLineStarts(markdown) {
 // src/lark-bridge.ts
 var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
+var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 async function syncMarkToLark(plugin, file, source, mark) {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e, _f, _g, _h;
   const binding = readLarkBinding(source);
   if (!binding.doc) {
     throw new Error("\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002");
@@ -2759,6 +2765,7 @@ async function syncMarkToLark(plugin, file, source, mark) {
     throw new Error(((_b = result.error) == null ? void 0 : _b.message) || ((_c = result.error) == null ? void 0 : _c.hint) || "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002");
   }
   const commentId = (_d = result.data) == null ? void 0 : _d.comment_id;
+  const replyIds = [(_e = result.data) == null ? void 0 : _e.reply_id].filter(isNonEmptyString);
   if (commentId) {
     for (const reply of restReplies) {
       const replyResult = await runLarkCreateReply(plugin, {
@@ -2767,7 +2774,10 @@ async function syncMarkToLark(plugin, file, source, mark) {
         content: buildReplyBody(reply.content)
       });
       if (!replyResult.ok) {
-        throw new Error(((_e = replyResult.error) == null ? void 0 : _e.message) || ((_f = replyResult.error) == null ? void 0 : _f.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+        throw new Error(((_f = replyResult.error) == null ? void 0 : _f.message) || ((_g = replyResult.error) == null ? void 0 : _g.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+      }
+      if ((_h = replyResult.data) == null ? void 0 : _h.reply_id) {
+        replyIds.push(replyResult.data.reply_id);
       }
     }
   }
@@ -2776,10 +2786,64 @@ async function syncMarkToLark(plugin, file, source, mark) {
     larkDocToken: binding.token,
     larkDocUrl: binding.url,
     larkCommentId: commentId,
-    larkReplyId: (_g = result.data) == null ? void 0 : _g.reply_id,
+    larkReplyId: replyIds.at(-1),
+    larkReplyIds: replyIds.length ? replyIds : void 0,
     blockId,
     syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
     syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function setLarkCommentResolved(plugin, mark, isSolved) {
+  const { doc, commentId } = getRemoteCommentReference(mark);
+  const result = await runLarkPatchComment(plugin, { doc, commentId, isSolved });
+  assertLarkCommandOk(result, "lark-cli \u66F4\u65B0\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\u3002");
+}
+async function deleteLarkComment(plugin, mark) {
+  const { doc, commentId } = getRemoteCommentReference(mark);
+  const storedReplyIds = getDeleteAllLarkReplyIds(mark.remote);
+  const replies = getReplies(mark);
+  const idsToDelete = storedReplyIds.length >= replies.length ? storedReplyIds : await findLarkReplyIds(plugin, doc, commentId);
+  if (idsToDelete.length === 0) {
+    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u3002");
+  }
+  for (const replyId of [...idsToDelete].reverse()) {
+    const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId });
+    assertLarkCommandOk(result, "lark-cli \u5220\u9664\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+  }
+}
+async function deleteLarkCommentReply(plugin, mark, replyId) {
+  var _a, _b;
+  const { doc, commentId } = getRemoteCommentReference(mark);
+  const replies = getReplies(mark);
+  const replyIndex = replies.findIndex((reply) => reply.id === replyId);
+  if (replyIndex === -1) {
+    throw new Error("\u627E\u4E0D\u5230\u8981\u5220\u9664\u7684\u672C\u5730\u8BC4\u8BBA\u56DE\u590D\u3002");
+  }
+  const syncedReplyCount = findSyncedReplyCount(mark, replies);
+  if (replyIndex >= syncedReplyCount) {
+    return null;
+  }
+  const storedReplyIds = getStoredLarkReplyIdList(mark.remote);
+  const shouldUseLegacyLastReplyId = replyIndex === syncedReplyCount - 1 && Boolean((_a = mark.remote) == null ? void 0 : _a.larkReplyId);
+  const remoteReplyIds = storedReplyIds.length >= syncedReplyCount || shouldUseLegacyLastReplyId ? storedReplyIds : await findLarkReplyIds(plugin, doc, commentId);
+  const remoteReplyId = remoteReplyIds[replyIndex] || (replyIndex === syncedReplyCount - 1 ? (_b = mark.remote) == null ? void 0 : _b.larkReplyId : "");
+  if (!remoteReplyId) {
+    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u56DE\u590D\u3002");
+  }
+  const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId: remoteReplyId });
+  assertLarkCommandOk(result, "lark-cli \u5220\u9664\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+  const syncedRepliesAfterDelete = replies.slice(0, syncedReplyCount).filter((reply) => reply.id !== replyId);
+  const remainingReplies = replies.filter((reply) => reply.id !== replyId);
+  const hasPendingReplies = remainingReplies.length > syncedRepliesAfterDelete.length;
+  return {
+    ...mark.remote,
+    status: hasPendingReplies ? "pending" : "synced",
+    larkCommentId: commentId,
+    larkReplyId: remoteReplyIds.filter((_, index) => index !== replyIndex).at(-1) || void 0,
+    larkReplyIds: remoteReplyIds.filter((_, index) => index !== replyIndex),
+    syncedHash: buildSyncedHash(mark.anchor.selectedText, syncedRepliesAfterDelete),
+    syncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    error: void 0
   };
 }
 async function canSyncMarkToLark(plugin, source) {
@@ -2790,6 +2854,32 @@ async function canSyncMarkToLark(plugin, source) {
   const syncState = await readSyncState(plugin);
   const docState = findDocumentState(syncState, binding.doc);
   return Boolean((docState == null ? void 0 : docState.titleBlockId) || (docState == null ? void 0 : docState.units.length));
+}
+function getRemoteCommentReference(mark) {
+  var _a, _b, _c;
+  const doc = ((_a = mark.remote) == null ? void 0 : _a.larkDocToken) || ((_b = mark.remote) == null ? void 0 : _b.larkDocUrl) || "";
+  const commentId = ((_c = mark.remote) == null ? void 0 : _c.larkCommentId) || "";
+  if (!doc || !commentId) {
+    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA\u540C\u6B65\u4FE1\u606F\uFF0C\u65E0\u6CD5\u64CD\u4F5C\u8FDC\u7AEF\u8BC4\u8BBA\u3002");
+  }
+  return { doc, commentId };
+}
+function getDeleteAllLarkReplyIds(remote) {
+  const replyIds = getStoredLarkReplyIdList(remote);
+  if (replyIds.length > 0) {
+    return replyIds;
+  }
+  return (remote == null ? void 0 : remote.larkReplyId) ? [remote.larkReplyId] : [];
+}
+function getStoredLarkReplyIdList(remote) {
+  return ((remote == null ? void 0 : remote.larkReplyIds) || []).filter(isNonEmptyString);
+}
+function getLarkReplyItems(result) {
+  var _a;
+  return ((_a = result.data) == null ? void 0 : _a.items) || result.items || [];
+}
+function isNonEmptyString(value) {
+  return Boolean(value);
 }
 function getLarkSyncPluginStatus(plugin) {
   var _a, _b, _c, _d;
@@ -2890,13 +2980,16 @@ function buildReplyBody(text) {
   });
 }
 async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e, _f, _g, _h;
   const commentId = (_a = mark.remote) == null ? void 0 : _a.larkCommentId;
   if (!commentId) {
     throw new Error("\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA ID\uFF0C\u65E0\u6CD5\u8FFD\u52A0\u56DE\u590D\u3002");
   }
-  const pendingReplies = findPendingReplies(mark, replies);
+  const syncedReplyCount = findSyncedReplyCount(mark, replies);
+  const pendingReplies = replies.slice(syncedReplyCount);
   let lastReplyId = (_b = mark.remote) == null ? void 0 : _b.larkReplyId;
+  const knownReplyIds = getStoredLarkReplyIdList(mark.remote);
+  const replyIds = knownReplyIds.length === syncedReplyCount ? [...knownReplyIds] : syncedReplyCount === 1 && lastReplyId ? [lastReplyId] : [];
   for (const reply of pendingReplies) {
     const result = await runLarkCreateReply(plugin, {
       doc: binding.doc,
@@ -2907,20 +3000,24 @@ async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) 
       throw new Error(((_c = result.error) == null ? void 0 : _c.message) || ((_d = result.error) == null ? void 0 : _d.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
     }
     lastReplyId = ((_e = result.data) == null ? void 0 : _e.reply_id) || lastReplyId;
+    if ((_f = result.data) == null ? void 0 : _f.reply_id) {
+      replyIds.push(result.data.reply_id);
+    }
   }
   return {
     ...mark.remote,
     status: "synced",
-    larkDocToken: binding.token || ((_f = mark.remote) == null ? void 0 : _f.larkDocToken),
-    larkDocUrl: binding.url || ((_g = mark.remote) == null ? void 0 : _g.larkDocUrl),
+    larkDocToken: binding.token || ((_g = mark.remote) == null ? void 0 : _g.larkDocToken),
+    larkDocUrl: binding.url || ((_h = mark.remote) == null ? void 0 : _h.larkDocUrl),
     larkCommentId: commentId,
     larkReplyId: lastReplyId,
+    larkReplyIds: replyIds.length === replies.length ? replyIds : void 0,
     syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
     syncedAt: (/* @__PURE__ */ new Date()).toISOString(),
     error: void 0
   };
 }
-function findPendingReplies(mark, replies) {
+function findSyncedReplyCount(mark, replies) {
   var _a;
   const syncedHash = (_a = mark.remote) == null ? void 0 : _a.syncedHash;
   if (syncedHash === void 0) {
@@ -2932,7 +3029,7 @@ function findPendingReplies(mark, replies) {
   }
   for (let index = 0; index <= replies.length; index++) {
     if (getThreadContent(replies.slice(0, index)) === syncedThreadContent) {
-      return replies.slice(index);
+      return index;
     }
   }
   throw new Error("\u5DF2\u540C\u6B65\u7684\u65E7\u8BC4\u8BBA\u5185\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u6682\u4E0D\u652F\u6301\u540C\u6B65\u7F16\u8F91\u6216\u5220\u9664\u540E\u7684\u56DE\u590D\u3002");
@@ -3015,6 +3112,103 @@ async function runLarkCreateReply(plugin, input) {
     throw error;
   }
 }
+async function runLarkPatchComment(plugin, input) {
+  try {
+    return await runLarkCliViaSyncPlugin(plugin, [
+      "drive",
+      "file.comments",
+      "patch",
+      "--as",
+      "user",
+      "--file-token",
+      extractDocumentToken(input.doc),
+      "--file-type",
+      "docx",
+      "--comment-id",
+      input.commentId,
+      "--data",
+      JSON.stringify({ is_solved: input.isSolved }),
+      "--json"
+    ]);
+  } catch (error) {
+    const message = getExecErrorMessage(error);
+    if (message) {
+      throw new Error(message);
+    }
+    throw error;
+  }
+}
+async function findLarkReplyIds(plugin, doc, commentId) {
+  try {
+    const result = await runRawLarkCliViaSyncPlugin(plugin, [
+      "drive",
+      "file.comment.replys",
+      "list",
+      "--as",
+      "user",
+      "--file-token",
+      extractDocumentToken(doc),
+      "--file-type",
+      "docx",
+      "--comment-id",
+      commentId,
+      "--page-size",
+      "100",
+      "--json"
+    ]);
+    assertLarkCommandOk(result, "lark-cli \u83B7\u53D6\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+    const items = getLarkReplyItems(result);
+    return items.map((item) => item.reply_id || "").filter(Boolean);
+  } catch (error) {
+    const message = getExecErrorMessage(error);
+    if (message) {
+      throw new Error(message);
+    }
+    throw error;
+  }
+}
+async function runRawLarkCliViaSyncPlugin(plugin, args) {
+  var _a, _b;
+  const status = getLarkSyncPluginStatus(plugin);
+  if (status !== "enabled") {
+    throw new Error(`${getLarkSyncPluginStatusText(status)} \u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`);
+  }
+  const syncPlugin = getLarkSyncPluginBridge(plugin);
+  const executable = await ((_a = syncPlugin == null ? void 0 : syncPlugin.resolveLarkCliPath) == null ? void 0 : _a.call(syncPlugin)) || "lark-cli";
+  const env = await ((_b = syncPlugin == null ? void 0 : syncPlugin.buildCommandEnvironment) == null ? void 0 : _b.call(syncPlugin, executable)) || process.env;
+  const { stdout } = await execFileAsync(executable, args, {
+    env,
+    maxBuffer: 20 * 1024 * 1024
+  });
+  return JSON.parse(stdout.toString());
+}
+async function runLarkDeleteReply(plugin, input) {
+  try {
+    return await runLarkCliViaSyncPlugin(plugin, [
+      "drive",
+      "file.comment.replys",
+      "delete",
+      "--as",
+      "user",
+      "--file-token",
+      extractDocumentToken(input.doc),
+      "--file-type",
+      "docx",
+      "--comment-id",
+      input.commentId,
+      "--reply-id",
+      input.replyId,
+      "--yes",
+      "--json"
+    ]);
+  } catch (error) {
+    const message = getExecErrorMessage(error);
+    if (message) {
+      throw new Error(message);
+    }
+    throw error;
+  }
+}
 async function runLarkCliViaSyncPlugin(plugin, args) {
   const status = getLarkSyncPluginStatus(plugin);
   if (status !== "enabled") {
@@ -3026,6 +3220,12 @@ async function runLarkCliViaSyncPlugin(plugin, args) {
     throw new Error("Feishu Lark CLI Sync \u672A\u66B4\u9732 CLI \u6267\u884C\u80FD\u529B\uFF0C\u8BF7\u5347\u7EA7\u8BE5\u63D2\u4EF6\u3002");
   }
   return await runLarkCliCommand.call(syncPlugin, args);
+}
+function assertLarkCommandOk(result, fallbackMessage) {
+  var _a, _b;
+  if (result.ok === false) {
+    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || fallbackMessage);
+  }
 }
 function getExecErrorMessage(error) {
   if (!error || typeof error !== "object") {
@@ -3570,20 +3770,25 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     await this.refreshSidebar();
   }
   async deleteMarkReply(markId, replyId) {
+    var _a;
     const file = this.getActiveMarkdownFile();
-    if (!file) return;
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) return;
     this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
     await this.refreshMarkViews(file.path);
+    this.deleteRemoteCommentReplyInBackground(file.path, mark, replyId);
   }
   async toggleResolved(markId) {
     var _a;
     const file = this.getActiveMarkdownFile();
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!file || !mark) return;
+    const nextStatus = mark.status === "resolved" ? "active" : "resolved";
     this.currentDocument = await this.store.updateMark(file.path, markId, {
-      status: mark.status === "resolved" ? "active" : "resolved"
+      status: nextStatus
     });
     await this.refreshMarkViews(file.path);
+    this.syncRemoteCommentResolutionInBackground(mark, nextStatus === "resolved");
   }
   async updateMarkColor(markId, color) {
     var _a;
@@ -3636,11 +3841,14 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     });
   }
   async deleteMark(markId) {
+    var _a;
     const file = this.getActiveMarkdownFile();
-    if (!file) return;
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
+    if (!file || !mark) return;
     this.currentDocument = await this.store.deleteMark(file.path, markId);
     this.markStylePopover.hide();
     await this.refreshMarkViews(file.path);
+    this.deleteRemoteCommentInBackground(mark);
   }
   async jumpToMark(markId) {
     var _a;
@@ -3687,6 +3895,54 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     } finally {
       await this.refreshSidebar();
     }
+  }
+  syncRemoteCommentResolutionInBackground(mark, isSolved) {
+    if (!shouldSyncRemoteComment(mark)) {
+      return;
+    }
+    void (async () => {
+      await setLarkCommentResolved(this, mark, isSolved);
+    })().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian10.Notice(`\u540C\u6B65\u98DE\u4E66\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\uFF1A${message}`, 8e3);
+    });
+  }
+  deleteRemoteCommentInBackground(mark) {
+    if (!shouldSyncRemoteComment(mark)) {
+      return;
+    }
+    void (async () => {
+      await deleteLarkComment(this, mark);
+    })().catch((error) => {
+      if (isMissingRemoteCommentError(error)) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian10.Notice(`\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u5931\u8D25\uFF1A${message}`, 8e3);
+    });
+  }
+  deleteRemoteCommentReplyInBackground(filePath, mark, replyId) {
+    if (!shouldSyncRemoteComment(mark)) {
+      return;
+    }
+    void (async () => {
+      var _a;
+      const remote = await deleteLarkCommentReply(this, mark, replyId);
+      if (!remote) {
+        return;
+      }
+      const document = await this.store.updateMark(filePath, mark.id, { remote });
+      if (((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath) {
+        this.currentDocument = document;
+        await this.refreshSidebar();
+      }
+    })().catch((error) => {
+      if (isMissingRemoteCommentError(error)) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian10.Notice(`\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\uFF1A${message}`, 8e3);
+    });
   }
   async handleToolbarAction(action) {
     const view = this.activeEditorView;
@@ -4307,6 +4563,15 @@ function isSelectionBlockAction(action) {
     "quote",
     "code-block"
   ].includes(action);
+}
+function shouldSyncRemoteComment(mark) {
+  var _a;
+  return mark.mark.kind === "comment" && Boolean((_a = mark.remote) == null ? void 0 : _a.larkCommentId);
+}
+function isMissingRemoteCommentError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return normalized.includes("docs had been deleted") || normalized.includes("had been deleted") || normalized.includes("not found") || normalized.includes("not exist") || normalized.includes("does not exist") || normalized.includes("1069304") || message.includes("\u4E0D\u5B58\u5728") || message.includes("\u5DF2\u5220\u9664");
 }
 function getSelectionFormat(view) {
   var _a;

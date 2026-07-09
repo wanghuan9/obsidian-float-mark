@@ -1,10 +1,13 @@
+import { execFile } from "child_process";
 import { FileSystemAdapter, TFile } from "obsidian";
+import { promisify } from "util";
 import type SideMarkPlugin from "./main";
 import { findRemoteBlockId, type RemoteUnit } from "./block-map";
 import type { RemoteSyncState, SideMark } from "./types";
 
 export const LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 const SYNC_STATE_FILE = "lark-sync-state.json";
+const execFileAsync = promisify(execFile);
 
 export type LarkSyncPluginStatus = "enabled" | "disabled" | "not-installed" | "unknown";
 
@@ -23,7 +26,13 @@ interface LarkCliResult {
 	data?: {
 		comment_id?: string;
 		reply_id?: string;
+		items?: Array<{
+			reply_id?: string;
+		}>;
 	};
+	items?: Array<{
+		reply_id?: string;
+	}>;
 	comment_id?: string;
 	reply_id?: string;
 	error?: {
@@ -33,6 +42,7 @@ interface LarkCliResult {
 }
 
 interface LarkReply {
+	id?: string;
 	authorName?: string;
 	content: string;
 	createdAt?: string;
@@ -51,6 +61,8 @@ interface AppWithPluginManager {
 interface LarkSyncPluginBridge {
 	runLarkCliCommand?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
 	runLarkCli?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
+	resolveLarkCliPath?: () => Promise<string>;
+	buildCommandEnvironment?: (executable: string) => Promise<NodeJS.ProcessEnv>;
 }
 
 export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source: string, mark: SideMark): Promise<RemoteSyncState> {
@@ -93,6 +105,7 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		throw new Error(result.error?.message || result.error?.hint || "lark-cli 添加评论失败。");
 	}
 	const commentId = result.data?.comment_id;
+	const replyIds = [result.data?.reply_id].filter(isNonEmptyString);
 	if (commentId) {
 		for (const reply of restReplies) {
 			const replyResult = await runLarkCreateReply(plugin, {
@@ -103,6 +116,9 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 			if (!replyResult.ok) {
 				throw new Error(replyResult.error?.message || replyResult.error?.hint || "lark-cli 添加回复失败。");
 			}
+			if (replyResult.data?.reply_id) {
+				replyIds.push(replyResult.data.reply_id);
+			}
 		}
 	}
 
@@ -111,10 +127,77 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		larkDocToken: binding.token,
 		larkDocUrl: binding.url,
 		larkCommentId: commentId,
-		larkReplyId: result.data?.reply_id,
+		larkReplyId: replyIds.at(-1),
+		larkReplyIds: replyIds.length ? replyIds : undefined,
 		blockId,
 		syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
 		syncedAt: new Date().toISOString()
+	};
+}
+
+export async function setLarkCommentResolved(plugin: SideMarkPlugin, mark: SideMark, isSolved: boolean): Promise<void> {
+	const { doc, commentId } = getRemoteCommentReference(mark);
+	const result = await runLarkPatchComment(plugin, { doc, commentId, isSolved });
+	assertLarkCommandOk(result, "lark-cli 更新评论状态失败。");
+}
+
+export async function deleteLarkComment(plugin: SideMarkPlugin, mark: SideMark): Promise<void> {
+	const { doc, commentId } = getRemoteCommentReference(mark);
+	const storedReplyIds = getDeleteAllLarkReplyIds(mark.remote);
+	const replies = getReplies(mark);
+	const idsToDelete = storedReplyIds.length >= replies.length
+		? storedReplyIds
+		: await findLarkReplyIds(plugin, doc, commentId);
+	if (idsToDelete.length === 0) {
+		throw new Error("缺少飞书回复 ID，无法删除远端评论。");
+	}
+
+	for (const replyId of [...idsToDelete].reverse()) {
+		const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId });
+		assertLarkCommandOk(result, "lark-cli 删除评论回复失败。");
+	}
+}
+
+export async function deleteLarkCommentReply(plugin: SideMarkPlugin, mark: SideMark, replyId: string): Promise<RemoteSyncState | null> {
+	const { doc, commentId } = getRemoteCommentReference(mark);
+	const replies = getReplies(mark);
+	const replyIndex = replies.findIndex((reply) => reply.id === replyId);
+	if (replyIndex === -1) {
+		throw new Error("找不到要删除的本地评论回复。");
+	}
+
+	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+	if (replyIndex >= syncedReplyCount) {
+		return null;
+	}
+
+	const storedReplyIds = getStoredLarkReplyIdList(mark.remote);
+	const shouldUseLegacyLastReplyId = replyIndex === syncedReplyCount - 1 && Boolean(mark.remote?.larkReplyId);
+	const remoteReplyIds = storedReplyIds.length >= syncedReplyCount || shouldUseLegacyLastReplyId
+		? storedReplyIds
+		: await findLarkReplyIds(plugin, doc, commentId);
+	const remoteReplyId = remoteReplyIds[replyIndex] || (replyIndex === syncedReplyCount - 1 ? mark.remote?.larkReplyId : "");
+	if (!remoteReplyId) {
+		throw new Error("缺少飞书回复 ID，无法删除远端评论回复。");
+	}
+
+	const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId: remoteReplyId });
+	assertLarkCommandOk(result, "lark-cli 删除评论回复失败。");
+
+	const syncedRepliesAfterDelete = replies
+		.slice(0, syncedReplyCount)
+		.filter((reply) => reply.id !== replyId);
+	const remainingReplies = replies.filter((reply) => reply.id !== replyId);
+	const hasPendingReplies = remainingReplies.length > syncedRepliesAfterDelete.length;
+	return {
+		...mark.remote,
+		status: hasPendingReplies ? "pending" : "synced",
+		larkCommentId: commentId,
+		larkReplyId: remoteReplyIds.filter((_, index) => index !== replyIndex).at(-1) || undefined,
+		larkReplyIds: remoteReplyIds.filter((_, index) => index !== replyIndex),
+		syncedHash: buildSyncedHash(mark.anchor.selectedText, syncedRepliesAfterDelete),
+		syncedAt: new Date().toISOString(),
+		error: undefined
 	};
 }
 
@@ -127,6 +210,35 @@ export async function canSyncMarkToLark(plugin: SideMarkPlugin, source: string):
 	const syncState = await readSyncState(plugin);
 	const docState = findDocumentState(syncState, binding.doc);
 	return Boolean(docState?.titleBlockId || docState?.units.length);
+}
+
+function getRemoteCommentReference(mark: SideMark): { doc: string; commentId: string } {
+	const doc = mark.remote?.larkDocToken || mark.remote?.larkDocUrl || "";
+	const commentId = mark.remote?.larkCommentId || "";
+	if (!doc || !commentId) {
+		throw new Error("缺少飞书评论同步信息，无法操作远端评论。");
+	}
+	return { doc, commentId };
+}
+
+function getDeleteAllLarkReplyIds(remote: RemoteSyncState | undefined): string[] {
+	const replyIds = getStoredLarkReplyIdList(remote);
+	if (replyIds.length > 0) {
+		return replyIds;
+	}
+	return remote?.larkReplyId ? [remote.larkReplyId] : [];
+}
+
+function getStoredLarkReplyIdList(remote: RemoteSyncState | undefined): string[] {
+	return (remote?.larkReplyIds || []).filter(isNonEmptyString);
+}
+
+function getLarkReplyItems(result: LarkCliResult): Array<{ reply_id?: string }> {
+	return result.data?.items || result.items || [];
+}
+
+function isNonEmptyString(value: string | undefined): value is string {
+	return Boolean(value);
 }
 
 export function getLarkSyncPluginStatus(plugin: SideMarkPlugin): LarkSyncPluginStatus {
@@ -246,8 +358,15 @@ async function syncRepliesToExistingLarkComment(
 		throw new Error("缺少飞书评论 ID，无法追加回复。");
 	}
 
-	const pendingReplies = findPendingReplies(mark, replies);
+	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+	const pendingReplies = replies.slice(syncedReplyCount);
 	let lastReplyId = mark.remote?.larkReplyId;
+	const knownReplyIds = getStoredLarkReplyIdList(mark.remote);
+	const replyIds = knownReplyIds.length === syncedReplyCount
+		? [...knownReplyIds]
+		: syncedReplyCount === 1 && lastReplyId
+			? [lastReplyId]
+			: [];
 	for (const reply of pendingReplies) {
 		const result = await runLarkCreateReply(plugin, {
 			doc: binding.doc,
@@ -258,6 +377,9 @@ async function syncRepliesToExistingLarkComment(
 			throw new Error(result.error?.message || result.error?.hint || "lark-cli 添加回复失败。");
 		}
 		lastReplyId = result.data?.reply_id || lastReplyId;
+		if (result.data?.reply_id) {
+			replyIds.push(result.data.reply_id);
+		}
 	}
 
 	return {
@@ -267,6 +389,7 @@ async function syncRepliesToExistingLarkComment(
 		larkDocUrl: binding.url || mark.remote?.larkDocUrl,
 		larkCommentId: commentId,
 		larkReplyId: lastReplyId,
+		larkReplyIds: replyIds.length === replies.length ? replyIds : undefined,
 		syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
 		syncedAt: new Date().toISOString(),
 		error: undefined
@@ -274,6 +397,11 @@ async function syncRepliesToExistingLarkComment(
 }
 
 function findPendingReplies(mark: SideMark, replies: LarkReply[]): LarkReply[] {
+	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+	return replies.slice(syncedReplyCount);
+}
+
+function findSyncedReplyCount(mark: SideMark, replies: LarkReply[]): number {
 	const syncedHash = mark.remote?.syncedHash;
 	if (syncedHash === undefined) {
 		throw new Error("缺少上次同步记录，无法判断哪些回复已同步。请在飞书中确认后重新创建评论。");
@@ -285,7 +413,7 @@ function findPendingReplies(mark: SideMark, replies: LarkReply[]): LarkReply[] {
 
 	for (let index = 0; index <= replies.length; index++) {
 		if (getThreadContent(replies.slice(0, index)) === syncedThreadContent) {
-			return replies.slice(index);
+			return index;
 		}
 	}
 	throw new Error("已同步的旧评论内容发生变化，暂不支持同步编辑或删除后的回复。");
@@ -376,6 +504,108 @@ async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; 
 	}
 }
 
+async function runLarkPatchComment(plugin: SideMarkPlugin, input: { doc: string; commentId: string; isSolved: boolean }): Promise<LarkCliResult> {
+	try {
+		return await runLarkCliViaSyncPlugin(plugin, [
+			"drive",
+			"file.comments",
+			"patch",
+			"--as",
+			"user",
+			"--file-token",
+			extractDocumentToken(input.doc),
+			"--file-type",
+			"docx",
+			"--comment-id",
+			input.commentId,
+			"--data",
+			JSON.stringify({ is_solved: input.isSolved }),
+			"--json"
+		]);
+	} catch (error) {
+		const message = getExecErrorMessage(error);
+		if (message) {
+			throw new Error(message);
+		}
+		throw error;
+	}
+}
+
+async function findLarkReplyIds(plugin: SideMarkPlugin, doc: string, commentId: string): Promise<string[]> {
+	try {
+		const result = await runRawLarkCliViaSyncPlugin(plugin, [
+			"drive",
+			"file.comment.replys",
+			"list",
+			"--as",
+			"user",
+			"--file-token",
+			extractDocumentToken(doc),
+			"--file-type",
+			"docx",
+			"--comment-id",
+			commentId,
+			"--page-size",
+			"100",
+			"--json"
+		]);
+		assertLarkCommandOk(result, "lark-cli 获取评论回复失败。");
+		const items = getLarkReplyItems(result);
+		return items
+			.map((item) => item.reply_id || "")
+			.filter(Boolean);
+	} catch (error) {
+		const message = getExecErrorMessage(error);
+		if (message) {
+			throw new Error(message);
+		}
+		throw error;
+	}
+}
+
+async function runRawLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
+	const status = getLarkSyncPluginStatus(plugin);
+	if (status !== "enabled") {
+		throw new Error(`${getLarkSyncPluginStatusText(status)} 请先安装并启用该插件。`);
+	}
+	const syncPlugin = getLarkSyncPluginBridge(plugin);
+	const executable = await syncPlugin?.resolveLarkCliPath?.() || "lark-cli";
+	const env = await syncPlugin?.buildCommandEnvironment?.(executable) || process.env;
+	const { stdout } = await execFileAsync(executable, args, {
+		env,
+		maxBuffer: 20 * 1024 * 1024
+	});
+	return JSON.parse(stdout.toString()) as LarkCliResult;
+}
+
+async function runLarkDeleteReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; replyId: string }): Promise<LarkCliResult> {
+	try {
+		return await runLarkCliViaSyncPlugin(plugin, [
+			"drive",
+			"file.comment.replys",
+			"delete",
+			"--as",
+			"user",
+			"--file-token",
+			extractDocumentToken(input.doc),
+			"--file-type",
+			"docx",
+			"--comment-id",
+			input.commentId,
+			"--reply-id",
+			input.replyId,
+			"--yes",
+			"--json"
+		]);
+	} catch (error) {
+		const message = getExecErrorMessage(error);
+		if (message) {
+			throw new Error(message);
+		}
+		throw error;
+	}
+}
+
 async function runLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
 	const status = getLarkSyncPluginStatus(plugin);
 	if (status !== "enabled") {
@@ -387,6 +617,12 @@ async function runLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): 
 		throw new Error("Feishu Lark CLI Sync 未暴露 CLI 执行能力，请升级该插件。");
 	}
 	return await runLarkCliCommand.call(syncPlugin, args);
+}
+
+function assertLarkCommandOk(result: LarkCliResult, fallbackMessage: string): void {
+	if (result.ok === false) {
+		throw new Error(result.error?.message || result.error?.hint || fallbackMessage);
+	}
 }
 
 function getExecErrorMessage(error: unknown): string {
