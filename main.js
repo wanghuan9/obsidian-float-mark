@@ -4357,7 +4357,7 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian10.Setting(containerEl).setName("FloatMark").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("General").setHeading();
     new import_obsidian10.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
