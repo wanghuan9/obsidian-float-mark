@@ -28,7 +28,7 @@ npm install
 npm run build
 ```
 
-然后将以下文件复制到你的 vault 插件目录，例如 `.obsidian/plugins/obsidian-float-mark/`：
+然后将以下文件复制到你的 vault 插件目录，例如 `.obsidian/plugins/float-mark/`：
 
 ```text
 manifest.json
