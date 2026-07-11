@@ -116,7 +116,7 @@
 	transform: translateY(0) scale(1);
 }
 
-.side-mark-toolbar-button,
+.side-mark-toolbar .side-mark-toolbar-button,
 .side-mark-icon-button {
 	display: inline-flex;
 	align-items: center;
