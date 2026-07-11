@@ -426,12 +426,6 @@
 	color: var(--text-normal);
 }
 
-.side-mark-block-menu-separator {
-	height: 1px;
-	margin: 4px 6px;
-	background: var(--background-modifier-border);
-}
-
 .side-mark-block-menu-list {
 	display: flex;
 	flex-direction: column;

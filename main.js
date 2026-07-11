@@ -538,7 +538,6 @@ var HoverBlockToolbar = class {
     for (const item of FORMAT_BUTTONS) {
       this.renderButton(list, item, true);
     }
-    this.menu.createDiv({ cls: "side-mark-block-menu-separator" });
     for (const item of ACTION_BUTTONS) {
       this.renderButton(list, item, true);
     }
