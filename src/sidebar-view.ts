@@ -524,22 +524,41 @@ export class SideMarkSidebarView extends ItemView {
 				event.preventDefault();
 				event.stopPropagation();
 				menu.hide();
+				card.removeClass("is-color-picker-open");
 				void this.plugin.updateMarkColor(mark.id, item.color);
 			});
 		}
-		card.addEventListener("mouseleave", () => menu.hide());
+		card.addEventListener("mouseleave", () => {
+			menu.hide();
+			card.removeClass("is-color-picker-open");
+		});
 	}
 
 	private toggleColorPicker(card: HTMLElement): void {
 		const menu = card.querySelector<HTMLElement>(".side-mark-color-menu");
+		const cardMenu = card.querySelector<HTMLElement>(".side-mark-card-menu");
 		if (!menu) {
 			return;
 		}
 		if (menu.isShown()) {
 			menu.hide();
-		} else {
-			menu.show();
+			card.removeClass("is-color-picker-open");
+			return;
 		}
+		cardMenu?.hide();
+		this.positionColorMenu(card);
+		menu.show();
+		card.addClass("is-color-picker-open");
+	}
+
+	private positionColorMenu(card: HTMLElement): void {
+		const menu = card.querySelector<HTMLElement>(".side-mark-color-menu");
+		const toolbar = card.querySelector<HTMLElement>(".side-mark-card-toolbar");
+		if (!menu || !toolbar) {
+			return;
+		}
+		menu.style.top = `${toolbar.offsetTop + toolbar.offsetHeight + 4}px`;
+		menu.style.right = `${Math.max(4, card.clientWidth - toolbar.offsetLeft - toolbar.offsetWidth)}px`;
 	}
 
 	private renderCardToolbar(card: HTMLElement, mark: SideMark): void {

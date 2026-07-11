@@ -1,3 +1,78 @@
+/* Floating UI mounts on body (outside .workspace). Themes often scope icon vars and button resets elsewhere. */
+.side-mark-toolbar,
+.side-mark-selection-menu,
+.side-mark-block-pill,
+.side-mark-block-menu,
+.side-mark-comment-popover,
+.side-mark-style-popover,
+.side-mark-sidebar {
+	--side-mark-icon-size: var(--icon-m, 18px);
+	--side-mark-icon-stroke: var(--icon-m-stroke-width, 1.75px);
+}
+
+.side-mark-toolbar svg.svg-icon,
+.side-mark-selection-menu svg.svg-icon,
+.side-mark-block-pill svg.svg-icon,
+.side-mark-block-menu svg.svg-icon,
+.side-mark-comment-popover svg.svg-icon,
+.side-mark-style-popover svg.svg-icon,
+.side-mark-sidebar svg.svg-icon {
+	display: block;
+	flex-shrink: 0;
+	width: var(--side-mark-icon-size) !important;
+	height: var(--side-mark-icon-size) !important;
+	min-width: var(--side-mark-icon-size);
+	min-height: var(--side-mark-icon-size);
+	stroke-width: var(--side-mark-icon-stroke) !important;
+	color: currentColor;
+	stroke: currentColor;
+	fill: none;
+	opacity: 1;
+	transform: none;
+	filter: none;
+	background: none;
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
+.side-mark-toolbar svg.svg-icon path,
+.side-mark-toolbar svg.svg-icon line,
+.side-mark-toolbar svg.svg-icon polyline,
+.side-mark-toolbar svg.svg-icon circle,
+.side-mark-toolbar svg.svg-icon rect,
+.side-mark-selection-menu svg.svg-icon path,
+.side-mark-selection-menu svg.svg-icon line,
+.side-mark-selection-menu svg.svg-icon polyline,
+.side-mark-selection-menu svg.svg-icon circle,
+.side-mark-selection-menu svg.svg-icon rect,
+.side-mark-block-pill svg.svg-icon path,
+.side-mark-block-pill svg.svg-icon line,
+.side-mark-block-pill svg.svg-icon polyline,
+.side-mark-block-pill svg.svg-icon circle,
+.side-mark-block-pill svg.svg-icon rect,
+.side-mark-block-menu svg.svg-icon path,
+.side-mark-block-menu svg.svg-icon line,
+.side-mark-block-menu svg.svg-icon polyline,
+.side-mark-block-menu svg.svg-icon circle,
+.side-mark-block-menu svg.svg-icon rect,
+.side-mark-comment-popover svg.svg-icon path,
+.side-mark-comment-popover svg.svg-icon line,
+.side-mark-comment-popover svg.svg-icon polyline,
+.side-mark-comment-popover svg.svg-icon circle,
+.side-mark-comment-popover svg.svg-icon rect,
+.side-mark-style-popover svg.svg-icon path,
+.side-mark-style-popover svg.svg-icon line,
+.side-mark-style-popover svg.svg-icon polyline,
+.side-mark-style-popover svg.svg-icon circle,
+.side-mark-style-popover svg.svg-icon rect,
+.side-mark-sidebar svg.svg-icon path,
+.side-mark-sidebar svg.svg-icon line,
+.side-mark-sidebar svg.svg-icon polyline,
+.side-mark-sidebar svg.svg-icon circle,
+.side-mark-sidebar svg.svg-icon rect {
+	visibility: visible;
+}
+
 .side-mark-toolbar {
 	position: fixed;
 	z-index: 1000;
@@ -19,12 +94,21 @@
 .side-mark-toolbar button,
 .side-mark-selection-menu button,
 .side-mark-block-pill button,
-.side-mark-block-menu button {
+.side-mark-block-menu button,
+.side-mark-comment-popover button,
+.side-mark-style-popover button {
 	min-height: 0;
+	min-width: unset;
+	width: auto;
+	flex: none;
+	font-size: inherit;
+	line-height: normal;
 	box-shadow: none;
 	outline: 0;
 	appearance: none;
 	background-image: none;
+	-webkit-mask-image: none;
+	mask-image: none;
 }
 
 .side-mark-toolbar.is-visible {
@@ -39,17 +123,15 @@
 	justify-content: center;
 	width: 26px;
 	height: 26px;
+	flex: none;
 	padding: 0;
 	border: 0;
 	border-radius: 5px;
 	background: transparent;
 	color: var(--text-normal);
 	cursor: pointer;
-}
-
-.side-mark-toolbar-button svg {
-	width: 18px;
-	height: 18px;
+	--side-mark-icon-size: 18px;
+	--side-mark-icon-stroke: var(--icon-m-stroke-width, 1.75px);
 }
 
 .side-mark-toolbar-button:hover,
@@ -86,16 +168,13 @@
 .side-mark-toolbar-format-chevron {
 	display: inline-flex;
 	color: var(--text-muted);
+	--side-mark-icon-size: 15px;
+	--side-mark-icon-stroke: var(--icon-s-stroke-width, 2px);
 }
 
-.side-mark-toolbar-format-chevron svg {
-	width: 15px;
-	height: 15px;
-}
-
-.side-mark-toolbar-format > span:first-child svg {
-	width: 18px;
-	height: 18px;
+.side-mark-toolbar-format > span:first-child {
+	--side-mark-icon-size: 18px;
+	--side-mark-icon-stroke: var(--icon-m-stroke-width, 1.75px);
 }
 
 .side-mark-toolbar-divider {
@@ -109,9 +188,9 @@
 	position: fixed;
 	z-index: 1001;
 	width: 240px;
-	padding: 6px 0;
+	padding: 4px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 7px;
+	border-radius: 8px;
 	background: var(--background-primary);
 	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 	opacity: 0;
@@ -126,48 +205,59 @@
 	transform: translateY(0) scale(1);
 }
 
-.side-mark-selection-menu-row {
+.side-mark-selection-menu .side-mark-selection-menu-row {
 	display: grid;
-	grid-template-columns: 42px minmax(0, 1fr) 18px;
+	grid-template-columns: 28px minmax(0, 1fr) 16px;
 	align-items: center;
-	width: 100%;
-	min-height: 32px;
-	padding: 0 12px;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
+	box-sizing: border-box;
+	width: 100% !important;
+	max-width: none;
+	min-width: 0;
+	min-height: 30px;
+	margin: 0;
+	padding: 0 8px !important;
+	border: 0 !important;
+	border-radius: 6px !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	background-image: none !important;
+	box-shadow: none !important;
 	color: var(--text-normal);
 	text-align: left;
 	cursor: pointer;
 	font-size: 13px;
-	box-shadow: none;
+	font-weight: 400;
+	line-height: 1;
 }
 
-.side-mark-selection-menu-row:hover {
-	background: rgba(47, 109, 246, 0.08);
-	color: #2f6df6;
+.side-mark-selection-menu .side-mark-selection-menu-row:hover {
+	background: var(--background-modifier-hover) !important;
+	color: var(--text-normal);
 }
 
-.side-mark-selection-menu-row.is-active {
-	color: #2f6df6;
+.side-mark-selection-menu .side-mark-selection-menu-row.is-active {
+	background: hsla(var(--color-accent-hsl, 220 85% 55%), 0.1) !important;
+	color: var(--text-accent, var(--interactive-accent, #2f6df6));
 }
 
 .side-mark-selection-menu-icon {
 	display: inline-flex;
 	align-items: center;
-	color: var(--text-normal);
-	font-size: 15px;
+	justify-content: center;
+	width: 28px;
+	color: var(--text-muted);
+	font-size: 14px;
 	line-height: 1;
+	--side-mark-icon-size: 16px;
+	--side-mark-icon-stroke: var(--icon-s-stroke-width, 2px);
 }
 
-.side-mark-selection-menu-row:hover .side-mark-selection-menu-icon,
-.side-mark-selection-menu-row.is-active .side-mark-selection-menu-icon {
-	color: #2f6df6;
+.side-mark-selection-menu .side-mark-selection-menu-row:hover .side-mark-selection-menu-icon {
+	color: var(--text-normal);
 }
 
-.side-mark-selection-menu-icon svg {
-	width: 17px;
-	height: 17px;
+.side-mark-selection-menu .side-mark-selection-menu-row.is-active .side-mark-selection-menu-icon {
+	color: var(--text-accent, var(--interactive-accent, #2f6df6));
 }
 
 .side-mark-selection-menu-label {
@@ -179,12 +269,9 @@
 .side-mark-selection-menu-check {
 	display: inline-flex;
 	justify-content: flex-end;
-	color: #2f6df6;
-}
-
-.side-mark-selection-menu-check svg {
-	width: 14px;
-	height: 14px;
+	color: var(--text-accent, var(--interactive-accent, #2f6df6));
+	--side-mark-icon-size: 14px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-selection-submenu {
@@ -270,11 +357,8 @@
 	color: var(--text-faint);
 	opacity: 0.55;
 	transition: opacity 120ms ease;
-}
-
-.side-mark-block-pill-drag svg {
-	width: 12px;
-	height: 12px;
+	--side-mark-icon-size: 12px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-block-pill:hover .side-mark-block-pill-drag,
@@ -287,10 +371,10 @@
 	z-index: 1002;
 	width: 240px;
 	max-height: 360px;
-	padding: 6px 0 0;
+	padding: 4px;
 	background: var(--background-primary);
 	border: 0;
-	border-radius: 7px;
+	border-radius: 8px;
 	background-clip: padding-box;
 	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 	overflow-y: auto;
@@ -310,32 +394,41 @@
 	display: none;
 }
 
-.side-mark-block-menu-compact {
+.side-mark-block-menu .side-mark-block-menu-compact,
+.side-mark-block-menu .side-mark-block-menu-row {
 	display: grid;
-	grid-template-columns: 42px minmax(0, 1fr) 18px;
+	grid-template-columns: 28px minmax(0, 1fr) 16px;
 	align-items: center;
-	width: 100%;
-	min-height: 32px;
-	padding: 0 12px;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
+	box-sizing: border-box;
+	width: 100% !important;
+	max-width: none;
+	min-width: 0;
+	min-height: 30px;
+	margin: 0;
+	padding: 0 8px !important;
+	border: 0 !important;
+	border-radius: 6px !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	background-image: none !important;
+	box-shadow: none !important;
 	color: var(--text-normal);
 	font-size: 13px;
 	font-weight: 400;
+	line-height: 1;
 	cursor: pointer;
 	text-align: left;
-	box-shadow: none;
 }
 
-.side-mark-block-menu-compact:hover {
-	background: rgba(47, 109, 246, 0.08);
-	color: #2f6df6;
+.side-mark-block-menu .side-mark-block-menu-compact:hover,
+.side-mark-block-menu .side-mark-block-menu-row:hover {
+	background: var(--background-modifier-hover) !important;
+	color: var(--text-normal);
 }
 
 .side-mark-block-menu-separator {
 	height: 1px;
-	margin: 5px 0;
+	margin: 4px 6px;
 	background: var(--background-modifier-border);
 }
 
@@ -344,34 +437,21 @@
 	flex-direction: column;
 }
 
-.side-mark-block-menu-row {
-	display: grid;
-	grid-template-columns: 42px minmax(0, 1fr) 18px;
-	align-items: center;
-	min-height: 32px;
-	padding: 0 12px;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
-	color: var(--text-normal);
-	text-align: left;
-	cursor: pointer;
-	font-size: 13px;
-	box-shadow: none;
-}
-
-.side-mark-block-menu-row svg,
-.side-mark-block-menu-compact svg {
-	width: 17px;
-	height: 17px;
-}
-
 .side-mark-block-menu-row-icon {
 	display: inline-flex;
 	align-items: center;
-	color: var(--text-normal);
-	font-size: 15px;
+	justify-content: center;
+	width: 28px;
+	color: var(--text-muted);
+	font-size: 14px;
 	line-height: 1;
+	--side-mark-icon-size: 16px;
+	--side-mark-icon-stroke: var(--icon-s-stroke-width, 2px);
+}
+
+.side-mark-block-menu .side-mark-block-menu-compact:hover .side-mark-block-menu-row-icon,
+.side-mark-block-menu .side-mark-block-menu-row:hover .side-mark-block-menu-row-icon {
+	color: var(--text-normal);
 }
 
 .side-mark-block-menu-row-label {
@@ -380,23 +460,13 @@
 	white-space: nowrap;
 }
 
-.side-mark-block-menu-row:hover {
-	background: rgba(47, 109, 246, 0.08);
-	color: #2f6df6;
-}
-
-.side-mark-block-menu-row:hover .side-mark-block-menu-row-icon,
-.side-mark-block-menu-compact:hover .side-mark-block-menu-row-icon {
-	color: #2f6df6;
-}
-
 .side-mark-block-menu-row.is-disabled {
 	cursor: default;
 	color: var(--text-muted);
 }
 
 .side-mark-block-menu-row.is-disabled:hover {
-	background: transparent;
+	background: transparent !important;
 }
 
 .side-mark-block-menu-row.is-danger {
@@ -406,17 +476,14 @@
 .side-mark-block-menu-row-arrow {
 	justify-self: end;
 	color: var(--text-faint);
+	--side-mark-icon-size: 14px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-block-menu-compact.has-submenu .side-mark-block-menu-row-arrow {
 	display: inline-flex;
 	align-items: center;
 	justify-content: flex-end;
-}
-
-.side-mark-block-menu-row-arrow svg {
-	width: 14px;
-	height: 14px;
 }
 
 .side-mark-block-submenu {
@@ -1067,12 +1134,8 @@
 .side-mark-filter-chevron {
 	display: inline-flex;
 	color: var(--text-muted);
-}
-
-.side-mark-filter-chevron svg {
-	width: 12px;
-	height: 12px;
-	stroke-width: 2;
+	--side-mark-icon-size: 12px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-filter-menu {
@@ -1140,12 +1203,8 @@
 	align-items: center;
 	justify-content: center;
 	color: #2f6df6;
-}
-
-.side-mark-filter-menu-check svg {
-	width: 15px;
-	height: 15px;
-	stroke-width: 2.4;
+	--side-mark-icon-size: 15px;
+	--side-mark-icon-stroke: 2.4px;
 }
 
 .side-mark-filter-menu-label {
@@ -1198,67 +1257,77 @@
 	transition: border-color 140ms ease;
 }
 
+.side-mark-card.is-color-picker-open {
+	overflow: visible;
+	z-index: 2;
+}
+
 .side-mark-color-option.is-yellow {
-	background: #f5be2a;
+	background: #f5be2a !important;
+	background-color: #f5be2a !important;
 }
 
 .side-mark-color-option.is-blue {
-	background: #4b96ff;
+	background: #4b96ff !important;
+	background-color: #4b96ff !important;
 }
 
 .side-mark-color-option.is-green {
-	background: #44b87b;
+	background: #44b87b !important;
+	background-color: #44b87b !important;
 }
 
 .side-mark-color-option.is-red {
-	background: #f25757;
+	background: #f25757 !important;
+	background-color: #f25757 !important;
 }
 
 .side-mark-color-menu {
 	position: absolute;
-	top: 31px;
-	right: 10px;
-	z-index: 4;
+	top: 0;
+	right: 4px;
+	z-index: 5;
 	display: flex;
 	align-items: center;
-	gap: 6px;
-	padding: 6px;
+	gap: 4px;
+	padding: 4px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 999px;
+	border-radius: 8px;
 	background: var(--background-primary);
-	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+	box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
 }
 
-.side-mark-color-option {
+.side-mark-color-menu .side-mark-color-option {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 20px;
-	height: 20px;
-	min-height: 0;
-	padding: 0;
-	border: 2px solid transparent;
-	border-radius: 50%;
-	box-shadow: none;
-	color: #fff;
+	box-sizing: border-box;
+	width: 20px !important;
+	height: 20px !important;
+	min-width: 20px !important;
+	min-height: 20px !important;
+	margin: 0;
+	padding: 0 !important;
+	border: 2px solid transparent !important;
+	border-radius: 50% !important;
+	background-image: none !important;
+	box-shadow: none !important;
+	flex: none !important;
+	color: rgba(15, 23, 42, 0.72);
 	cursor: pointer;
+	--side-mark-icon-size: 12px;
+	--side-mark-icon-stroke: 3px;
 }
 
-.side-mark-sidebar button.side-mark-color-option {
-	background-image: none;
-	box-shadow: none;
+.side-mark-sidebar .side-mark-color-menu button.side-mark-color-option {
+	background-image: none !important;
+	box-shadow: none !important;
 }
 
-.side-mark-color-option:hover,
-.side-mark-color-option.is-active {
-	border-color: var(--background-primary);
-	box-shadow: 0 0 0 2px rgba(47, 109, 246, 0.22);
-}
-
-.side-mark-color-option svg {
-	width: 12px;
-	height: 12px;
-	stroke-width: 3;
+.side-mark-color-menu .side-mark-color-option:hover,
+.side-mark-color-menu .side-mark-color-option.is-active {
+	border-color: var(--background-primary) !important;
+	box-shadow: 0 0 0 2px var(--interactive-accent, rgba(47, 109, 246, 0.45)) !important;
 }
 
 .side-mark-card-toolbar {
@@ -1301,6 +1370,8 @@
 	box-shadow: none;
 	color: var(--text-muted);
 	cursor: pointer;
+	--side-mark-icon-size: 13px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-sidebar button.side-mark-card-icon-button {
@@ -1309,11 +1380,6 @@
 	background-color: transparent;
 	background-image: none;
 	box-shadow: none;
-}
-
-.side-mark-card-icon-button svg {
-	width: 13px;
-	height: 13px;
 }
 
 .side-mark-card-icon-button:hover {
@@ -1351,6 +1417,8 @@
 .side-mark-sync-action {
 	position: relative;
 	--side-mark-sync-action-color: var(--text-muted);
+	--side-mark-icon-size: 14px;
+	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
 .side-mark-sync-action.is-synced {
@@ -1361,11 +1429,6 @@
 .side-mark-sync-action.is-failed {
 	--side-mark-sync-action-color: var(--text-error);
 	color: var(--text-error);
-}
-
-.side-mark-sync-action svg {
-	width: 14px;
-	height: 14px;
 }
 
 .side-mark-sync-action-badge {
@@ -1381,12 +1444,8 @@
 	border-radius: 50%;
 	background: var(--side-mark-sync-action-color);
 	color: var(--background-primary);
-}
-
-.side-mark-sync-action-badge svg {
-	width: 5px;
-	height: 5px;
-	stroke-width: 4;
+	--side-mark-icon-size: 5px;
+	--side-mark-icon-stroke: 4px;
 }
 
 .side-mark-card-menu {
@@ -1470,12 +1529,8 @@
 	width: 14px;
 	height: 14px;
 	flex: 0 0 14px;
-}
-
-.side-mark-card-menu-item-icon svg {
-	width: 14px;
-	height: 14px;
-	stroke-width: 2.1;
+	--side-mark-icon-size: 14px;
+	--side-mark-icon-stroke: 2.1px;
 }
 
 .side-mark-card-menu-item-label {

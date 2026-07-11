@@ -2133,21 +2133,39 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
         event.preventDefault();
         event.stopPropagation();
         menu.hide();
+        card.removeClass("is-color-picker-open");
         void this.plugin.updateMarkColor(mark.id, item.color);
       });
     }
-    card.addEventListener("mouseleave", () => menu.hide());
+    card.addEventListener("mouseleave", () => {
+      menu.hide();
+      card.removeClass("is-color-picker-open");
+    });
   }
   toggleColorPicker(card) {
     const menu = card.querySelector(".side-mark-color-menu");
+    const cardMenu = card.querySelector(".side-mark-card-menu");
     if (!menu) {
       return;
     }
     if (menu.isShown()) {
       menu.hide();
-    } else {
-      menu.show();
+      card.removeClass("is-color-picker-open");
+      return;
     }
+    cardMenu == null ? void 0 : cardMenu.hide();
+    this.positionColorMenu(card);
+    menu.show();
+    card.addClass("is-color-picker-open");
+  }
+  positionColorMenu(card) {
+    const menu = card.querySelector(".side-mark-color-menu");
+    const toolbar = card.querySelector(".side-mark-card-toolbar");
+    if (!menu || !toolbar) {
+      return;
+    }
+    menu.style.top = `${toolbar.offsetTop + toolbar.offsetHeight + 4}px`;
+    menu.style.right = `${Math.max(4, card.clientWidth - toolbar.offsetLeft - toolbar.offsetWidth)}px`;
   }
   renderCardToolbar(card, mark) {
     const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
