@@ -61,7 +61,8 @@ export default class SideMarkPlugin extends Plugin {
 	private readingSelectionTimer: number | null = null;
 	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
-	private previewMarkRenderTimer: number | null = null;
+	private readonly previewObservers = new Map<MarkdownView, MutationObserver>();
+	private readonly previewRenderTimers = new Map<MarkdownView, number>();
 
 	override async onload(): Promise<void> {
 		await this.loadSettings();
@@ -89,8 +90,11 @@ export default class SideMarkPlugin extends Plugin {
 			name: "从当前选区创建评论",
 			editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
 		});
-		this.registerEvent(this.app.workspace.on("active-leaf-change", () => void this.reloadCurrentDocument()));
-		this.registerEvent(this.app.workspace.on("layout-change", () => this.schedulePreviewMarkRender()));
+		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+			void this.reloadCurrentDocument();
+			this.syncPreviewMarkObservers();
+		}));
+		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncPreviewMarkObservers()));
 			this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
 		this.registerEvent(this.app.vault.on("modify", (file) => {
 			if (file instanceof TFile && file.extension === "md" && file.path === this.getActiveMarkdownFile()?.path) {
@@ -102,7 +106,7 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	override onunload(): void {
-		this.clearPreviewMarkRenderTimer();
+		this.clearPreviewMarkObservers();
 		this.clearReadingSelectionTimer();
 		this.clearReadingSelectionHighlight();
 		this.toolbar?.destroy();
@@ -934,24 +938,58 @@ export default class SideMarkPlugin extends Plugin {
 		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
 	}
 
-	private schedulePreviewMarkRender(): void {
-		if (this.previewMarkRenderTimer !== null) {
-			window.clearTimeout(this.previewMarkRenderTimer);
-		}
-		this.previewMarkRenderTimer = window.setTimeout(() => {
-			this.previewMarkRenderTimer = null;
-			const file = this.getActiveMarkdownFile();
-			if (file) {
-				void this.renderPreviewMarksForFile(file.path);
+	private syncPreviewMarkObservers(): void {
+		const activeViews = new Set<MarkdownView>();
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.getMode() === "preview" && view.file?.extension === "md") {
+				activeViews.add(view);
+				if (!this.previewObservers.has(view)) {
+					this.attachPreviewObserver(view);
+				}
+				this.schedulePreviewViewRender(view);
 			}
-		}, 50);
+		}
+		for (const [view, observer] of this.previewObservers) {
+			if (!activeViews.has(view)) {
+				observer.disconnect();
+				this.previewObservers.delete(view);
+				const timer = this.previewRenderTimers.get(view);
+				if (timer !== undefined) {
+					window.clearTimeout(timer);
+					this.previewRenderTimers.delete(view);
+				}
+			}
+		}
 	}
 
-	private clearPreviewMarkRenderTimer(): void {
-		if (this.previewMarkRenderTimer !== null) {
-			window.clearTimeout(this.previewMarkRenderTimer);
-			this.previewMarkRenderTimer = null;
+	private attachPreviewObserver(view: MarkdownView): void {
+		const observer = new MutationObserver(() => this.schedulePreviewViewRender(view));
+		observer.observe(getPreviewSectionsContainer(view), { childList: true });
+		this.previewObservers.set(view, observer);
+	}
+
+	private schedulePreviewViewRender(view: MarkdownView): void {
+		const existing = this.previewRenderTimers.get(view);
+		if (existing !== undefined) {
+			window.clearTimeout(existing);
 		}
+		const timer = window.setTimeout(() => {
+			this.previewRenderTimers.delete(view);
+			void this.renderPreviewMarksForView(view);
+		}, 60);
+		this.previewRenderTimers.set(view, timer);
+	}
+
+	private clearPreviewMarkObservers(): void {
+		for (const observer of this.previewObservers.values()) {
+			observer.disconnect();
+		}
+		this.previewObservers.clear();
+		for (const timer of this.previewRenderTimers.values()) {
+			window.clearTimeout(timer);
+		}
+		this.previewRenderTimers.clear();
 	}
 
 	private async renderPreviewMarksForFile(filePath: string): Promise<void> {
@@ -960,8 +998,34 @@ export default class SideMarkPlugin extends Plugin {
 			if (!(view instanceof MarkdownView) || view.file?.path !== filePath || view.getMode() !== "preview") {
 				continue;
 			}
-			await this.renderReadingModeMarks(view.contentEl, filePath);
+			await this.renderPreviewMarksForView(view);
 		}
+	}
+
+	private async renderPreviewMarksForView(view: MarkdownView): Promise<void> {
+		const file = view.file;
+		if (!file || file.extension !== "md" || view.getMode() !== "preview") {
+			return;
+		}
+		const source = await this.app.vault.read(file);
+		const document = await this.store.relocateDocument(file.path, source);
+		const onClick = (markId: string, rect: DOMRect) => void this.openMark(markId, rect);
+		const sections = getPreviewSections(view);
+		if (sections.length > 0) {
+			for (const section of sections) {
+				const marks = getMarksInRenderedSection(document.marks, section.lineStart, section.lineEnd);
+				renderReadingMarks(section.el, source, marks, onClick);
+			}
+			return;
+		}
+		const sectionEls = Array.from(view.contentEl.querySelectorAll<HTMLElement>(".markdown-preview-section"));
+		if (sectionEls.length > 0) {
+			for (const el of sectionEls) {
+				renderReadingMarks(el, source, document.marks, onClick);
+			}
+			return;
+		}
+		renderReadingMarks(view.contentEl, source, document.marks, onClick);
 	}
 
 	private jumpToReadingMark(markId: string): boolean {
@@ -1153,6 +1217,29 @@ function defaultHighlightAppearance(): MarkStyleChoice {
 
 function isDefaultHighlightAppearance(choice: MarkStyleChoice): boolean {
 	return choice.textColor === "default" && choice.backgroundColor === "none";
+}
+
+function getPreviewSectionsContainer(view: MarkdownView): HTMLElement {
+	return view.contentEl.querySelector<HTMLElement>(".markdown-preview-sections")
+		|| view.contentEl.querySelector<HTMLElement>(".markdown-preview-section")?.parentElement
+		|| view.contentEl;
+}
+
+function getPreviewSections(view: MarkdownView): { el: HTMLElement; lineStart: number; lineEnd: number }[] {
+	const preview = view.previewMode as unknown as {
+		renderer?: { sections?: Array<{ el?: unknown; lineStart?: unknown; lineEnd?: unknown }> };
+	} | undefined;
+	const sections = preview?.renderer?.sections;
+	if (!Array.isArray(sections)) {
+		return [];
+	}
+	const result: { el: HTMLElement; lineStart: number; lineEnd: number }[] = [];
+	for (const section of sections) {
+		if (section?.el instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
+			result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
+		}
+	}
+	return result;
 }
 
 function getMarksInRenderedSection(marks: SideMark[], sectionLineStart: number, sectionLineEnd: number): SideMark[] {

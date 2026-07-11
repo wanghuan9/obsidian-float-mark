@@ -3624,7 +3624,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.readingSelectionTimer = null;
     this.readingSelectionRequestId = 0;
     this.lastMarkdownFilePath = "";
-    this.previewMarkRenderTimer = null;
+    this.previewObservers = /* @__PURE__ */ new Map();
+    this.previewRenderTimers = /* @__PURE__ */ new Map();
   }
   async onload() {
     await this.loadSettings();
@@ -3651,8 +3652,11 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       name: "\u4ECE\u5F53\u524D\u9009\u533A\u521B\u5EFA\u8BC4\u8BBA",
       editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
     });
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => void this.reloadCurrentDocument()));
-    this.registerEvent(this.app.workspace.on("layout-change", () => this.schedulePreviewMarkRender()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+      void this.reloadCurrentDocument();
+      this.syncPreviewMarkObservers();
+    }));
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.syncPreviewMarkObservers()));
     this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
     this.registerEvent(this.app.vault.on("modify", (file) => {
       var _a;
@@ -3665,7 +3669,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   onunload() {
     var _a, _b, _c, _d, _e;
-    this.clearPreviewMarkRenderTimer();
+    this.clearPreviewMarkObservers();
     this.clearReadingSelectionTimer();
     this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
@@ -4440,23 +4444,56 @@ ${stripped}
     const marks = section ? getMarksInRenderedSection(document.marks, section.lineStart, section.lineEnd) : document.marks;
     renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
   }
-  schedulePreviewMarkRender() {
-    if (this.previewMarkRenderTimer !== null) {
-      window.clearTimeout(this.previewMarkRenderTimer);
-    }
-    this.previewMarkRenderTimer = window.setTimeout(() => {
-      this.previewMarkRenderTimer = null;
-      const file = this.getActiveMarkdownFile();
-      if (file) {
-        void this.renderPreviewMarksForFile(file.path);
+  syncPreviewMarkObservers() {
+    var _a;
+    const activeViews = /* @__PURE__ */ new Set();
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (view instanceof import_obsidian10.MarkdownView && view.getMode() === "preview" && ((_a = view.file) == null ? void 0 : _a.extension) === "md") {
+        activeViews.add(view);
+        if (!this.previewObservers.has(view)) {
+          this.attachPreviewObserver(view);
+        }
+        this.schedulePreviewViewRender(view);
       }
-    }, 50);
-  }
-  clearPreviewMarkRenderTimer() {
-    if (this.previewMarkRenderTimer !== null) {
-      window.clearTimeout(this.previewMarkRenderTimer);
-      this.previewMarkRenderTimer = null;
     }
+    for (const [view, observer] of this.previewObservers) {
+      if (!activeViews.has(view)) {
+        observer.disconnect();
+        this.previewObservers.delete(view);
+        const timer = this.previewRenderTimers.get(view);
+        if (timer !== void 0) {
+          window.clearTimeout(timer);
+          this.previewRenderTimers.delete(view);
+        }
+      }
+    }
+  }
+  attachPreviewObserver(view) {
+    const observer = new MutationObserver(() => this.schedulePreviewViewRender(view));
+    observer.observe(getPreviewSectionsContainer(view), { childList: true });
+    this.previewObservers.set(view, observer);
+  }
+  schedulePreviewViewRender(view) {
+    const existing = this.previewRenderTimers.get(view);
+    if (existing !== void 0) {
+      window.clearTimeout(existing);
+    }
+    const timer = window.setTimeout(() => {
+      this.previewRenderTimers.delete(view);
+      void this.renderPreviewMarksForView(view);
+    }, 60);
+    this.previewRenderTimers.set(view, timer);
+  }
+  clearPreviewMarkObservers() {
+    for (const observer of this.previewObservers.values()) {
+      observer.disconnect();
+    }
+    this.previewObservers.clear();
+    for (const timer of this.previewRenderTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    this.previewRenderTimers.clear();
   }
   async renderPreviewMarksForFile(filePath) {
     var _a;
@@ -4465,8 +4502,33 @@ ${stripped}
       if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
         continue;
       }
-      await this.renderReadingModeMarks(view.contentEl, filePath);
+      await this.renderPreviewMarksForView(view);
     }
+  }
+  async renderPreviewMarksForView(view) {
+    const file = view.file;
+    if (!file || file.extension !== "md" || view.getMode() !== "preview") {
+      return;
+    }
+    const source = await this.app.vault.read(file);
+    const document = await this.store.relocateDocument(file.path, source);
+    const onClick = (markId, rect) => void this.openMark(markId, rect);
+    const sections = getPreviewSections(view);
+    if (sections.length > 0) {
+      for (const section of sections) {
+        const marks = getMarksInRenderedSection(document.marks, section.lineStart, section.lineEnd);
+        renderReadingMarks(section.el, source, marks, onClick);
+      }
+      return;
+    }
+    const sectionEls = Array.from(view.contentEl.querySelectorAll(".markdown-preview-section"));
+    if (sectionEls.length > 0) {
+      for (const el of sectionEls) {
+        renderReadingMarks(el, source, document.marks, onClick);
+      }
+      return;
+    }
+    renderReadingMarks(view.contentEl, source, document.marks, onClick);
   }
   jumpToReadingMark(markId) {
     var _a;
@@ -4636,6 +4698,25 @@ function defaultHighlightAppearance() {
 }
 function isDefaultHighlightAppearance(choice) {
   return choice.textColor === "default" && choice.backgroundColor === "none";
+}
+function getPreviewSectionsContainer(view) {
+  var _a;
+  return view.contentEl.querySelector(".markdown-preview-sections") || ((_a = view.contentEl.querySelector(".markdown-preview-section")) == null ? void 0 : _a.parentElement) || view.contentEl;
+}
+function getPreviewSections(view) {
+  var _a;
+  const preview = view.previewMode;
+  const sections = (_a = preview == null ? void 0 : preview.renderer) == null ? void 0 : _a.sections;
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+  const result = [];
+  for (const section of sections) {
+    if ((section == null ? void 0 : section.el) instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
+      result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
+    }
+  }
+  return result;
 }
 function getMarksInRenderedSection(marks, sectionLineStart, sectionLineEnd) {
   return marks.filter((mark) => {
