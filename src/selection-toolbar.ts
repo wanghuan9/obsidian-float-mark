@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 
 export type ToolbarAction =
 	| "paragraph"
@@ -42,45 +43,45 @@ export type SelectionFormatAction = Extract<
 interface ToolbarButton {
 	id: ToolbarAction;
 	icon: string;
-	title: string;
+	titleKey: I18nKey;
 }
 
 interface FormatItem {
 	id?: ToolbarAction;
 	icon?: string;
-	label: string;
+	labelKey: I18nKey;
 	shortcut?: string;
 	submenu?: FormatItem[];
 }
 
 const HEADING_SUBMENU_ITEMS: FormatItem[] = [
-	{ id: "heading-4", label: "四级标题", shortcut: "H4" },
-	{ id: "heading-5", label: "五级标题", shortcut: "H5" },
-	{ id: "heading-6", label: "六级标题", shortcut: "H6" }
+	{ id: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4" },
+	{ id: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5" },
+	{ id: "heading-6", labelKey: "toolbar.heading6", shortcut: "H6" }
 ];
 
 const FORMAT_ITEMS: FormatItem[] = [
-	{ id: "paragraph", label: "正文", shortcut: "T" },
-	{ id: "heading-1", label: "一级标题", shortcut: "H1" },
-	{ id: "heading-2", label: "二级标题", shortcut: "H2" },
-	{ id: "heading-3", label: "三级标题", shortcut: "H3" },
-	{ label: "其他标题", shortcut: "Hn", submenu: HEADING_SUBMENU_ITEMS },
-	{ id: "number-list", icon: "list-ordered", label: "有序列表" },
-	{ id: "bullet-list", icon: "list", label: "无序列表" },
-	{ id: "task-list", icon: "square-check", label: "任务" },
-	{ id: "code-block", icon: "braces", label: "代码块" },
-	{ id: "quote", icon: "quote", label: "引用" }
+	{ id: "paragraph", labelKey: "toolbar.paragraph", shortcut: "T" },
+	{ id: "heading-1", labelKey: "toolbar.heading1", shortcut: "H1" },
+	{ id: "heading-2", labelKey: "toolbar.heading2", shortcut: "H2" },
+	{ id: "heading-3", labelKey: "toolbar.heading3", shortcut: "H3" },
+	{ labelKey: "toolbar.otherHeadings", shortcut: "Hn", submenu: HEADING_SUBMENU_ITEMS },
+	{ id: "number-list", icon: "list-ordered", labelKey: "toolbar.numberList" },
+	{ id: "bullet-list", icon: "list", labelKey: "toolbar.bulletList" },
+	{ id: "task-list", icon: "square-check", labelKey: "toolbar.taskList" },
+	{ id: "code-block", icon: "braces", labelKey: "toolbar.codeBlock" },
+	{ id: "quote", icon: "quote", labelKey: "toolbar.quote" }
 ];
 
 const BUTTONS: ToolbarButton[] = [
-	{ id: "bold", icon: "bold", title: "加粗" },
-	{ id: "strike", icon: "strikethrough", title: "删除线" },
-	{ id: "italic", icon: "italic", title: "斜体" },
-	{ id: "underline", icon: "underline", title: "下划线" },
-	{ id: "link", icon: "link", title: "链接" },
-	{ id: "code", icon: "code", title: "行内代码" },
-	{ id: "highlight", icon: "highlighter", title: "高亮标注" },
-	{ id: "comment", icon: "message-square-text", title: "评论" }
+	{ id: "bold", icon: "bold", titleKey: "toolbar.bold" },
+	{ id: "strike", icon: "strikethrough", titleKey: "toolbar.strike" },
+	{ id: "italic", icon: "italic", titleKey: "toolbar.italic" },
+	{ id: "underline", icon: "underline", titleKey: "toolbar.underline" },
+	{ id: "link", icon: "link", titleKey: "toolbar.link" },
+	{ id: "code", icon: "code", titleKey: "toolbar.code" },
+	{ id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
+	{ id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
 
 const FORMAT_LABELS: Partial<Record<SelectionFormatAction, string>> = {
@@ -110,7 +111,7 @@ export class SelectionToolbar {
 	private hideTimer: number | null = null;
 	private readonly pointerMoveHandler: (event: MouseEvent) => void;
 
-	constructor(private readonly onAction: (action: ToolbarAction) => void) {
+	constructor(private readonly onAction: (action: ToolbarAction) => void, private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar" });
 		this.el.hide();
 		this.pointerMoveHandler = (event) => this.handlePointerMove(event);
@@ -121,9 +122,9 @@ export class SelectionToolbar {
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
 		const format = this.el.createEl("button", {
 			cls: "side-mark-toolbar-format",
-			attr: { type: "button", title: "格式", "aria-label": "格式" }
+			attr: { type: "button", title: this.t("toolbar.format"), "aria-label": this.t("toolbar.format") }
 		});
-		this.formatLabel = format.createSpan({ text: "正文" });
+		this.formatLabel = format.createSpan({ text: this.t("toolbar.paragraph") });
 		const chevron = format.createSpan({ cls: "side-mark-toolbar-format-chevron" });
 		setIcon(chevron, "chevron-down");
 		format.addEventListener("mouseenter", () => this.openMenu());
@@ -134,12 +135,13 @@ export class SelectionToolbar {
 		});
 		this.el.createDiv({ cls: "side-mark-toolbar-divider" });
 		for (const button of BUTTONS) {
+			const title = this.t(button.titleKey);
 			const buttonEl = this.el.createEl("button", {
 				cls: "side-mark-toolbar-button",
 				attr: {
 					type: "button",
-					title: button.title,
-					"aria-label": button.title
+					title,
+					"aria-label": title
 				}
 			});
 			setIcon(buttonEl, button.icon);
@@ -162,9 +164,10 @@ export class SelectionToolbar {
 		this.submenu.addEventListener("mouseleave", () => this.scheduleHide());
 		this.renderHeadingSubmenu();
 		for (const item of FORMAT_ITEMS) {
+			const label = this.t(item.labelKey);
 			const row = this.menu.createEl("button", {
 				cls: item.submenu ? "side-mark-selection-menu-row has-submenu" : "side-mark-selection-menu-row",
-				attr: { type: "button", title: item.label, "aria-label": item.label }
+				attr: { type: "button", title: label, "aria-label": label }
 			});
 			const iconWrap = row.createSpan({ cls: "side-mark-selection-menu-icon" });
 			if (item.icon) {
@@ -172,7 +175,7 @@ export class SelectionToolbar {
 			} else {
 				iconWrap.setText(item.shortcut || "");
 			}
-			row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+			row.createSpan({ cls: "side-mark-selection-menu-label", text: label });
 			const check = row.createSpan({ cls: "side-mark-selection-menu-check" });
 			if (item.submenu) {
 				setIcon(check, "chevron-right");
@@ -196,7 +199,7 @@ export class SelectionToolbar {
 				event.preventDefault();
 				event.stopPropagation();
 				if (item.id) {
-					this.formatLabel.setText(item.shortcut || item.label);
+					this.formatLabel.setText(item.shortcut || label);
 					this.onAction(item.id);
 				}
 				this.hide();
@@ -334,12 +337,13 @@ export class SelectionToolbar {
 
 	private renderHeadingSubmenu(): void {
 		for (const item of HEADING_SUBMENU_ITEMS) {
+			const label = this.t(item.labelKey);
 			const row = this.submenu.createEl("button", {
 				cls: "side-mark-selection-menu-row",
-				attr: { type: "button", title: item.label, "aria-label": item.label }
+				attr: { type: "button", title: label, "aria-label": label }
 			});
 			row.createSpan({ cls: "side-mark-selection-menu-icon", text: item.shortcut || "" });
-			row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+			row.createSpan({ cls: "side-mark-selection-menu-label", text: label });
 			row.createSpan({ cls: "side-mark-selection-menu-check" });
 			if (isSelectionFormatAction(item.id)) {
 				this.formatRows.set(item.id, row);
@@ -348,7 +352,7 @@ export class SelectionToolbar {
 				event.preventDefault();
 				event.stopPropagation();
 				if (item.id) {
-					this.formatLabel.setText(item.shortcut || item.label);
+					this.formatLabel.setText(item.shortcut || label);
 					this.onAction(item.id);
 				}
 				this.hide();

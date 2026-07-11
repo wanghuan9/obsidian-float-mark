@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 import type { MarkBackgroundColor, MarkTextColor } from "./types";
 
 export interface MarkStyleChoice {
@@ -9,41 +10,41 @@ export interface MarkStyleChoice {
 
 interface TextColorItem {
 	color: MarkTextColor;
-	label: string;
+	labelKey: I18nKey;
 }
 
 interface BackgroundColorItem {
 	color: MarkBackgroundColor;
-	label: string;
+	labelKey: I18nKey;
 }
 
 const TEXT_COLORS: TextColorItem[] = [
-	{ color: "default", label: "默认字体" },
-	{ color: "gray", label: "灰色字体" },
-	{ color: "red", label: "红色字体" },
-	{ color: "orange", label: "橙色字体" },
-	{ color: "yellow", label: "黄色字体" },
-	{ color: "green", label: "绿色字体" },
-	{ color: "blue", label: "蓝色字体" },
-	{ color: "purple", label: "紫色字体" }
+	{ color: "default", labelKey: "style.text.default" },
+	{ color: "gray", labelKey: "style.text.gray" },
+	{ color: "red", labelKey: "style.text.red" },
+	{ color: "orange", labelKey: "style.text.orange" },
+	{ color: "yellow", labelKey: "style.text.yellow" },
+	{ color: "green", labelKey: "style.text.green" },
+	{ color: "blue", labelKey: "style.text.blue" },
+	{ color: "purple", labelKey: "style.text.purple" }
 ];
 
 const BACKGROUND_COLORS: BackgroundColorItem[] = [
-	{ color: "none", label: "无背景" },
-	{ color: "gray-light", label: "浅灰背景" },
-	{ color: "red-light", label: "浅红背景" },
-	{ color: "orange-light", label: "浅橙背景" },
-	{ color: "yellow-light", label: "浅黄背景" },
-	{ color: "green-light", label: "浅绿背景" },
-	{ color: "blue-light", label: "浅蓝背景" },
-	{ color: "purple-light", label: "浅紫背景" },
-	{ color: "gray", label: "灰色背景" },
-	{ color: "red", label: "红色背景" },
-	{ color: "orange", label: "橙色背景" },
-	{ color: "yellow", label: "黄色背景" },
-	{ color: "green", label: "绿色背景" },
-	{ color: "blue", label: "蓝色背景" },
-	{ color: "purple", label: "紫色背景" }
+	{ color: "none", labelKey: "style.background.none" },
+	{ color: "gray-light", labelKey: "style.background.grayLight" },
+	{ color: "red-light", labelKey: "style.background.redLight" },
+	{ color: "orange-light", labelKey: "style.background.orangeLight" },
+	{ color: "yellow-light", labelKey: "style.background.yellowLight" },
+	{ color: "green-light", labelKey: "style.background.greenLight" },
+	{ color: "blue-light", labelKey: "style.background.blueLight" },
+	{ color: "purple-light", labelKey: "style.background.purpleLight" },
+	{ color: "gray", labelKey: "style.background.gray" },
+	{ color: "red", labelKey: "style.background.red" },
+	{ color: "orange", labelKey: "style.background.orange" },
+	{ color: "yellow", labelKey: "style.background.yellow" },
+	{ color: "green", labelKey: "style.background.green" },
+	{ color: "blue", labelKey: "style.background.blue" },
+	{ color: "purple", labelKey: "style.background.purple" }
 ];
 
 export class MarkStylePopover {
@@ -57,16 +58,16 @@ export class MarkStylePopover {
 	private hideTimer: number | null = null;
 	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
-	constructor() {
+	constructor(private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-style-popover" });
 		this.el.hide();
 		this.el.addEventListener("mouseenter", () => this.cancelHide());
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
 		const header = this.el.createDiv({ cls: "side-mark-style-popover-header" });
-		header.createSpan({ text: "标记" });
+		header.createSpan({ text: this.t("popover.markTitle") });
 		const closeButton = header.createEl("button", {
 			cls: "side-mark-icon-button",
-			attr: { type: "button", "aria-label": "关闭" }
+			attr: { type: "button", "aria-label": this.t("popover.close") }
 		});
 		setIcon(closeButton, "x");
 		closeButton.addEventListener("click", () => this.hide());
@@ -119,12 +120,13 @@ export class MarkStylePopover {
 	}
 
 	private renderTextColors(): void {
-		this.el.createDiv({ cls: "side-mark-style-section-title", text: "字体颜色" });
+		this.el.createDiv({ cls: "side-mark-style-section-title", text: this.t("popover.textColor") });
 		const row = this.el.createDiv({ cls: "side-mark-style-text-row" });
 		for (const item of TEXT_COLORS) {
+			const label = this.t(item.labelKey);
 			const button = row.createEl("button", {
 				cls: `side-mark-style-text-color is-${item.color}`,
-				attr: { type: "button", title: item.label, "aria-label": item.label }
+				attr: { type: "button", title: label, "aria-label": label }
 			});
 			button.createSpan({ text: "A" });
 			button.addEventListener("click", (event) => {
@@ -139,12 +141,13 @@ export class MarkStylePopover {
 	}
 
 	private renderBackgroundColors(): void {
-		this.el.createDiv({ cls: "side-mark-style-section-title", text: "背景颜色" });
+		this.el.createDiv({ cls: "side-mark-style-section-title", text: this.t("popover.backgroundColor") });
 		const grid = this.el.createDiv({ cls: "side-mark-style-background-grid" });
 		for (const item of BACKGROUND_COLORS) {
+			const label = this.t(item.labelKey);
 			const button = grid.createEl("button", {
 				cls: `side-mark-style-background-color is-${item.color}`,
-				attr: { type: "button", title: item.label, "aria-label": item.label }
+				attr: { type: "button", title: label, "aria-label": label }
 			});
 			button.addEventListener("click", (event) => {
 				event.preventDefault();
@@ -160,7 +163,7 @@ export class MarkStylePopover {
 	private renderResetButton(): void {
 		const button = this.el.createEl("button", {
 			cls: "side-mark-style-reset",
-			text: "恢复默认",
+			text: this.t("popover.resetDefault"),
 			attr: { type: "button" }
 		});
 		button.addEventListener("click", (event) => {

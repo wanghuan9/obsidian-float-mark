@@ -1,6 +1,7 @@
 import { App, normalizePath } from "obsidian";
 import { createHash } from "crypto";
 import { createTextAnchor, relocateAnchor } from "./anchors";
+import { translate } from "./i18n";
 import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type MarkColor, type MarkKind, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 
 export class SideMarkStore {
@@ -118,7 +119,7 @@ export class SideMarkStore {
 	async addReply(filePath: string, markId: string, content: string): Promise<SideMarkDocument> {
 		const trimmed = content.trim();
 		if (!trimmed) {
-			throw new Error("评论内容不能为空。");
+			throw new Error(translate(this.settings.language, "error.emptyComment"));
 		}
 		const document = await this.loadDocument(filePath);
 		const now = new Date().toISOString();
@@ -148,7 +149,7 @@ export class SideMarkStore {
 	async updateReply(filePath: string, markId: string, replyId: string, content: string): Promise<SideMarkDocument> {
 		const trimmed = content.trim();
 		if (!trimmed) {
-			throw new Error("评论内容不能为空。");
+			throw new Error(translate(this.settings.language, "error.emptyComment"));
 		}
 		const document = await this.loadDocument(filePath);
 		const now = new Date().toISOString();

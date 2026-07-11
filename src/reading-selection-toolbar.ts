@@ -1,36 +1,38 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 
 type ReadingSelectionAction = "highlight" | "comment";
 
 interface ReadingButton {
 	id: ReadingSelectionAction;
 	icon: string;
-	title: string;
+	titleKey: I18nKey;
 }
 
 const READING_BUTTONS: ReadingButton[] = [
-	{ id: "highlight", icon: "highlighter", title: "高亮标注" },
-	{ id: "comment", icon: "message-square-text", title: "评论" }
+	{ id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
+	{ id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
 
 export class ReadingSelectionToolbar {
 	private readonly el: HTMLDivElement;
 	private hideTimer: number | null = null;
 
-	constructor(private readonly onAction: (action: ReadingSelectionAction) => void) {
+	constructor(private readonly onAction: (action: ReadingSelectionAction) => void, private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
 		this.el.hide();
 		this.el.addEventListener("mousedown", (event) => event.preventDefault());
 		this.el.addEventListener("mouseenter", () => this.cancelHide());
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
 		for (const button of READING_BUTTONS) {
+			const title = this.t(button.titleKey);
 			const buttonEl = this.el.createEl("button", {
 				cls: "side-mark-toolbar-button",
 				attr: {
 					type: "button",
-					title: button.title,
-					"aria-label": button.title
+					title,
+					"aria-label": title
 				}
 			});
 			setIcon(buttonEl, button.icon);

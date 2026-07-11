@@ -3,6 +3,7 @@ import type SideMarkPlugin from "./main";
 import type { CommentReply, MarkColor, SideMark } from "./types";
 import { FLOAT_MARK_ICON_ID } from "./icons";
 import { isHtmlElement, isInputEvent } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
@@ -10,11 +11,11 @@ type SideMarkFilter = "active" | "resolved" | "orphaned" | "all";
 type SideMarkTagFilter = "all";
 type SideMarkColorFilter = MarkColor | "all";
 type SidebarTab = "comments" | "marks";
-const MARK_COLORS: Array<{ color: MarkColor; label: string }> = [
-	{ color: "yellow", label: "黄色" },
-	{ color: "blue", label: "蓝色" },
-	{ color: "green", label: "绿色" },
-	{ color: "red", label: "红色" }
+const MARK_COLORS: Array<{ color: MarkColor; labelKey: I18nKey }> = [
+	{ color: "yellow", labelKey: "sidebar.yellow" },
+	{ color: "blue", labelKey: "sidebar.blue" },
+	{ color: "green", labelKey: "sidebar.green" },
+	{ color: "red", labelKey: "sidebar.red" }
 ];
 
 export class SideMarkSidebarView extends ItemView {
@@ -45,6 +46,10 @@ export class SideMarkSidebarView extends ItemView {
 		return FLOAT_MARK_ICON_ID;
 	}
 
+	private t(key: I18nKey, params?: Record<string, string | number>): string {
+		return this.plugin.t(key, params);
+	}
+
 	async onOpen(): Promise<void> {
 		await this.render();
 	}
@@ -65,7 +70,7 @@ export class SideMarkSidebarView extends ItemView {
 		container.addClass("side-mark-sidebar");
 		const header = container.createDiv({ cls: "side-mark-sidebar-header" });
 		const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
-		titleRow.createEl("h3", { text: "正文标注" });
+		titleRow.createEl("h3", { text: this.t("sidebar.title") });
 		const doc = this.plugin.currentDocument;
 		const allMarks = doc?.marks || [];
 		const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
@@ -75,7 +80,7 @@ export class SideMarkSidebarView extends ItemView {
 		if (!doc || doc.marks.length === 0) {
 			this.renderFilters(header, controls, [], []);
 			this.restoreSearchInputFocus();
-			container.createDiv({ text: "当前文档还没有标注。", cls: "setting-item-description" });
+			container.createDiv({ text: this.t("sidebar.emptyDocument"), cls: "setting-item-description" });
 			return;
 		}
 
@@ -86,7 +91,7 @@ export class SideMarkSidebarView extends ItemView {
 
 		if (marks.length === 0) {
 			container.createDiv({
-				text: this.activeTab === "comments" ? "当前筛选下没有评论。" : "当前筛选下没有标记。",
+				text: this.activeTab === "comments" ? this.t("sidebar.emptyComments") : this.t("sidebar.emptyMarks"),
 				cls: "setting-item-description"
 			});
 			return;
@@ -103,8 +108,8 @@ export class SideMarkSidebarView extends ItemView {
 
 	private renderTabs(container: HTMLElement, marks: SideMark[]): void {
 		const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
-		this.renderTab(tabs, "comments", "评论", this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
-		this.renderTab(tabs, "marks", "标记", this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
+		this.renderTab(tabs, "comments", this.t("sidebar.comments"), this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
+		this.renderTab(tabs, "marks", this.t("sidebar.marks"), this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
 	}
 
 	private renderTab(container: HTMLElement, tab: SidebarTab, label: string, count: number): void {
@@ -144,29 +149,29 @@ export class SideMarkSidebarView extends ItemView {
 		allMarks: SideMark[],
 		filteredMarks: SideMark[]
 	): void {
-		this.renderSelect(controls, "状态", this.filter, [
-			{ value: "active", label: "活动" },
-			{ value: "all", label: "全部" },
-			{ value: "resolved", label: "已解决" },
-			{ value: "orphaned", label: "失联" }
+		this.renderSelect(controls, this.t("sidebar.status"), this.filter, [
+			{ value: "active", label: this.t("sidebar.active") },
+			{ value: "all", label: this.t("sidebar.all") },
+			{ value: "resolved", label: this.t("sidebar.resolved") },
+			{ value: "orphaned", label: this.t("sidebar.orphaned") }
 		], (value) => {
 			this.filter = value as SideMarkFilter;
 			void this.render();
 		});
 		if (this.activeTab === "comments") {
-			this.renderSelect(controls, "颜色", this.colorFilter, [
-				{ value: "all", label: "全部" },
-				{ value: "yellow", label: "黄色" },
-				{ value: "blue", label: "蓝色" },
-				{ value: "green", label: "绿色" },
-				{ value: "red", label: "红色" }
+			this.renderSelect(controls, this.t("sidebar.color"), this.colorFilter, [
+				{ value: "all", label: this.t("sidebar.all") },
+				{ value: "yellow", label: this.t("sidebar.yellow") },
+				{ value: "blue", label: this.t("sidebar.blue") },
+				{ value: "green", label: this.t("sidebar.green") },
+				{ value: "red", label: this.t("sidebar.red") }
 			], (value) => {
 				this.colorFilter = value as SideMarkColorFilter;
 				void this.render();
 			});
 		}
-		this.renderSelect(controls, "标签", this.tagFilter, [
-			{ value: "all", label: "全部" }
+		this.renderSelect(controls, this.t("sidebar.tag"), this.tagFilter, [
+			{ value: "all", label: this.t("sidebar.all") }
 		], (value) => {
 			this.tagFilter = value as SideMarkTagFilter;
 			void this.render();
@@ -177,8 +182,8 @@ export class SideMarkSidebarView extends ItemView {
 			cls: "side-mark-sidebar-search-input",
 			attr: {
 				type: "search",
-				placeholder: this.activeTab === "comments" ? "搜索评论" : "搜索标记",
-				"aria-label": this.activeTab === "comments" ? "搜索评论" : "搜索标记"
+				placeholder: this.activeTab === "comments" ? this.t("sidebar.searchComments") : this.t("sidebar.searchMarks"),
+				"aria-label": this.activeTab === "comments" ? this.t("sidebar.searchComments") : this.t("sidebar.searchMarks")
 			}
 		});
 		search.value = this.searchQuery;
@@ -199,8 +204,15 @@ export class SideMarkSidebarView extends ItemView {
 		container.createDiv({
 			cls: "side-mark-sidebar-stats",
 			text: allMarks.length === filteredMarks.length
-				? `当前文档，共 ${allMarks.length} 条${this.activeTab === "comments" ? "评论" : "标记"}`
-				: `当前筛选，共 ${filteredMarks.length} / ${allMarks.length} 条${this.activeTab === "comments" ? "评论" : "标记"}`
+				? this.t("sidebar.currentDocumentStats", {
+					count: allMarks.length,
+					kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
+				})
+				: this.t("sidebar.currentFilterStats", {
+					filtered: filteredMarks.length,
+					total: allMarks.length,
+					kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
+				})
 		});
 	}
 
@@ -378,25 +390,25 @@ export class SideMarkSidebarView extends ItemView {
 			this.focusMark(mark.id);
 		});
 		const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
-		this.addIconAction(toolbar, "chevrons-up", "定位", () => void this.plugin.jumpToMark(mark.id));
-		this.addIconAction(toolbar, "palette", "样式", () => {
+		this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
+		this.addIconAction(toolbar, "palette", this.t("sidebar.style"), () => {
 			const rect = card.getBoundingClientRect();
 			void this.plugin.openMark(mark.id, rect);
 		});
-		this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? "编辑备注" : "添加备注", (event) => {
+		this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? this.t("sidebar.editNote") : this.t("sidebar.addNote"), (event) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.renderMarkerNoteEditor(card, mark);
 		});
-		this.addDeleteIconAction(toolbar, "删除", () => void this.deleteMark(mark.id));
+		this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
 		const more = toolbar.createEl("button", {
 			cls: "side-mark-card-icon-button",
-			attr: { type: "button", title: "更多", "aria-label": "更多" }
+			attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
 		});
 		setIcon(more, "more-horizontal");
 		const menu = card.createDiv({ cls: "side-mark-card-menu" });
 		menu.hide();
-		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id));
+		this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
 		more.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -419,10 +431,10 @@ export class SideMarkSidebarView extends ItemView {
 		const meta = card.createDiv({ cls: "side-mark-marker-meta" });
 		const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
 		textSwatch.setAttr("aria-hidden", "true");
-		meta.createSpan({ text: "字体" });
+		meta.createSpan({ text: this.t("sidebar.font") });
 		const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
 		backgroundSwatch.setAttr("aria-hidden", "true");
-		meta.createSpan({ text: "背景" });
+		meta.createSpan({ text: this.t("sidebar.background") });
 	}
 
 	private renderMarkerNote(card: HTMLElement, mark: SideMark): void {
@@ -436,9 +448,9 @@ export class SideMarkSidebarView extends ItemView {
 		const body = display.createDiv({
 			cls: "side-mark-marker-note-body",
 			text: content,
-			attr: { title: "双击修改备注" }
+			attr: { title: this.t("sidebar.editNoteTitle") }
 		});
-		this.addInlineDeleteAction(display, "删除备注", () => {
+		this.addInlineDeleteAction(display, this.t("sidebar.deleteNote"), () => {
 			void this.deleteMarkerNote(mark.id);
 		});
 		body.addEventListener("dblclick", (event) => {
@@ -455,16 +467,16 @@ export class SideMarkSidebarView extends ItemView {
 		const note = card.createDiv({ cls: "side-mark-marker-note is-editing" });
 		const textarea = note.createEl("textarea", {
 			text: mark.note.content,
-			attr: { placeholder: "写一条备注" }
+			attr: { placeholder: this.t("sidebar.notePlaceholder") }
 		});
 		const actions = note.createDiv({ cls: "side-mark-marker-note-actions" });
 		const cancel = actions.createEl("button", {
-			text: "取消",
+			text: this.t("popover.cancel"),
 			cls: "side-mark-secondary-button",
 			attr: { type: "button" }
 		});
 		const save = actions.createEl("button", {
-			text: "保存",
+			text: this.t("popover.save"),
 			cls: "side-mark-primary-button",
 			attr: { type: "button" }
 		});
@@ -513,9 +525,10 @@ export class SideMarkSidebarView extends ItemView {
 		const menu = card.createDiv({ cls: "side-mark-color-menu" });
 		menu.hide();
 		for (const item of MARK_COLORS) {
+			const label = this.t(item.labelKey);
 			const button = menu.createEl("button", {
 				cls: `side-mark-color-option is-${item.color}${item.color === mark.mark.color ? " is-active" : ""}`,
-				attr: { type: "button", title: item.label, "aria-label": item.label }
+				attr: { type: "button", title: label, "aria-label": label }
 			});
 			if (item.color === mark.mark.color) {
 				setIcon(button, "check");
@@ -563,9 +576,9 @@ export class SideMarkSidebarView extends ItemView {
 
 	private renderCardToolbar(card: HTMLElement, mark: SideMark): void {
 		const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
-		this.addIconAction(toolbar, "chevrons-up", "定位", () => void this.plugin.jumpToMark(mark.id));
+		this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
 		this.addSyncAction(toolbar, mark);
-		this.addIconAction(toolbar, "palette", "颜色", (event) => {
+		this.addIconAction(toolbar, "palette", this.t("sidebar.pickColor"), (event) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.toggleColorPicker(card);
@@ -573,17 +586,17 @@ export class SideMarkSidebarView extends ItemView {
 		this.addIconAction(
 			toolbar,
 			mark.status === "resolved" ? "circle" : "circle-check",
-			mark.status === "resolved" ? "恢复" : "解决",
+			mark.status === "resolved" ? this.t("sidebar.restore") : this.t("sidebar.resolve"),
 			() => void this.toggleResolved(mark.id)
 		);
 		const more = toolbar.createEl("button", {
 			cls: "side-mark-card-icon-button",
-			attr: { type: "button", title: "更多", "aria-label": "更多" }
+			attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
 		});
 		setIcon(more, "more-horizontal");
 		const menu = card.createDiv({ cls: "side-mark-card-menu is-compact" });
 		menu.hide();
-		this.addMenuAction(menu, "trash-2", "删除", () => void this.deleteMark(mark.id));
+		this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
 		more.addEventListener("click", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -611,7 +624,7 @@ export class SideMarkSidebarView extends ItemView {
 				: [];
 
 		if (!replies.length) {
-			thread.createDiv({ cls: "side-mark-empty-thread", text: "还没有评论，继续输入第一条。" });
+			thread.createDiv({ cls: "side-mark-empty-thread", text: this.t("sidebar.emptyThread") });
 			return;
 		}
 
@@ -619,8 +632,8 @@ export class SideMarkSidebarView extends ItemView {
 			const isThreadHead = index === 0;
 			const row = thread.createDiv({ cls: `side-mark-reply${isThreadHead ? " is-thread-head" : " is-continuation"}` });
 			if (isThreadHead) {
-				const authorName = reply.authorName || this.plugin.settings.commentAuthorName || "我";
-				const avatar = row.createDiv({ cls: "side-mark-avatar", text: authorName.slice(0, 1) || "我" });
+				const authorName = reply.authorName || this.plugin.settings.commentAuthorName;
+				const avatar = row.createDiv({ cls: "side-mark-avatar", text: authorName.slice(0, 1) || this.plugin.settings.commentAuthorName.slice(0, 1) });
 				avatar.setAttr("aria-hidden", "true");
 			}
 			const body = row.createDiv({ cls: "side-mark-reply-body" });
@@ -628,16 +641,16 @@ export class SideMarkSidebarView extends ItemView {
 			if (isThreadHead) {
 				meta.createSpan({
 					cls: "side-mark-reply-author",
-					text: reply.authorName || this.plugin.settings.commentAuthorName || "我"
+					text: reply.authorName || this.plugin.settings.commentAuthorName
 				});
 			}
-			meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt) });
+			meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt, (key, params) => this.t(key, params)) });
 			const content = body.createDiv({
 				cls: "side-mark-reply-content",
 				text: reply.content,
-				attr: { title: "双击修改评论" }
+				attr: { title: this.t("sidebar.editCommentTitle") }
 			});
-			this.addInlineDeleteAction(content, "删除评论", () => {
+			this.addInlineDeleteAction(content, this.t("sidebar.deleteComment"), () => {
 				void this.deleteReply(mark, replies, reply.id);
 			});
 			content.addEventListener("dblclick", (event) => {
@@ -654,12 +667,12 @@ export class SideMarkSidebarView extends ItemView {
 		const textarea = editor.createEl("textarea", { text: content });
 		const actions = editor.createDiv({ cls: "side-mark-reply-editor-actions" });
 		const cancel = actions.createEl("button", {
-			text: "取消",
+			text: this.t("popover.cancel"),
 			cls: "side-mark-secondary-button",
 			attr: { type: "button" }
 		});
 		const save = actions.createEl("button", {
-			text: "保存",
+			text: this.t("popover.save"),
 			cls: "side-mark-primary-button",
 			attr: { type: "button" }
 		});
@@ -714,7 +727,7 @@ export class SideMarkSidebarView extends ItemView {
 	private renderReplyComposer(card: HTMLElement, mark: SideMark): void {
 		const composer = card.createDiv({ cls: "side-mark-reply-composer" });
 		const trigger = composer.createEl("button", {
-			text: "回复...",
+			text: this.t("sidebar.replyTrigger"),
 			cls: "side-mark-reply-trigger",
 			attr: { type: "button" }
 		});
@@ -728,18 +741,18 @@ export class SideMarkSidebarView extends ItemView {
 			textarea.focus();
 		});
 		const textarea = composer.createEl("textarea", {
-			attr: { placeholder: "继续评论" }
+			attr: { placeholder: this.t("sidebar.replyPlaceholder") }
 		});
 		textarea.hide();
 		const row = composer.createDiv({ cls: "side-mark-reply-composer-actions" });
 		row.hide();
 		const cancel = row.createEl("button", {
-			text: "取消",
+			text: this.t("popover.cancel"),
 			cls: "side-mark-secondary-button",
 			attr: { type: "button" }
 		});
 		const submit = row.createEl("button", {
-			text: "回复",
+			text: this.t("sidebar.reply"),
 			cls: "side-mark-primary-button",
 			attr: { type: "button" }
 		});
@@ -832,10 +845,10 @@ export class SideMarkSidebarView extends ItemView {
 			clearResetTimer();
 			isConfirming = true;
 			button.addClass("is-confirming");
-			button.setAttr("title", "确认删除");
-			button.setAttr("aria-label", "确认删除");
+			button.setAttr("title", this.t("sidebar.confirmDelete"));
+			button.setAttr("aria-label", this.t("sidebar.confirmDelete"));
 			button.empty();
-			button.createSpan({ text: "确认" });
+			button.createSpan({ text: this.t("sidebar.confirm") });
 		};
 		const scheduleReset = () => {
 			clearResetTimer();
@@ -859,10 +872,10 @@ export class SideMarkSidebarView extends ItemView {
 	private addSyncAction(container: HTMLElement, mark: SideMark): void {
 		const status = mark.remote?.status || "pending";
 		const label = status === "synced"
-			? "已同步到飞书"
+			? this.t("sidebar.syncedToLark")
 			: status === "failed"
-				? "同步飞书失败"
-				: "同步到飞书";
+				? this.t("sidebar.syncLarkFailed")
+				: this.t("sidebar.syncToLark");
 		const button = container.createEl("button", {
 			cls: `side-mark-card-icon-button side-mark-sync-action is-${status}`,
 			attr: { type: "button", title: label, "aria-label": label }
@@ -912,10 +925,10 @@ export class SideMarkSidebarView extends ItemView {
 				clearResetTimer();
 				isConfirming = true;
 				button.addClass("is-confirming");
-				button.setAttr("title", "确认删除");
-				button.setAttr("aria-label", "确认删除");
+				button.setAttr("title", this.t("sidebar.confirmDelete"));
+				button.setAttr("aria-label", this.t("sidebar.confirmDelete"));
 				iconEl.empty();
-				labelEl.setText("确认");
+				labelEl.setText(this.t("sidebar.confirm"));
 				scheduleReset();
 				return;
 			}
@@ -930,7 +943,7 @@ export class SideMarkSidebarView extends ItemView {
 	private async syncMark(markId: string): Promise<void> {
 		try {
 			await this.plugin.syncMarkToLark(markId);
-			new Notice("已同步标注到飞书评论。");
+			new Notice(this.t("notice.syncedToLark"));
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : String(error), 8000);
 		}
@@ -958,20 +971,20 @@ export class SideMarkSidebarView extends ItemView {
 	}
 }
 
-function formatReplyTime(value: string): string {
+function formatReplyTime(value: string, t: (key: I18nKey, params?: Record<string, string | number>) => string): string {
 	const timestamp = Date.parse(value);
 	if (!Number.isFinite(timestamp)) {
 		return "";
 	}
 	const diffMs = Date.now() - timestamp;
 	if (diffMs < 60_000) {
-		return "刚刚";
+		return t("sidebar.justNow");
 	}
 	if (diffMs < 3_600_000) {
-		return `${Math.floor(diffMs / 60_000)} 分钟前`;
+		return t("sidebar.minutesAgo", { count: Math.floor(diffMs / 60_000) });
 	}
 	if (diffMs < 86_400_000) {
-		return `${Math.floor(diffMs / 3_600_000)} 小时前`;
+		return t("sidebar.hoursAgo", { count: Math.floor(diffMs / 3_600_000) });
 	}
 	return new Date(timestamp).toLocaleDateString();
 }

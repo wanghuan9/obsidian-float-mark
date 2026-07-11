@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 
 export type HoverBlockAction =
 	| "paragraph"
@@ -28,7 +29,7 @@ export interface HoverBlockTarget {
 interface MenuButton {
 	action?: HoverBlockAction;
 	icon?: string;
-	label: string;
+	labelKey: I18nKey;
 	shortcut?: string;
 	compact?: boolean;
 	danger?: boolean;
@@ -36,28 +37,28 @@ interface MenuButton {
 }
 
 const HEADING_SUBMENU_BUTTONS: MenuButton[] = [
-	{ action: "heading-4", label: "四级标题", shortcut: "H4", compact: true },
-	{ action: "heading-5", label: "五级标题", shortcut: "H5", compact: true },
-	{ action: "heading-6", label: "六级标题", shortcut: "H6", compact: true }
+	{ action: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4", compact: true },
+	{ action: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5", compact: true },
+	{ action: "heading-6", labelKey: "toolbar.heading6", shortcut: "H6", compact: true }
 ];
 
 const FORMAT_BUTTONS: MenuButton[] = [
-	{ action: "paragraph", label: "正文", shortcut: "T", compact: true },
-	{ action: "heading-1", label: "一级标题", shortcut: "H1", compact: true },
-	{ action: "heading-2", label: "二级标题", shortcut: "H2", compact: true },
-	{ action: "heading-3", label: "三级标题", shortcut: "H3", compact: true },
-	{ label: "其他标题", shortcut: "Hn", compact: true, submenu: HEADING_SUBMENU_BUTTONS },
-	{ action: "number-list", icon: "list-ordered", label: "有序列表" },
-	{ action: "bullet-list", icon: "list", label: "无序列表" },
-	{ action: "task-list", icon: "square-check", label: "任务" },
-	{ action: "code-block", icon: "braces", label: "代码块" },
-	{ action: "quote", icon: "quote", label: "引用" }
+	{ action: "paragraph", labelKey: "toolbar.paragraph", shortcut: "T", compact: true },
+	{ action: "heading-1", labelKey: "toolbar.heading1", shortcut: "H1", compact: true },
+	{ action: "heading-2", labelKey: "toolbar.heading2", shortcut: "H2", compact: true },
+	{ action: "heading-3", labelKey: "toolbar.heading3", shortcut: "H3", compact: true },
+	{ labelKey: "toolbar.otherHeadings", shortcut: "Hn", compact: true, submenu: HEADING_SUBMENU_BUTTONS },
+	{ action: "number-list", icon: "list-ordered", labelKey: "toolbar.numberList" },
+	{ action: "bullet-list", icon: "list", labelKey: "toolbar.bulletList" },
+	{ action: "task-list", icon: "square-check", labelKey: "toolbar.taskList" },
+	{ action: "code-block", icon: "braces", labelKey: "toolbar.codeBlock" },
+	{ action: "quote", icon: "quote", labelKey: "toolbar.quote" }
 ];
 
 const ACTION_BUTTONS: MenuButton[] = [
-	{ action: "comment", icon: "message-square-text", label: "评论" },
-	{ action: "copy", icon: "copy", label: "复制" },
-	{ action: "delete", icon: "trash-2", label: "删除", danger: true }
+	{ action: "comment", icon: "message-square-text", labelKey: "toolbar.comment" },
+	{ action: "copy", icon: "copy", labelKey: "toolbar.copy" },
+	{ action: "delete", icon: "trash-2", labelKey: "toolbar.delete", danger: true }
 ];
 
 const MENU_VIEWPORT_PADDING = 8;
@@ -74,7 +75,10 @@ export class HoverBlockToolbar {
 	private hideTimer: number | null = null;
 	private openTimer: number | null = null;
 
-	constructor(private readonly onAction: (action: HoverBlockAction, target: HoverBlockTarget) => void) {
+	constructor(
+		private readonly onAction: (action: HoverBlockAction, target: HoverBlockTarget) => void,
+		private readonly t: (key: I18nKey) => string
+	) {
 		this.pointerMoveHandler = (event) => this.handlePointerMove(event);
 		this.pill = getActiveBody().createDiv({ cls: "side-mark-block-pill" });
 		this.pill.hide();
@@ -84,7 +88,7 @@ export class HoverBlockToolbar {
 
 		this.pill.createEl("button", {
 			cls: "side-mark-block-pill-label",
-			attr: { type: "button", "aria-label": "块格式" }
+			attr: { type: "button", "aria-label": this.t("toolbar.blockFormat") }
 		});
 		this.pill.createDiv({
 			cls: "side-mark-block-pill-arrow",
@@ -173,23 +177,24 @@ export class HoverBlockToolbar {
 	}
 
 	private renderButton(container: HTMLElement, item: MenuButton, closeSubmenuOnHover: boolean): void {
+		const label = this.t(item.labelKey);
 		const button = container.createEl("button", {
 			cls: item.compact
 				? `side-mark-block-menu-compact${item.submenu ? " has-submenu" : ""}`
 				: `side-mark-block-menu-row${item.danger ? " is-danger" : ""}`,
 			attr: {
 				type: "button",
-				title: item.label,
-				"aria-label": item.label
+				title: label,
+				"aria-label": label
 			}
 		});
 		const icon = button.createSpan({ cls: "side-mark-block-menu-row-icon" });
 		if (item.icon) {
 			setIcon(icon, item.icon);
 		} else {
-			icon.setText(item.shortcut || item.label);
+			icon.setText(item.shortcut || label);
 		}
-		button.createSpan({ cls: "side-mark-block-menu-row-label", text: item.label });
+		button.createSpan({ cls: "side-mark-block-menu-row-label", text: label });
 		const arrow = button.createSpan({ cls: "side-mark-block-menu-row-arrow" });
 		if (item.submenu) {
 			setIcon(arrow, "chevron-right");

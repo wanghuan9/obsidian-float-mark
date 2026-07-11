@@ -1,4 +1,4 @@
-import { addIcon, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
+import { addIcon, type Command, Editor, getLanguage, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import type { MarkdownPostProcessorContext } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
@@ -24,6 +24,7 @@ import { renderReadingMarks } from "./reading-view-renderer";
 import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
+import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginLanguage, translate, type I18nKey, type PluginLanguage } from "./i18n";
 
 const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -44,6 +45,9 @@ export default class SideMarkPlugin extends Plugin {
 	private blockToolbar!: HoverBlockToolbar;
 	private commentPopover!: CommentPopover;
 	private markStylePopover!: MarkStylePopover;
+	private settingTab!: SideMarkSettingTab;
+	private ribbonIconEl: HTMLElement | null = null;
+	private registeredCommandIds: string[] = [];
 	private activeEditorView: EditorView | null = null;
 	private pendingCommentSelection: {
 		filePath: string;
@@ -68,28 +72,15 @@ export default class SideMarkPlugin extends Plugin {
 		await this.loadSettings();
 		addIcon(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
 		this.store = new SideMarkStore(this.app, this.settings);
-		this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
-		this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
-		this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target));
-		this.commentPopover = new CommentPopover();
-		this.markStylePopover = new MarkStylePopover();
+		this.createFloatingControls();
 
 		this.registerEditorExtension(createSideMarkEditorExtension(this));
 		this.registerMarkdownPostProcessor((element, context) => {
 			void this.renderReadingModeMarks(element, context.sourcePath, context);
 		});
 		this.registerView(SIDE_MARK_VIEW_TYPE, (leaf: WorkspaceLeaf) => new SideMarkSidebarView(leaf, this));
-		this.addRibbonIcon(FLOAT_MARK_ICON_ID, "打开正文标注", () => void this.openSidebar());
-		this.addCommand({
-			id: "open-side-mark-sidebar",
-			name: "打开正文标注",
-			callback: () => void this.openSidebar()
-		});
-		this.addCommand({
-			id: "create-side-comment",
-			name: "从当前选区创建评论",
-			editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
-		});
+		this.ribbonIconEl = this.addRibbonIcon(FLOAT_MARK_ICON_ID, this.t("app.openSidebar"), () => void this.openSidebar());
+		this.registerLocalizedCommands();
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
 			void this.reloadCurrentDocument();
 			this.syncPreviewMarkObservers();
@@ -101,7 +92,8 @@ export default class SideMarkPlugin extends Plugin {
 				void this.reloadCurrentDocument();
 			}
 		}));
-		this.addSettingTab(new SideMarkSettingTab(this));
+		this.settingTab = new SideMarkSettingTab(this);
+		this.addSettingTab(this.settingTab);
 		await this.reloadCurrentDocument();
 	}
 
@@ -118,15 +110,92 @@ export default class SideMarkPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const saved = await this.loadData() as Partial<SideMarkSettings> | null;
+		const hasSavedLanguage = saved?.language === "zh-CN" || saved?.language === "en";
+		const language = hasSavedLanguage
+			? saved.language as PluginLanguage
+			: getInitialPluginLanguage(this.app, getLanguage());
+		const commentAuthorName = saved?.commentAuthorName || getDefaultCommentAuthorName(language);
 		this.settings = {
 			...DEFAULT_SETTINGS,
-			...(saved || {})
+			...(saved || {}),
+			language,
+			commentAuthorName
 		};
+		if (!hasSavedLanguage) {
+			await this.saveData(this.settings);
+		}
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 		this.store?.updateSettings(this.settings);
+	}
+
+	t(key: I18nKey, params?: Record<string, string | number>): string {
+		return translate(this.settings.language, key, params);
+	}
+
+	async setLanguage(language: PluginLanguage): Promise<void> {
+		const nextLanguage = normalizePluginLanguage(language, "zh-CN");
+		if (this.settings.language === nextLanguage) {
+			return;
+		}
+		this.settings.language = nextLanguage;
+		await this.saveSettings();
+		await this.refreshLanguage();
+	}
+
+	private async refreshLanguage(): Promise<void> {
+		this.toolbar?.destroy();
+		this.readingToolbar?.destroy();
+		this.blockToolbar?.destroy();
+		this.commentPopover?.destroy();
+		this.markStylePopover?.destroy();
+		this.createFloatingControls();
+		this.refreshRibbonTooltip();
+		this.refreshLocalizedCommands();
+		this.settingTab?.display();
+		await this.refreshSidebar();
+	}
+
+	private registerLocalizedCommands(): void {
+		this.registerCommand({
+			id: "open-side-mark-sidebar",
+			name: this.t("app.openSidebar"),
+			callback: () => void this.openSidebar()
+		});
+		this.registerCommand({
+			id: "create-side-comment",
+			name: this.t("app.createCommentFromSelection"),
+			editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
+		});
+	}
+
+	private registerCommand(command: Command): void {
+		const registeredCommand = this.addCommand(command);
+		this.registeredCommandIds.push(registeredCommand.id);
+	}
+
+	private refreshLocalizedCommands(): void {
+		for (const commandId of this.registeredCommandIds) {
+			this.removeCommand(commandId);
+		}
+		this.registeredCommandIds = [];
+		this.registerLocalizedCommands();
+	}
+
+	private refreshRibbonTooltip(): void {
+		const label = this.t("app.openSidebar");
+		this.ribbonIconEl?.setAttr("aria-label", label);
+		this.ribbonIconEl?.setAttr("title", label);
+	}
+
+	private createFloatingControls(): void {
+		this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action), (key) => this.t(key));
+		this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action), (key) => this.t(key));
+		this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target), (key) => this.t(key));
+		this.commentPopover = new CommentPopover((key) => this.t(key));
+		this.markStylePopover = new MarkStylePopover((key) => this.t(key));
 	}
 
 	getActiveMarkdownFile(): TFile | null {
@@ -360,7 +429,7 @@ export default class SideMarkPlugin extends Plugin {
 			await setLarkCommentResolved(this, mark, isSolved);
 		})().catch((error) => {
 			const message = error instanceof Error ? error.message : String(error);
-			new Notice(`同步飞书评论状态失败：${message}`, 8000);
+			new Notice(this.t("notice.larkStatusSyncFailed", { message }), 8000);
 		});
 	}
 
@@ -375,7 +444,7 @@ export default class SideMarkPlugin extends Plugin {
 				return;
 			}
 			const message = error instanceof Error ? error.message : String(error);
-			new Notice(`删除飞书评论失败：${message}`, 8000);
+			new Notice(this.t("notice.larkDeleteCommentFailed", { message }), 8000);
 		});
 	}
 
@@ -398,7 +467,7 @@ export default class SideMarkPlugin extends Plugin {
 				return;
 			}
 			const message = error instanceof Error ? error.message : String(error);
-			new Notice(`删除飞书评论回复失败：${message}`, 8000);
+			new Notice(this.t("notice.larkDeleteReplyFailed", { message }), 8000);
 		});
 	}
 
@@ -559,7 +628,7 @@ export default class SideMarkPlugin extends Plugin {
 		}
 		if (action === "copy") {
 			await navigator.clipboard.writeText(view.state.doc.sliceString(target.from, target.to));
-			new Notice("已复制当前块。");
+			new Notice(this.t("notice.blockCopied"));
 			return;
 		}
 		this.applyBlockStyle(view, target, action);
@@ -776,7 +845,7 @@ export default class SideMarkPlugin extends Plugin {
 	private async createCommentFromActiveSelection(noteContent: string): Promise<void> {
 		const view = this.activeEditorView;
 		if (!view) {
-			new Notice("没有可用的编辑器选区。");
+			new Notice(this.t("notice.noEditorSelection"));
 			return;
 		}
 		await this.createMarkFromView(view, "comment", noteContent);
@@ -906,7 +975,7 @@ export default class SideMarkPlugin extends Plugin {
 		}
 		void this.syncMarkToLarkIfReady(markId).catch((error) => {
 			const message = error instanceof Error ? error.message : String(error);
-			new Notice(`自动同步飞书失败：${message}`, 8000);
+			new Notice(this.t("notice.autoSyncLarkFailed", { message }), 8000);
 		});
 	}
 
@@ -1273,7 +1342,20 @@ class SideMarkSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("创建标注后打开侧栏")
+			.setName(this.plugin.t("settings.language.name"))
+			.setDesc(this.plugin.t("settings.language.desc"))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("zh-CN", this.plugin.t("settings.language.zh"))
+					.addOption("en", this.plugin.t("settings.language.en"))
+					.setValue(this.plugin.settings.language || "zh-CN")
+					.onChange(async (value) => {
+						await this.plugin.setLanguage(value as PluginLanguage);
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(this.plugin.t("settings.autoOpenSidebar.name"))
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
 					this.plugin.settings.autoOpenSidebar = value;
@@ -1284,11 +1366,12 @@ class SideMarkSettingTab extends PluginSettingTab {
 		this.renderLarkSyncSetting(containerEl);
 
 		new Setting(containerEl)
-			.setName("评论显示名称")
-			.setDesc("用于侧边栏评论线程里的作者名。")
+			.setName(this.plugin.t("settings.commentAuthorName.name"))
+			.setDesc(this.plugin.t("settings.commentAuthorName.desc"))
 			.addText((text) => {
 				text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
-					this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
+					const language = this.plugin.settings.language || "zh-CN";
+					this.plugin.settings.commentAuthorName = value.trim() || getDefaultCommentAuthorName(language);
 					await this.plugin.saveSettings();
 				});
 			});
@@ -1298,15 +1381,17 @@ class SideMarkSettingTab extends PluginSettingTab {
 		const status = getLarkSyncPluginStatus(this.plugin);
 		const canEnableSync = status === "enabled";
 		const setting = new Setting(containerEl)
-			.setName("标注同步飞书")
-			.setDesc("开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书。CLI 配置由该插件管理。")
+			.setName(this.plugin.t("settings.larkSync.name"))
+			.setDesc(this.plugin.t("settings.larkSync.desc"))
 			.addToggle((toggle) => {
 				toggle.setValue(canEnableSync && this.plugin.settings.autoSyncToLark).onChange(async (value) => {
 					if (value && !canEnableSync) {
 						toggle.setValue(false);
 						this.plugin.settings.autoSyncToLark = false;
 						await this.plugin.saveSettings();
-						new Notice(`${getLarkSyncPluginStatusText(status)} 无法开启标注同步，请先安装并启用该插件。`, 8000);
+						new Notice(this.plugin.t("settings.larkSync.enableBlocked", {
+							status: getLarkSyncPluginStatusText(status, this.plugin.settings.language)
+						}), 8000);
 						return;
 					}
 					this.plugin.settings.autoSyncToLark = value;
@@ -1315,7 +1400,7 @@ class SideMarkSettingTab extends PluginSettingTab {
 			});
 		const statusEl = setting.descEl.createDiv({
 			cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
-			text: getLarkSyncPluginStatusText(status)
+			text: getLarkSyncPluginStatusText(status, this.plugin.settings.language)
 		});
 		statusEl.setAttr("aria-live", "polite");
 	}

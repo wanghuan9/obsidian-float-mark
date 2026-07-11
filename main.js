@@ -296,7 +296,8 @@ function getDomSelectionRect(editorDom) {
 // src/comment-popover.ts
 var import_obsidian2 = require("obsidian");
 var CommentPopover = class {
-  constructor() {
+  constructor(t) {
+    this.t = t;
     this.onSave = null;
     this.onHide = null;
     this.hideTimer = null;
@@ -306,26 +307,26 @@ var CommentPopover = class {
     this.el.addEventListener("mouseenter", () => this.cancelHide());
     this.el.addEventListener("mouseleave", () => this.scheduleHide());
     const header = this.el.createDiv({ cls: "side-mark-comment-popover-header" });
-    header.createSpan({ text: "\u8BC4\u8BBA" });
+    header.createSpan({ text: this.t("popover.commentTitle") });
     const closeButton = header.createEl("button", {
       cls: "side-mark-icon-button",
-      attr: { type: "button", "aria-label": "\u5173\u95ED" }
+      attr: { type: "button", "aria-label": this.t("popover.close") }
     });
     (0, import_obsidian2.setIcon)(closeButton, "x");
     closeButton.addEventListener("click", () => this.hide());
     this.textarea = this.el.createEl("textarea", {
       cls: "side-mark-comment-textarea",
-      attr: { placeholder: "\u586B\u5199\u8BC4\u8BBA" }
+      attr: { placeholder: this.t("popover.commentPlaceholder") }
     });
     const actions = this.el.createDiv({ cls: "side-mark-comment-actions" });
     const cancel = actions.createEl("button", {
-      text: "\u53D6\u6D88",
+      text: this.t("popover.cancel"),
       cls: "side-mark-secondary-button",
       attr: { type: "button" }
     });
     cancel.addEventListener("click", () => this.hide());
     const save = actions.createEl("button", {
-      text: "\u4FDD\u5B58",
+      text: this.t("popover.save"),
       cls: "side-mark-primary-button",
       attr: { type: "button" }
     });
@@ -420,34 +421,35 @@ function getPopoverAxisPosition(preferred, size, fallback, viewportSize) {
 // src/hover-block-toolbar.ts
 var import_obsidian3 = require("obsidian");
 var HEADING_SUBMENU_BUTTONS = [
-  { action: "heading-4", label: "\u56DB\u7EA7\u6807\u9898", shortcut: "H4", compact: true },
-  { action: "heading-5", label: "\u4E94\u7EA7\u6807\u9898", shortcut: "H5", compact: true },
-  { action: "heading-6", label: "\u516D\u7EA7\u6807\u9898", shortcut: "H6", compact: true }
+  { action: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4", compact: true },
+  { action: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5", compact: true },
+  { action: "heading-6", labelKey: "toolbar.heading6", shortcut: "H6", compact: true }
 ];
 var FORMAT_BUTTONS = [
-  { action: "paragraph", label: "\u6B63\u6587", shortcut: "T", compact: true },
-  { action: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1", compact: true },
-  { action: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2", compact: true },
-  { action: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3", compact: true },
-  { label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", compact: true, submenu: HEADING_SUBMENU_BUTTONS },
-  { action: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
-  { action: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
-  { action: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
-  { action: "code-block", icon: "braces", label: "\u4EE3\u7801\u5757" },
-  { action: "quote", icon: "quote", label: "\u5F15\u7528" }
+  { action: "paragraph", labelKey: "toolbar.paragraph", shortcut: "T", compact: true },
+  { action: "heading-1", labelKey: "toolbar.heading1", shortcut: "H1", compact: true },
+  { action: "heading-2", labelKey: "toolbar.heading2", shortcut: "H2", compact: true },
+  { action: "heading-3", labelKey: "toolbar.heading3", shortcut: "H3", compact: true },
+  { labelKey: "toolbar.otherHeadings", shortcut: "Hn", compact: true, submenu: HEADING_SUBMENU_BUTTONS },
+  { action: "number-list", icon: "list-ordered", labelKey: "toolbar.numberList" },
+  { action: "bullet-list", icon: "list", labelKey: "toolbar.bulletList" },
+  { action: "task-list", icon: "square-check", labelKey: "toolbar.taskList" },
+  { action: "code-block", icon: "braces", labelKey: "toolbar.codeBlock" },
+  { action: "quote", icon: "quote", labelKey: "toolbar.quote" }
 ];
 var ACTION_BUTTONS = [
-  { action: "comment", icon: "message-square-text", label: "\u8BC4\u8BBA" },
-  { action: "copy", icon: "copy", label: "\u590D\u5236" },
-  { action: "delete", icon: "trash-2", label: "\u5220\u9664", danger: true }
+  { action: "comment", icon: "message-square-text", labelKey: "toolbar.comment" },
+  { action: "copy", icon: "copy", labelKey: "toolbar.copy" },
+  { action: "delete", icon: "trash-2", labelKey: "toolbar.delete", danger: true }
 ];
 var MENU_VIEWPORT_PADDING = 8;
 var MENU_PILL_GAP = 6;
 var MENU_DEFAULT_MAX_HEIGHT = 360;
 var MENU_MIN_HEIGHT = 120;
 var HoverBlockToolbar = class {
-  constructor(onAction) {
+  constructor(onAction, t) {
     this.onAction = onAction;
+    this.t = t;
     this.target = null;
     this.hideTimer = null;
     this.openTimer = null;
@@ -459,7 +461,7 @@ var HoverBlockToolbar = class {
     this.pill.addEventListener("mouseleave", () => this.scheduleHide());
     this.pill.createEl("button", {
       cls: "side-mark-block-pill-label",
-      attr: { type: "button", "aria-label": "\u5757\u683C\u5F0F" }
+      attr: { type: "button", "aria-label": this.t("toolbar.blockFormat") }
     });
     this.pill.createDiv({
       cls: "side-mark-block-pill-arrow"
@@ -542,21 +544,22 @@ var HoverBlockToolbar = class {
     }
   }
   renderButton(container, item, closeSubmenuOnHover) {
+    const label = this.t(item.labelKey);
     const button = container.createEl("button", {
       cls: item.compact ? `side-mark-block-menu-compact${item.submenu ? " has-submenu" : ""}` : `side-mark-block-menu-row${item.danger ? " is-danger" : ""}`,
       attr: {
         type: "button",
-        title: item.label,
-        "aria-label": item.label
+        title: label,
+        "aria-label": label
       }
     });
     const icon = button.createSpan({ cls: "side-mark-block-menu-row-icon" });
     if (item.icon) {
       (0, import_obsidian3.setIcon)(icon, item.icon);
     } else {
-      icon.setText(item.shortcut || item.label);
+      icon.setText(item.shortcut || label);
     }
-    button.createSpan({ cls: "side-mark-block-menu-row-label", text: item.label });
+    button.createSpan({ cls: "side-mark-block-menu-row-label", text: label });
     const arrow = button.createSpan({ cls: "side-mark-block-menu-row-arrow" });
     if (item.submenu) {
       (0, import_obsidian3.setIcon)(arrow, "chevron-right");
@@ -685,34 +688,35 @@ function isInsideWithPadding(event, element, padding) {
 // src/mark-style-popover.ts
 var import_obsidian4 = require("obsidian");
 var TEXT_COLORS = [
-  { color: "default", label: "\u9ED8\u8BA4\u5B57\u4F53" },
-  { color: "gray", label: "\u7070\u8272\u5B57\u4F53" },
-  { color: "red", label: "\u7EA2\u8272\u5B57\u4F53" },
-  { color: "orange", label: "\u6A59\u8272\u5B57\u4F53" },
-  { color: "yellow", label: "\u9EC4\u8272\u5B57\u4F53" },
-  { color: "green", label: "\u7EFF\u8272\u5B57\u4F53" },
-  { color: "blue", label: "\u84DD\u8272\u5B57\u4F53" },
-  { color: "purple", label: "\u7D2B\u8272\u5B57\u4F53" }
+  { color: "default", labelKey: "style.text.default" },
+  { color: "gray", labelKey: "style.text.gray" },
+  { color: "red", labelKey: "style.text.red" },
+  { color: "orange", labelKey: "style.text.orange" },
+  { color: "yellow", labelKey: "style.text.yellow" },
+  { color: "green", labelKey: "style.text.green" },
+  { color: "blue", labelKey: "style.text.blue" },
+  { color: "purple", labelKey: "style.text.purple" }
 ];
 var BACKGROUND_COLORS = [
-  { color: "none", label: "\u65E0\u80CC\u666F" },
-  { color: "gray-light", label: "\u6D45\u7070\u80CC\u666F" },
-  { color: "red-light", label: "\u6D45\u7EA2\u80CC\u666F" },
-  { color: "orange-light", label: "\u6D45\u6A59\u80CC\u666F" },
-  { color: "yellow-light", label: "\u6D45\u9EC4\u80CC\u666F" },
-  { color: "green-light", label: "\u6D45\u7EFF\u80CC\u666F" },
-  { color: "blue-light", label: "\u6D45\u84DD\u80CC\u666F" },
-  { color: "purple-light", label: "\u6D45\u7D2B\u80CC\u666F" },
-  { color: "gray", label: "\u7070\u8272\u80CC\u666F" },
-  { color: "red", label: "\u7EA2\u8272\u80CC\u666F" },
-  { color: "orange", label: "\u6A59\u8272\u80CC\u666F" },
-  { color: "yellow", label: "\u9EC4\u8272\u80CC\u666F" },
-  { color: "green", label: "\u7EFF\u8272\u80CC\u666F" },
-  { color: "blue", label: "\u84DD\u8272\u80CC\u666F" },
-  { color: "purple", label: "\u7D2B\u8272\u80CC\u666F" }
+  { color: "none", labelKey: "style.background.none" },
+  { color: "gray-light", labelKey: "style.background.grayLight" },
+  { color: "red-light", labelKey: "style.background.redLight" },
+  { color: "orange-light", labelKey: "style.background.orangeLight" },
+  { color: "yellow-light", labelKey: "style.background.yellowLight" },
+  { color: "green-light", labelKey: "style.background.greenLight" },
+  { color: "blue-light", labelKey: "style.background.blueLight" },
+  { color: "purple-light", labelKey: "style.background.purpleLight" },
+  { color: "gray", labelKey: "style.background.gray" },
+  { color: "red", labelKey: "style.background.red" },
+  { color: "orange", labelKey: "style.background.orange" },
+  { color: "yellow", labelKey: "style.background.yellow" },
+  { color: "green", labelKey: "style.background.green" },
+  { color: "blue", labelKey: "style.background.blue" },
+  { color: "purple", labelKey: "style.background.purple" }
 ];
 var MarkStylePopover = class {
-  constructor() {
+  constructor(t) {
+    this.t = t;
     this.textColorButtons = /* @__PURE__ */ new Map();
     this.backgroundColorButtons = /* @__PURE__ */ new Map();
     this.textColor = "default";
@@ -726,10 +730,10 @@ var MarkStylePopover = class {
     this.el.addEventListener("mouseenter", () => this.cancelHide());
     this.el.addEventListener("mouseleave", () => this.scheduleHide());
     const header = this.el.createDiv({ cls: "side-mark-style-popover-header" });
-    header.createSpan({ text: "\u6807\u8BB0" });
+    header.createSpan({ text: this.t("popover.markTitle") });
     const closeButton = header.createEl("button", {
       cls: "side-mark-icon-button",
-      attr: { type: "button", "aria-label": "\u5173\u95ED" }
+      attr: { type: "button", "aria-label": this.t("popover.close") }
     });
     (0, import_obsidian4.setIcon)(closeButton, "x");
     closeButton.addEventListener("click", () => this.hide());
@@ -772,12 +776,13 @@ var MarkStylePopover = class {
     this.el.remove();
   }
   renderTextColors() {
-    this.el.createDiv({ cls: "side-mark-style-section-title", text: "\u5B57\u4F53\u989C\u8272" });
+    this.el.createDiv({ cls: "side-mark-style-section-title", text: this.t("popover.textColor") });
     const row = this.el.createDiv({ cls: "side-mark-style-text-row" });
     for (const item of TEXT_COLORS) {
+      const label = this.t(item.labelKey);
       const button = row.createEl("button", {
         cls: `side-mark-style-text-color is-${item.color}`,
-        attr: { type: "button", title: item.label, "aria-label": item.label }
+        attr: { type: "button", title: label, "aria-label": label }
       });
       button.createSpan({ text: "A" });
       button.addEventListener("click", (event) => {
@@ -791,12 +796,13 @@ var MarkStylePopover = class {
     }
   }
   renderBackgroundColors() {
-    this.el.createDiv({ cls: "side-mark-style-section-title", text: "\u80CC\u666F\u989C\u8272" });
+    this.el.createDiv({ cls: "side-mark-style-section-title", text: this.t("popover.backgroundColor") });
     const grid = this.el.createDiv({ cls: "side-mark-style-background-grid" });
     for (const item of BACKGROUND_COLORS) {
+      const label = this.t(item.labelKey);
       const button = grid.createEl("button", {
         cls: `side-mark-style-background-color is-${item.color}`,
-        attr: { type: "button", title: item.label, "aria-label": item.label }
+        attr: { type: "button", title: label, "aria-label": label }
       });
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -811,7 +817,7 @@ var MarkStylePopover = class {
   renderResetButton() {
     const button = this.el.createEl("button", {
       cls: "side-mark-style-reset",
-      text: "\u6062\u590D\u9ED8\u8BA4",
+      text: this.t("popover.resetDefault"),
       attr: { type: "button" }
     });
     button.addEventListener("click", (event) => {
@@ -861,12 +867,13 @@ function clamp3(value, min, max) {
 // src/reading-selection-toolbar.ts
 var import_obsidian5 = require("obsidian");
 var READING_BUTTONS = [
-  { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
-  { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
+  { id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
+  { id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
 var ReadingSelectionToolbar = class {
-  constructor(onAction) {
+  constructor(onAction, t) {
     this.onAction = onAction;
+    this.t = t;
     this.hideTimer = null;
     this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
     this.el.hide();
@@ -874,12 +881,13 @@ var ReadingSelectionToolbar = class {
     this.el.addEventListener("mouseenter", () => this.cancelHide());
     this.el.addEventListener("mouseleave", () => this.scheduleHide());
     for (const button of READING_BUTTONS) {
+      const title = this.t(button.titleKey);
       const buttonEl = this.el.createEl("button", {
         cls: "side-mark-toolbar-button",
         attr: {
           type: "button",
-          title: button.title,
-          "aria-label": button.title
+          title,
+          "aria-label": title
         }
       });
       (0, import_obsidian5.setIcon)(buttonEl, button.icon);
@@ -942,31 +950,31 @@ function clamp4(value, min, max) {
 // src/selection-toolbar.ts
 var import_obsidian6 = require("obsidian");
 var HEADING_SUBMENU_ITEMS = [
-  { id: "heading-4", label: "\u56DB\u7EA7\u6807\u9898", shortcut: "H4" },
-  { id: "heading-5", label: "\u4E94\u7EA7\u6807\u9898", shortcut: "H5" },
-  { id: "heading-6", label: "\u516D\u7EA7\u6807\u9898", shortcut: "H6" }
+  { id: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4" },
+  { id: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5" },
+  { id: "heading-6", labelKey: "toolbar.heading6", shortcut: "H6" }
 ];
 var FORMAT_ITEMS = [
-  { id: "paragraph", label: "\u6B63\u6587", shortcut: "T" },
-  { id: "heading-1", label: "\u4E00\u7EA7\u6807\u9898", shortcut: "H1" },
-  { id: "heading-2", label: "\u4E8C\u7EA7\u6807\u9898", shortcut: "H2" },
-  { id: "heading-3", label: "\u4E09\u7EA7\u6807\u9898", shortcut: "H3" },
-  { label: "\u5176\u4ED6\u6807\u9898", shortcut: "Hn", submenu: HEADING_SUBMENU_ITEMS },
-  { id: "number-list", icon: "list-ordered", label: "\u6709\u5E8F\u5217\u8868" },
-  { id: "bullet-list", icon: "list", label: "\u65E0\u5E8F\u5217\u8868" },
-  { id: "task-list", icon: "square-check", label: "\u4EFB\u52A1" },
-  { id: "code-block", icon: "braces", label: "\u4EE3\u7801\u5757" },
-  { id: "quote", icon: "quote", label: "\u5F15\u7528" }
+  { id: "paragraph", labelKey: "toolbar.paragraph", shortcut: "T" },
+  { id: "heading-1", labelKey: "toolbar.heading1", shortcut: "H1" },
+  { id: "heading-2", labelKey: "toolbar.heading2", shortcut: "H2" },
+  { id: "heading-3", labelKey: "toolbar.heading3", shortcut: "H3" },
+  { labelKey: "toolbar.otherHeadings", shortcut: "Hn", submenu: HEADING_SUBMENU_ITEMS },
+  { id: "number-list", icon: "list-ordered", labelKey: "toolbar.numberList" },
+  { id: "bullet-list", icon: "list", labelKey: "toolbar.bulletList" },
+  { id: "task-list", icon: "square-check", labelKey: "toolbar.taskList" },
+  { id: "code-block", icon: "braces", labelKey: "toolbar.codeBlock" },
+  { id: "quote", icon: "quote", labelKey: "toolbar.quote" }
 ];
 var BUTTONS = [
-  { id: "bold", icon: "bold", title: "\u52A0\u7C97" },
-  { id: "strike", icon: "strikethrough", title: "\u5220\u9664\u7EBF" },
-  { id: "italic", icon: "italic", title: "\u659C\u4F53" },
-  { id: "underline", icon: "underline", title: "\u4E0B\u5212\u7EBF" },
-  { id: "link", icon: "link", title: "\u94FE\u63A5" },
-  { id: "code", icon: "code", title: "\u884C\u5185\u4EE3\u7801" },
-  { id: "highlight", icon: "highlighter", title: "\u9AD8\u4EAE\u6807\u6CE8" },
-  { id: "comment", icon: "message-square-text", title: "\u8BC4\u8BBA" }
+  { id: "bold", icon: "bold", titleKey: "toolbar.bold" },
+  { id: "strike", icon: "strikethrough", titleKey: "toolbar.strike" },
+  { id: "italic", icon: "italic", titleKey: "toolbar.italic" },
+  { id: "underline", icon: "underline", titleKey: "toolbar.underline" },
+  { id: "link", icon: "link", titleKey: "toolbar.link" },
+  { id: "code", icon: "code", titleKey: "toolbar.code" },
+  { id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
+  { id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
 var FORMAT_LABELS = {
   paragraph: "T",
@@ -985,8 +993,9 @@ var FORMAT_ICONS = {
   "code-block": "braces"
 };
 var SelectionToolbar = class {
-  constructor(onAction) {
+  constructor(onAction, t) {
     this.onAction = onAction;
+    this.t = t;
     this.formatRows = /* @__PURE__ */ new Map();
     this.hideTimer = null;
     this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar" });
@@ -999,9 +1008,9 @@ var SelectionToolbar = class {
     this.el.addEventListener("mouseleave", () => this.scheduleHide());
     const format = this.el.createEl("button", {
       cls: "side-mark-toolbar-format",
-      attr: { type: "button", title: "\u683C\u5F0F", "aria-label": "\u683C\u5F0F" }
+      attr: { type: "button", title: this.t("toolbar.format"), "aria-label": this.t("toolbar.format") }
     });
-    this.formatLabel = format.createSpan({ text: "\u6B63\u6587" });
+    this.formatLabel = format.createSpan({ text: this.t("toolbar.paragraph") });
     const chevron = format.createSpan({ cls: "side-mark-toolbar-format-chevron" });
     (0, import_obsidian6.setIcon)(chevron, "chevron-down");
     format.addEventListener("mouseenter", () => this.openMenu());
@@ -1012,12 +1021,13 @@ var SelectionToolbar = class {
     });
     this.el.createDiv({ cls: "side-mark-toolbar-divider" });
     for (const button of BUTTONS) {
+      const title = this.t(button.titleKey);
       const buttonEl = this.el.createEl("button", {
         cls: "side-mark-toolbar-button",
         attr: {
           type: "button",
-          title: button.title,
-          "aria-label": button.title
+          title,
+          "aria-label": title
         }
       });
       (0, import_obsidian6.setIcon)(buttonEl, button.icon);
@@ -1040,9 +1050,10 @@ var SelectionToolbar = class {
     this.submenu.addEventListener("mouseleave", () => this.scheduleHide());
     this.renderHeadingSubmenu();
     for (const item of FORMAT_ITEMS) {
+      const label = this.t(item.labelKey);
       const row = this.menu.createEl("button", {
         cls: item.submenu ? "side-mark-selection-menu-row has-submenu" : "side-mark-selection-menu-row",
-        attr: { type: "button", title: item.label, "aria-label": item.label }
+        attr: { type: "button", title: label, "aria-label": label }
       });
       const iconWrap = row.createSpan({ cls: "side-mark-selection-menu-icon" });
       if (item.icon) {
@@ -1050,7 +1061,7 @@ var SelectionToolbar = class {
       } else {
         iconWrap.setText(item.shortcut || "");
       }
-      row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+      row.createSpan({ cls: "side-mark-selection-menu-label", text: label });
       const check = row.createSpan({ cls: "side-mark-selection-menu-check" });
       if (item.submenu) {
         (0, import_obsidian6.setIcon)(check, "chevron-right");
@@ -1074,7 +1085,7 @@ var SelectionToolbar = class {
         event.preventDefault();
         event.stopPropagation();
         if (item.id) {
-          this.formatLabel.setText(item.shortcut || item.label);
+          this.formatLabel.setText(item.shortcut || label);
           this.onAction(item.id);
         }
         this.hide();
@@ -1187,12 +1198,13 @@ var SelectionToolbar = class {
   }
   renderHeadingSubmenu() {
     for (const item of HEADING_SUBMENU_ITEMS) {
+      const label = this.t(item.labelKey);
       const row = this.submenu.createEl("button", {
         cls: "side-mark-selection-menu-row",
-        attr: { type: "button", title: item.label, "aria-label": item.label }
+        attr: { type: "button", title: label, "aria-label": label }
       });
       row.createSpan({ cls: "side-mark-selection-menu-icon", text: item.shortcut || "" });
-      row.createSpan({ cls: "side-mark-selection-menu-label", text: item.label });
+      row.createSpan({ cls: "side-mark-selection-menu-label", text: label });
       row.createSpan({ cls: "side-mark-selection-menu-check" });
       if (isSelectionFormatAction(item.id)) {
         this.formatRows.set(item.id, row);
@@ -1201,7 +1213,7 @@ var SelectionToolbar = class {
         event.preventDefault();
         event.stopPropagation();
         if (item.id) {
-          this.formatLabel.setText(item.shortcut || item.label);
+          this.formatLabel.setText(item.shortcut || label);
           this.onAction(item.id);
         }
         this.hide();
@@ -1361,10 +1373,349 @@ function offsetToLineColumn(source, offset) {
   return { line, column };
 }
 
+// src/i18n.ts
+var TRANSLATIONS = {
+  "zh-CN": {
+    "app.openSidebar": "\u6253\u5F00\u6B63\u6587\u6807\u6CE8",
+    "app.createCommentFromSelection": "\u4ECE\u5F53\u524D\u9009\u533A\u521B\u5EFA\u8BC4\u8BBA",
+    "settings.language.name": "\u8BED\u8A00",
+    "settings.language.desc": "\u9009\u62E9 FloatMark \u754C\u9762\u8BED\u8A00\u3002",
+    "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
+    "settings.language.en": "English",
+    "settings.autoOpenSidebar.name": "\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F",
+    "settings.commentAuthorName.name": "\u8BC4\u8BBA\u663E\u793A\u540D\u79F0",
+    "settings.commentAuthorName.desc": "\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002",
+    "settings.larkSync.name": "\u6807\u6CE8\u540C\u6B65\u98DE\u4E66",
+    "settings.larkSync.desc": "\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002",
+    "settings.larkSync.enableBlocked": "{status} \u65E0\u6CD5\u5F00\u542F\u6807\u6CE8\u540C\u6B65\uFF0C\u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002",
+    "toolbar.format": "\u683C\u5F0F",
+    "toolbar.paragraph": "\u6B63\u6587",
+    "toolbar.heading1": "\u4E00\u7EA7\u6807\u9898",
+    "toolbar.heading2": "\u4E8C\u7EA7\u6807\u9898",
+    "toolbar.heading3": "\u4E09\u7EA7\u6807\u9898",
+    "toolbar.heading4": "\u56DB\u7EA7\u6807\u9898",
+    "toolbar.heading5": "\u4E94\u7EA7\u6807\u9898",
+    "toolbar.heading6": "\u516D\u7EA7\u6807\u9898",
+    "toolbar.otherHeadings": "\u5176\u4ED6\u6807\u9898",
+    "toolbar.numberList": "\u6709\u5E8F\u5217\u8868",
+    "toolbar.bulletList": "\u65E0\u5E8F\u5217\u8868",
+    "toolbar.taskList": "\u4EFB\u52A1",
+    "toolbar.codeBlock": "\u4EE3\u7801\u5757",
+    "toolbar.quote": "\u5F15\u7528",
+    "toolbar.bold": "\u52A0\u7C97",
+    "toolbar.strike": "\u5220\u9664\u7EBF",
+    "toolbar.italic": "\u659C\u4F53",
+    "toolbar.underline": "\u4E0B\u5212\u7EBF",
+    "toolbar.link": "\u94FE\u63A5",
+    "toolbar.code": "\u884C\u5185\u4EE3\u7801",
+    "toolbar.highlight": "\u9AD8\u4EAE\u6807\u6CE8",
+    "toolbar.comment": "\u8BC4\u8BBA",
+    "toolbar.copy": "\u590D\u5236",
+    "toolbar.delete": "\u5220\u9664",
+    "toolbar.blockFormat": "\u5757\u683C\u5F0F",
+    "popover.close": "\u5173\u95ED",
+    "popover.commentTitle": "\u8BC4\u8BBA",
+    "popover.commentPlaceholder": "\u586B\u5199\u8BC4\u8BBA",
+    "popover.cancel": "\u53D6\u6D88",
+    "popover.save": "\u4FDD\u5B58",
+    "popover.markTitle": "\u6807\u8BB0",
+    "popover.textColor": "\u5B57\u4F53\u989C\u8272",
+    "popover.backgroundColor": "\u80CC\u666F\u989C\u8272",
+    "popover.resetDefault": "\u6062\u590D\u9ED8\u8BA4",
+    "style.text.default": "\u9ED8\u8BA4\u5B57\u4F53",
+    "style.text.gray": "\u7070\u8272\u5B57\u4F53",
+    "style.text.red": "\u7EA2\u8272\u5B57\u4F53",
+    "style.text.orange": "\u6A59\u8272\u5B57\u4F53",
+    "style.text.yellow": "\u9EC4\u8272\u5B57\u4F53",
+    "style.text.green": "\u7EFF\u8272\u5B57\u4F53",
+    "style.text.blue": "\u84DD\u8272\u5B57\u4F53",
+    "style.text.purple": "\u7D2B\u8272\u5B57\u4F53",
+    "style.background.none": "\u65E0\u80CC\u666F",
+    "style.background.grayLight": "\u6D45\u7070\u80CC\u666F",
+    "style.background.redLight": "\u6D45\u7EA2\u80CC\u666F",
+    "style.background.orangeLight": "\u6D45\u6A59\u80CC\u666F",
+    "style.background.yellowLight": "\u6D45\u9EC4\u80CC\u666F",
+    "style.background.greenLight": "\u6D45\u7EFF\u80CC\u666F",
+    "style.background.blueLight": "\u6D45\u84DD\u80CC\u666F",
+    "style.background.purpleLight": "\u6D45\u7D2B\u80CC\u666F",
+    "style.background.gray": "\u7070\u8272\u80CC\u666F",
+    "style.background.red": "\u7EA2\u8272\u80CC\u666F",
+    "style.background.orange": "\u6A59\u8272\u80CC\u666F",
+    "style.background.yellow": "\u9EC4\u8272\u80CC\u666F",
+    "style.background.green": "\u7EFF\u8272\u80CC\u666F",
+    "style.background.blue": "\u84DD\u8272\u80CC\u666F",
+    "style.background.purple": "\u7D2B\u8272\u80CC\u666F",
+    "sidebar.title": "\u6B63\u6587\u6807\u6CE8",
+    "sidebar.emptyDocument": "\u5F53\u524D\u6587\u6863\u8FD8\u6CA1\u6709\u6807\u6CE8\u3002",
+    "sidebar.emptyComments": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8BC4\u8BBA\u3002",
+    "sidebar.emptyMarks": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u8BB0\u3002",
+    "sidebar.comments": "\u8BC4\u8BBA",
+    "sidebar.marks": "\u6807\u8BB0",
+    "sidebar.status": "\u72B6\u6001",
+    "sidebar.color": "\u989C\u8272",
+    "sidebar.tag": "\u6807\u7B7E",
+    "sidebar.active": "\u6D3B\u52A8",
+    "sidebar.all": "\u5168\u90E8",
+    "sidebar.resolved": "\u5DF2\u89E3\u51B3",
+    "sidebar.orphaned": "\u5931\u8054",
+    "sidebar.yellow": "\u9EC4\u8272",
+    "sidebar.blue": "\u84DD\u8272",
+    "sidebar.green": "\u7EFF\u8272",
+    "sidebar.red": "\u7EA2\u8272",
+    "sidebar.searchComments": "\u641C\u7D22\u8BC4\u8BBA",
+    "sidebar.searchMarks": "\u641C\u7D22\u6807\u8BB0",
+    "sidebar.currentDocumentStats": "\u5F53\u524D\u6587\u6863\uFF0C\u5171 {count} \u6761{kind}",
+    "sidebar.currentFilterStats": "\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 {filtered} / {total} \u6761{kind}",
+    "sidebar.locate": "\u5B9A\u4F4D",
+    "sidebar.style": "\u6837\u5F0F",
+    "sidebar.editNote": "\u7F16\u8F91\u5907\u6CE8",
+    "sidebar.addNote": "\u6DFB\u52A0\u5907\u6CE8",
+    "sidebar.more": "\u66F4\u591A",
+    "sidebar.font": "\u5B57\u4F53",
+    "sidebar.background": "\u80CC\u666F",
+    "sidebar.editNoteTitle": "\u53CC\u51FB\u4FEE\u6539\u5907\u6CE8",
+    "sidebar.deleteNote": "\u5220\u9664\u5907\u6CE8",
+    "sidebar.notePlaceholder": "\u5199\u4E00\u6761\u5907\u6CE8",
+    "sidebar.pickColor": "\u989C\u8272",
+    "sidebar.restore": "\u6062\u590D",
+    "sidebar.resolve": "\u89E3\u51B3",
+    "sidebar.emptyThread": "\u8FD8\u6CA1\u6709\u8BC4\u8BBA\uFF0C\u7EE7\u7EED\u8F93\u5165\u7B2C\u4E00\u6761\u3002",
+    "sidebar.editCommentTitle": "\u53CC\u51FB\u4FEE\u6539\u8BC4\u8BBA",
+    "sidebar.deleteComment": "\u5220\u9664\u8BC4\u8BBA",
+    "sidebar.replyTrigger": "\u56DE\u590D...",
+    "sidebar.replyPlaceholder": "\u7EE7\u7EED\u8BC4\u8BBA",
+    "sidebar.reply": "\u56DE\u590D",
+    "sidebar.confirmDelete": "\u786E\u8BA4\u5220\u9664",
+    "sidebar.confirm": "\u786E\u8BA4",
+    "sidebar.syncedToLark": "\u5DF2\u540C\u6B65\u5230\u98DE\u4E66",
+    "sidebar.syncLarkFailed": "\u540C\u6B65\u98DE\u4E66\u5931\u8D25",
+    "sidebar.syncToLark": "\u540C\u6B65\u5230\u98DE\u4E66",
+    "sidebar.justNow": "\u521A\u521A",
+    "sidebar.minutesAgo": "{count} \u5206\u949F\u524D",
+    "sidebar.hoursAgo": "{count} \u5C0F\u65F6\u524D",
+    "notice.larkStatusSyncFailed": "\u540C\u6B65\u98DE\u4E66\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\uFF1A{message}",
+    "notice.larkDeleteCommentFailed": "\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u5931\u8D25\uFF1A{message}",
+    "notice.larkDeleteReplyFailed": "\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\uFF1A{message}",
+    "notice.blockCopied": "\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002",
+    "notice.noEditorSelection": "\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002",
+    "notice.autoSyncLarkFailed": "\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A{message}",
+    "notice.syncedToLark": "\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002",
+    "error.emptyComment": "\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002",
+    "error.noLarkBinding": "\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002",
+    "error.noLarkBlockMap": "\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002",
+    "error.noLarkBlock": "\u6CA1\u6709\u627E\u5230\u8BE5\u6807\u6CE8\u547D\u4E2D\u7684\u7B2C\u4E00\u4E2A\u98DE\u4E66 block\u3002",
+    "error.larkCreateCommentFailed": "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002",
+    "error.larkCreateReplyFailed": "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002",
+    "error.larkUpdateCommentFailed": "lark-cli \u66F4\u65B0\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\u3002",
+    "error.missingLarkReplyId": "\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u3002",
+    "error.larkDeleteReplyFailed": "lark-cli \u5220\u9664\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002",
+    "error.localReplyNotFound": "\u627E\u4E0D\u5230\u8981\u5220\u9664\u7684\u672C\u5730\u8BC4\u8BBA\u56DE\u590D\u3002",
+    "error.missingRemoteReplyId": "\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u56DE\u590D\u3002",
+    "error.missingLarkCommentInfo": "\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA\u540C\u6B65\u4FE1\u606F\uFF0C\u65E0\u6CD5\u64CD\u4F5C\u8FDC\u7AEF\u8BC4\u8BBA\u3002",
+    "error.missingLarkCommentId": "\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA ID\uFF0C\u65E0\u6CD5\u8FFD\u52A0\u56DE\u590D\u3002",
+    "error.missingSyncRecord": "\u7F3A\u5C11\u4E0A\u6B21\u540C\u6B65\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u5224\u65AD\u54EA\u4E9B\u56DE\u590D\u5DF2\u540C\u6B65\u3002\u8BF7\u5728\u98DE\u4E66\u4E2D\u786E\u8BA4\u540E\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002",
+    "error.commentAnchorChanged": "\u8BC4\u8BBA\u5B9A\u4F4D\u6587\u672C\u5DF2\u53D8\u5316\uFF0C\u65E0\u6CD5\u5B89\u5168\u8FFD\u52A0\u98DE\u4E66\u56DE\u590D\u3002\u8BF7\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002",
+    "error.syncedCommentChanged": "\u5DF2\u540C\u6B65\u7684\u65E7\u8BC4\u8BBA\u5185\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u6682\u4E0D\u652F\u6301\u540C\u6B65\u7F16\u8F91\u6216\u5220\u9664\u540E\u7684\u56DE\u590D\u3002",
+    "error.larkGetRepliesFailed": "lark-cli \u83B7\u53D6\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002",
+    "error.larkPluginUnavailable": "{status} \u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002",
+    "error.larkPluginNoCli": "Feishu Lark CLI Sync \u672A\u66B4\u9732 CLI \u6267\u884C\u80FD\u529B\uFF0C\u8BF7\u5347\u7EA7\u8BE5\u63D2\u4EF6\u3002",
+    "error.larkNoCommentId": "lark-cli \u672A\u8FD4\u56DE comment_id\u3002",
+    "lark.emptyComment": "\uFF08\u65E0\u8BC4\u8BBA\uFF09",
+    "lark.status.enabled": "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u542F\u7528\u3002",
+    "lark.status.disabled": "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u5B89\u88C5\u4F46\u672A\u542F\u7528\u3002",
+    "lark.status.notInstalled": "\u72B6\u6001\uFF1A\u672A\u5B89\u88C5 Feishu Lark CLI Sync\u3002",
+    "lark.status.unknown": "\u72B6\u6001\uFF1A\u65E0\u6CD5\u68C0\u6D4B Feishu Lark CLI Sync\u3002"
+  },
+  en: {
+    "app.openSidebar": "Open FloatMark sidebar",
+    "app.createCommentFromSelection": "Create comment from selection",
+    "settings.language.name": "Language",
+    "settings.language.desc": "Choose the FloatMark interface language.",
+    "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
+    "settings.language.en": "English",
+    "settings.autoOpenSidebar.name": "Open sidebar after creating a mark",
+    "settings.commentAuthorName.name": "Comment display name",
+    "settings.commentAuthorName.desc": "Author name shown in sidebar comment threads.",
+    "settings.larkSync.name": "Sync marks to Feishu",
+    "settings.larkSync.desc": "When enabled, local comments and replies are synced to Feishu through Feishu Lark CLI Sync. CLI configuration is managed by that plugin.",
+    "settings.larkSync.enableBlocked": "{status} Cannot enable mark sync. Install and enable the plugin first.",
+    "toolbar.format": "Format",
+    "toolbar.paragraph": "Text",
+    "toolbar.heading1": "Heading 1",
+    "toolbar.heading2": "Heading 2",
+    "toolbar.heading3": "Heading 3",
+    "toolbar.heading4": "Heading 4",
+    "toolbar.heading5": "Heading 5",
+    "toolbar.heading6": "Heading 6",
+    "toolbar.otherHeadings": "More headings",
+    "toolbar.numberList": "Numbered list",
+    "toolbar.bulletList": "Bulleted list",
+    "toolbar.taskList": "Task",
+    "toolbar.codeBlock": "Code block",
+    "toolbar.quote": "Quote",
+    "toolbar.bold": "Bold",
+    "toolbar.strike": "Strikethrough",
+    "toolbar.italic": "Italic",
+    "toolbar.underline": "Underline",
+    "toolbar.link": "Link",
+    "toolbar.code": "Inline code",
+    "toolbar.highlight": "Highlight",
+    "toolbar.comment": "Comment",
+    "toolbar.copy": "Copy",
+    "toolbar.delete": "Delete",
+    "toolbar.blockFormat": "Block format",
+    "popover.close": "Close",
+    "popover.commentTitle": "Comment",
+    "popover.commentPlaceholder": "Write a comment",
+    "popover.cancel": "Cancel",
+    "popover.save": "Save",
+    "popover.markTitle": "Mark",
+    "popover.textColor": "Text color",
+    "popover.backgroundColor": "Background color",
+    "popover.resetDefault": "Reset to default",
+    "style.text.default": "Default text",
+    "style.text.gray": "Gray text",
+    "style.text.red": "Red text",
+    "style.text.orange": "Orange text",
+    "style.text.yellow": "Yellow text",
+    "style.text.green": "Green text",
+    "style.text.blue": "Blue text",
+    "style.text.purple": "Purple text",
+    "style.background.none": "No background",
+    "style.background.grayLight": "Light gray background",
+    "style.background.redLight": "Light red background",
+    "style.background.orangeLight": "Light orange background",
+    "style.background.yellowLight": "Light yellow background",
+    "style.background.greenLight": "Light green background",
+    "style.background.blueLight": "Light blue background",
+    "style.background.purpleLight": "Light purple background",
+    "style.background.gray": "Gray background",
+    "style.background.red": "Red background",
+    "style.background.orange": "Orange background",
+    "style.background.yellow": "Yellow background",
+    "style.background.green": "Green background",
+    "style.background.blue": "Blue background",
+    "style.background.purple": "Purple background",
+    "sidebar.title": "FloatMark",
+    "sidebar.emptyDocument": "No marks in the current document yet.",
+    "sidebar.emptyComments": "No comments match the current filters.",
+    "sidebar.emptyMarks": "No marks match the current filters.",
+    "sidebar.comments": "Comments",
+    "sidebar.marks": "Marks",
+    "sidebar.status": "Status",
+    "sidebar.color": "Color",
+    "sidebar.tag": "Tag",
+    "sidebar.active": "Active",
+    "sidebar.all": "All",
+    "sidebar.resolved": "Resolved",
+    "sidebar.orphaned": "Orphaned",
+    "sidebar.yellow": "Yellow",
+    "sidebar.blue": "Blue",
+    "sidebar.green": "Green",
+    "sidebar.red": "Red",
+    "sidebar.searchComments": "Search comments",
+    "sidebar.searchMarks": "Search marks",
+    "sidebar.currentDocumentStats": "Current document, {count} {kind}",
+    "sidebar.currentFilterStats": "Current filter, {filtered} / {total} {kind}",
+    "sidebar.locate": "Locate",
+    "sidebar.style": "Style",
+    "sidebar.editNote": "Edit note",
+    "sidebar.addNote": "Add note",
+    "sidebar.more": "More",
+    "sidebar.font": "Text",
+    "sidebar.background": "Background",
+    "sidebar.editNoteTitle": "Double-click to edit note",
+    "sidebar.deleteNote": "Delete note",
+    "sidebar.notePlaceholder": "Write a note",
+    "sidebar.pickColor": "Color",
+    "sidebar.restore": "Restore",
+    "sidebar.resolve": "Resolve",
+    "sidebar.emptyThread": "No comments yet. Keep typing the first one.",
+    "sidebar.editCommentTitle": "Double-click to edit comment",
+    "sidebar.deleteComment": "Delete comment",
+    "sidebar.replyTrigger": "Reply...",
+    "sidebar.replyPlaceholder": "Continue commenting",
+    "sidebar.reply": "Reply",
+    "sidebar.confirmDelete": "Confirm delete",
+    "sidebar.confirm": "Confirm",
+    "sidebar.syncedToLark": "Synced to Feishu",
+    "sidebar.syncLarkFailed": "Feishu sync failed",
+    "sidebar.syncToLark": "Sync to Feishu",
+    "sidebar.justNow": "Just now",
+    "sidebar.minutesAgo": "{count} minutes ago",
+    "sidebar.hoursAgo": "{count} hours ago",
+    "notice.larkStatusSyncFailed": "Failed to sync Feishu comment status: {message}",
+    "notice.larkDeleteCommentFailed": "Failed to delete Feishu comment: {message}",
+    "notice.larkDeleteReplyFailed": "Failed to delete Feishu comment reply: {message}",
+    "notice.blockCopied": "Current block copied.",
+    "notice.noEditorSelection": "No editor selection is available.",
+    "notice.autoSyncLarkFailed": "Auto sync to Feishu failed: {message}",
+    "notice.syncedToLark": "Mark synced to a Feishu comment.",
+    "error.emptyComment": "Comment content cannot be empty.",
+    "error.noLarkBinding": "The current note has no lark_doc_url or lark_doc_token. Sync this document with Feishu Lark CLI Sync first.",
+    "error.noLarkBlockMap": "No Feishu block map was found. Sync the current document once with Feishu Lark CLI Sync first.",
+    "error.noLarkBlock": "No Feishu block was found for this mark.",
+    "error.larkCreateCommentFailed": "lark-cli failed to add the comment.",
+    "error.larkCreateReplyFailed": "lark-cli failed to add the reply.",
+    "error.larkUpdateCommentFailed": "lark-cli failed to update the comment status.",
+    "error.missingLarkReplyId": "Missing Feishu reply ID. Cannot delete the remote comment.",
+    "error.larkDeleteReplyFailed": "lark-cli failed to delete the comment reply.",
+    "error.localReplyNotFound": "The local comment reply to delete was not found.",
+    "error.missingRemoteReplyId": "Missing Feishu reply ID. Cannot delete the remote comment reply.",
+    "error.missingLarkCommentInfo": "Missing Feishu comment sync information. Cannot operate on the remote comment.",
+    "error.missingLarkCommentId": "Missing Feishu comment ID. Cannot append replies.",
+    "error.missingSyncRecord": "Missing the previous sync record. Confirm in Feishu, then recreate the comment.",
+    "error.commentAnchorChanged": "The comment anchor text has changed. Recreate the comment before safely appending Feishu replies.",
+    "error.syncedCommentChanged": "The synced comment content changed. Editing or deleting synced replies is not supported yet.",
+    "error.larkGetRepliesFailed": "lark-cli failed to get comment replies.",
+    "error.larkPluginUnavailable": "{status} Install and enable the plugin first.",
+    "error.larkPluginNoCli": "Feishu Lark CLI Sync does not expose CLI execution. Upgrade that plugin.",
+    "error.larkNoCommentId": "lark-cli did not return comment_id.",
+    "lark.emptyComment": "(No comment)",
+    "lark.status.enabled": "Status: Feishu Lark CLI Sync is enabled.",
+    "lark.status.disabled": "Status: Feishu Lark CLI Sync is installed but disabled.",
+    "lark.status.notInstalled": "Status: Feishu Lark CLI Sync is not installed.",
+    "lark.status.unknown": "Status: Unable to detect Feishu Lark CLI Sync."
+  }
+};
+function translate(language, key, params = {}) {
+  const normalizedLanguage = normalizePluginLanguage(language, "zh-CN");
+  const template = TRANSLATIONS[normalizedLanguage][key] || TRANSLATIONS["zh-CN"][key] || key;
+  return template.replace(/\{(\w+)}/g, (match, name) => {
+    var _a;
+    return String((_a = params[name]) != null ? _a : match);
+  });
+}
+function normalizePluginLanguage(value, fallback) {
+  return value === "en" || value === "zh-CN" ? value : fallback;
+}
+function getDefaultCommentAuthorName(language) {
+  return language === "en" ? "Me" : "\u6211";
+}
+function getInitialPluginLanguage(app, currentObsidianLanguage = "") {
+  const language = currentObsidianLanguage || getObsidianLanguage(app);
+  return isChineseLanguage(language) ? "zh-CN" : "en";
+}
+function getObsidianLanguage(app) {
+  var _a;
+  const vaultWithConfig = app.vault;
+  const configuredLanguage = (_a = vaultWithConfig.getConfig) == null ? void 0 : _a.call(vaultWithConfig, "userLanguage");
+  if (typeof configuredLanguage === "string" && configuredLanguage.trim()) {
+    return configuredLanguage;
+  }
+  const appWithLocale = app;
+  return typeof appWithLocale.locale === "string" ? appWithLocale.locale : "";
+}
+function isChineseLanguage(language) {
+  const normalized = language.toLowerCase();
+  return normalized === "zh" || normalized.startsWith("zh-") || normalized.startsWith("zh_");
+}
+
 // src/types.ts
 var DATA_DIR = ".obsidian-float-marks";
 var DEFAULT_SETTINGS = {
   dataDir: DATA_DIR,
+  language: void 0,
   autoOpenSidebar: true,
   autoSyncToLark: false,
   preferBodyBlockForLark: false,
@@ -1469,7 +1820,7 @@ var SideMarkStore = class {
   async addReply(filePath, markId, content) {
     const trimmed = content.trim();
     if (!trimmed) {
-      throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      throw new Error(translate(this.settings.language, "error.emptyComment"));
     }
     const document = await this.loadDocument(filePath);
     const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -1497,7 +1848,7 @@ var SideMarkStore = class {
   async updateReply(filePath, markId, replyId, content) {
     const trimmed = content.trim();
     if (!trimmed) {
-      throw new Error("\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      throw new Error(translate(this.settings.language, "error.emptyComment"));
     }
     const document = await this.loadDocument(filePath);
     const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -1660,10 +2011,10 @@ var FLOAT_MARK_ICON_SVG = `
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 var MARK_COLORS = [
-  { color: "yellow", label: "\u9EC4\u8272" },
-  { color: "blue", label: "\u84DD\u8272" },
-  { color: "green", label: "\u7EFF\u8272" },
-  { color: "red", label: "\u7EA2\u8272" }
+  { color: "yellow", labelKey: "sidebar.yellow" },
+  { color: "blue", labelKey: "sidebar.blue" },
+  { color: "green", labelKey: "sidebar.green" },
+  { color: "red", labelKey: "sidebar.red" }
 ];
 var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   constructor(leaf, plugin) {
@@ -1689,6 +2040,9 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   getIcon() {
     return FLOAT_MARK_ICON_ID;
   }
+  t(key, params) {
+    return this.plugin.t(key, params);
+  }
   async onOpen() {
     await this.render();
   }
@@ -1708,7 +2062,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     container.addClass("side-mark-sidebar");
     const header = container.createDiv({ cls: "side-mark-sidebar-header" });
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
-    titleRow.createEl("h3", { text: "\u6B63\u6587\u6807\u6CE8" });
+    titleRow.createEl("h3", { text: this.t("sidebar.title") });
     const doc = this.plugin.currentDocument;
     const allMarks = (doc == null ? void 0 : doc.marks) || [];
     const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
@@ -1717,7 +2071,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     if (!doc || doc.marks.length === 0) {
       this.renderFilters(header, controls, [], []);
       this.restoreSearchInputFocus();
-      container.createDiv({ text: "\u5F53\u524D\u6587\u6863\u8FD8\u6CA1\u6709\u6807\u6CE8\u3002", cls: "setting-item-description" });
+      container.createDiv({ text: this.t("sidebar.emptyDocument"), cls: "setting-item-description" });
       return;
     }
     const tabMarks = this.getTabMarks(doc.marks);
@@ -1726,7 +2080,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     this.restoreSearchInputFocus();
     if (marks.length === 0) {
       container.createDiv({
-        text: this.activeTab === "comments" ? "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8BC4\u8BBA\u3002" : "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u8BB0\u3002",
+        text: this.activeTab === "comments" ? this.t("sidebar.emptyComments") : this.t("sidebar.emptyMarks"),
         cls: "setting-item-description"
       });
       return;
@@ -1741,8 +2095,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   renderTabs(container, marks) {
     const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
-    this.renderTab(tabs, "comments", "\u8BC4\u8BBA", this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
-    this.renderTab(tabs, "marks", "\u6807\u8BB0", this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
+    this.renderTab(tabs, "comments", this.t("sidebar.comments"), this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
+    this.renderTab(tabs, "marks", this.t("sidebar.marks"), this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
   }
   renderTab(container, tab, label, count) {
     const button = container.createEl("button", {
@@ -1774,29 +2128,29 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     void this.render();
   }
   renderFilters(container, controls, allMarks, filteredMarks) {
-    this.renderSelect(controls, "\u72B6\u6001", this.filter, [
-      { value: "active", label: "\u6D3B\u52A8" },
-      { value: "all", label: "\u5168\u90E8" },
-      { value: "resolved", label: "\u5DF2\u89E3\u51B3" },
-      { value: "orphaned", label: "\u5931\u8054" }
+    this.renderSelect(controls, this.t("sidebar.status"), this.filter, [
+      { value: "active", label: this.t("sidebar.active") },
+      { value: "all", label: this.t("sidebar.all") },
+      { value: "resolved", label: this.t("sidebar.resolved") },
+      { value: "orphaned", label: this.t("sidebar.orphaned") }
     ], (value) => {
       this.filter = value;
       void this.render();
     });
     if (this.activeTab === "comments") {
-      this.renderSelect(controls, "\u989C\u8272", this.colorFilter, [
-        { value: "all", label: "\u5168\u90E8" },
-        { value: "yellow", label: "\u9EC4\u8272" },
-        { value: "blue", label: "\u84DD\u8272" },
-        { value: "green", label: "\u7EFF\u8272" },
-        { value: "red", label: "\u7EA2\u8272" }
+      this.renderSelect(controls, this.t("sidebar.color"), this.colorFilter, [
+        { value: "all", label: this.t("sidebar.all") },
+        { value: "yellow", label: this.t("sidebar.yellow") },
+        { value: "blue", label: this.t("sidebar.blue") },
+        { value: "green", label: this.t("sidebar.green") },
+        { value: "red", label: this.t("sidebar.red") }
       ], (value) => {
         this.colorFilter = value;
         void this.render();
       });
     }
-    this.renderSelect(controls, "\u6807\u7B7E", this.tagFilter, [
-      { value: "all", label: "\u5168\u90E8" }
+    this.renderSelect(controls, this.t("sidebar.tag"), this.tagFilter, [
+      { value: "all", label: this.t("sidebar.all") }
     ], (value) => {
       this.tagFilter = value;
       void this.render();
@@ -1806,8 +2160,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       cls: "side-mark-sidebar-search-input",
       attr: {
         type: "search",
-        placeholder: this.activeTab === "comments" ? "\u641C\u7D22\u8BC4\u8BBA" : "\u641C\u7D22\u6807\u8BB0",
-        "aria-label": this.activeTab === "comments" ? "\u641C\u7D22\u8BC4\u8BBA" : "\u641C\u7D22\u6807\u8BB0"
+        placeholder: this.activeTab === "comments" ? this.t("sidebar.searchComments") : this.t("sidebar.searchMarks"),
+        "aria-label": this.activeTab === "comments" ? this.t("sidebar.searchComments") : this.t("sidebar.searchMarks")
       }
     });
     search.value = this.searchQuery;
@@ -1827,7 +2181,14 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     container.createDiv({
       cls: "side-mark-sidebar-stats",
-      text: allMarks.length === filteredMarks.length ? `\u5F53\u524D\u6587\u6863\uFF0C\u5171 ${allMarks.length} \u6761${this.activeTab === "comments" ? "\u8BC4\u8BBA" : "\u6807\u8BB0"}` : `\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 ${filteredMarks.length} / ${allMarks.length} \u6761${this.activeTab === "comments" ? "\u8BC4\u8BBA" : "\u6807\u8BB0"}`
+      text: allMarks.length === filteredMarks.length ? this.t("sidebar.currentDocumentStats", {
+        count: allMarks.length,
+        kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
+      }) : this.t("sidebar.currentFilterStats", {
+        filtered: filteredMarks.length,
+        total: allMarks.length,
+        kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
+      })
     });
   }
   renderSelect(container, label, value, options, onChange) {
@@ -1991,25 +2352,25 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       this.focusMark(mark.id);
     });
     const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
-    this.addIconAction(toolbar, "chevrons-up", "\u5B9A\u4F4D", () => void this.plugin.jumpToMark(mark.id));
-    this.addIconAction(toolbar, "palette", "\u6837\u5F0F", () => {
+    this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
+    this.addIconAction(toolbar, "palette", this.t("sidebar.style"), () => {
       const rect = card.getBoundingClientRect();
       void this.plugin.openMark(mark.id, rect);
     });
-    this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? "\u7F16\u8F91\u5907\u6CE8" : "\u6DFB\u52A0\u5907\u6CE8", (event) => {
+    this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? this.t("sidebar.editNote") : this.t("sidebar.addNote"), (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.renderMarkerNoteEditor(card, mark);
     });
-    this.addDeleteIconAction(toolbar, "\u5220\u9664", () => void this.deleteMark(mark.id));
+    this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
     const more = toolbar.createEl("button", {
       cls: "side-mark-card-icon-button",
-      attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
+      attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
     });
     (0, import_obsidian8.setIcon)(more, "more-horizontal");
     const menu = card.createDiv({ cls: "side-mark-card-menu" });
     menu.hide();
-    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
+    this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
     more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2031,10 +2392,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const meta = card.createDiv({ cls: "side-mark-marker-meta" });
     const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
     textSwatch.setAttr("aria-hidden", "true");
-    meta.createSpan({ text: "\u5B57\u4F53" });
+    meta.createSpan({ text: this.t("sidebar.font") });
     const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
     backgroundSwatch.setAttr("aria-hidden", "true");
-    meta.createSpan({ text: "\u80CC\u666F" });
+    meta.createSpan({ text: this.t("sidebar.background") });
   }
   renderMarkerNote(card, mark) {
     const content = mark.note.content.trim();
@@ -2046,9 +2407,9 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const body = display.createDiv({
       cls: "side-mark-marker-note-body",
       text: content,
-      attr: { title: "\u53CC\u51FB\u4FEE\u6539\u5907\u6CE8" }
+      attr: { title: this.t("sidebar.editNoteTitle") }
     });
-    this.addInlineDeleteAction(display, "\u5220\u9664\u5907\u6CE8", () => {
+    this.addInlineDeleteAction(display, this.t("sidebar.deleteNote"), () => {
       void this.deleteMarkerNote(mark.id);
     });
     body.addEventListener("dblclick", (event) => {
@@ -2065,16 +2426,16 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const note = card.createDiv({ cls: "side-mark-marker-note is-editing" });
     const textarea = note.createEl("textarea", {
       text: mark.note.content,
-      attr: { placeholder: "\u5199\u4E00\u6761\u5907\u6CE8" }
+      attr: { placeholder: this.t("sidebar.notePlaceholder") }
     });
     const actions = note.createDiv({ cls: "side-mark-marker-note-actions" });
     const cancel = actions.createEl("button", {
-      text: "\u53D6\u6D88",
+      text: this.t("popover.cancel"),
       cls: "side-mark-secondary-button",
       attr: { type: "button" }
     });
     const save = actions.createEl("button", {
-      text: "\u4FDD\u5B58",
+      text: this.t("popover.save"),
       cls: "side-mark-primary-button",
       attr: { type: "button" }
     });
@@ -2122,9 +2483,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const menu = card.createDiv({ cls: "side-mark-color-menu" });
     menu.hide();
     for (const item of MARK_COLORS) {
+      const label = this.t(item.labelKey);
       const button = menu.createEl("button", {
         cls: `side-mark-color-option is-${item.color}${item.color === mark.mark.color ? " is-active" : ""}`,
-        attr: { type: "button", title: item.label, "aria-label": item.label }
+        attr: { type: "button", title: label, "aria-label": label }
       });
       if (item.color === mark.mark.color) {
         (0, import_obsidian8.setIcon)(button, "check");
@@ -2169,9 +2531,9 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   renderCardToolbar(card, mark) {
     const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
-    this.addIconAction(toolbar, "chevrons-up", "\u5B9A\u4F4D", () => void this.plugin.jumpToMark(mark.id));
+    this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
     this.addSyncAction(toolbar, mark);
-    this.addIconAction(toolbar, "palette", "\u989C\u8272", (event) => {
+    this.addIconAction(toolbar, "palette", this.t("sidebar.pickColor"), (event) => {
       event.preventDefault();
       event.stopPropagation();
       this.toggleColorPicker(card);
@@ -2179,17 +2541,17 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     this.addIconAction(
       toolbar,
       mark.status === "resolved" ? "circle" : "circle-check",
-      mark.status === "resolved" ? "\u6062\u590D" : "\u89E3\u51B3",
+      mark.status === "resolved" ? this.t("sidebar.restore") : this.t("sidebar.resolve"),
       () => void this.toggleResolved(mark.id)
     );
     const more = toolbar.createEl("button", {
       cls: "side-mark-card-icon-button",
-      attr: { type: "button", title: "\u66F4\u591A", "aria-label": "\u66F4\u591A" }
+      attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
     });
     (0, import_obsidian8.setIcon)(more, "more-horizontal");
     const menu = card.createDiv({ cls: "side-mark-card-menu is-compact" });
     menu.hide();
-    this.addMenuAction(menu, "trash-2", "\u5220\u9664", () => void this.deleteMark(mark.id));
+    this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
     more.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2212,15 +2574,15 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       updatedAt: mark.note.updatedAt
     }] : [];
     if (!replies.length) {
-      thread.createDiv({ cls: "side-mark-empty-thread", text: "\u8FD8\u6CA1\u6709\u8BC4\u8BBA\uFF0C\u7EE7\u7EED\u8F93\u5165\u7B2C\u4E00\u6761\u3002" });
+      thread.createDiv({ cls: "side-mark-empty-thread", text: this.t("sidebar.emptyThread") });
       return;
     }
     for (const [index, reply] of replies.entries()) {
       const isThreadHead = index === 0;
       const row = thread.createDiv({ cls: `side-mark-reply${isThreadHead ? " is-thread-head" : " is-continuation"}` });
       if (isThreadHead) {
-        const authorName = reply.authorName || this.plugin.settings.commentAuthorName || "\u6211";
-        const avatar = row.createDiv({ cls: "side-mark-avatar", text: authorName.slice(0, 1) || "\u6211" });
+        const authorName = reply.authorName || this.plugin.settings.commentAuthorName;
+        const avatar = row.createDiv({ cls: "side-mark-avatar", text: authorName.slice(0, 1) || this.plugin.settings.commentAuthorName.slice(0, 1) });
         avatar.setAttr("aria-hidden", "true");
       }
       const body = row.createDiv({ cls: "side-mark-reply-body" });
@@ -2228,16 +2590,16 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       if (isThreadHead) {
         meta.createSpan({
           cls: "side-mark-reply-author",
-          text: reply.authorName || this.plugin.settings.commentAuthorName || "\u6211"
+          text: reply.authorName || this.plugin.settings.commentAuthorName
         });
       }
-      meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt) });
+      meta.createSpan({ cls: "side-mark-reply-time", text: formatReplyTime(reply.createdAt, (key, params) => this.t(key, params)) });
       const content = body.createDiv({
         cls: "side-mark-reply-content",
         text: reply.content,
-        attr: { title: "\u53CC\u51FB\u4FEE\u6539\u8BC4\u8BBA" }
+        attr: { title: this.t("sidebar.editCommentTitle") }
       });
-      this.addInlineDeleteAction(content, "\u5220\u9664\u8BC4\u8BBA", () => {
+      this.addInlineDeleteAction(content, this.t("sidebar.deleteComment"), () => {
         void this.deleteReply(mark, replies, reply.id);
       });
       content.addEventListener("dblclick", (event) => {
@@ -2254,12 +2616,12 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const textarea = editor.createEl("textarea", { text: content });
     const actions = editor.createDiv({ cls: "side-mark-reply-editor-actions" });
     const cancel = actions.createEl("button", {
-      text: "\u53D6\u6D88",
+      text: this.t("popover.cancel"),
       cls: "side-mark-secondary-button",
       attr: { type: "button" }
     });
     const save = actions.createEl("button", {
-      text: "\u4FDD\u5B58",
+      text: this.t("popover.save"),
       cls: "side-mark-primary-button",
       attr: { type: "button" }
     });
@@ -2313,7 +2675,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   renderReplyComposer(card, mark) {
     const composer = card.createDiv({ cls: "side-mark-reply-composer" });
     const trigger = composer.createEl("button", {
-      text: "\u56DE\u590D...",
+      text: this.t("sidebar.replyTrigger"),
       cls: "side-mark-reply-trigger",
       attr: { type: "button" }
     });
@@ -2327,18 +2689,18 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       textarea.focus();
     });
     const textarea = composer.createEl("textarea", {
-      attr: { placeholder: "\u7EE7\u7EED\u8BC4\u8BBA" }
+      attr: { placeholder: this.t("sidebar.replyPlaceholder") }
     });
     textarea.hide();
     const row = composer.createDiv({ cls: "side-mark-reply-composer-actions" });
     row.hide();
     const cancel = row.createEl("button", {
-      text: "\u53D6\u6D88",
+      text: this.t("popover.cancel"),
       cls: "side-mark-secondary-button",
       attr: { type: "button" }
     });
     const submit = row.createEl("button", {
-      text: "\u56DE\u590D",
+      text: this.t("sidebar.reply"),
       cls: "side-mark-primary-button",
       attr: { type: "button" }
     });
@@ -2427,10 +2789,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       clearResetTimer();
       isConfirming = true;
       button.addClass("is-confirming");
-      button.setAttr("title", "\u786E\u8BA4\u5220\u9664");
-      button.setAttr("aria-label", "\u786E\u8BA4\u5220\u9664");
+      button.setAttr("title", this.t("sidebar.confirmDelete"));
+      button.setAttr("aria-label", this.t("sidebar.confirmDelete"));
       button.empty();
-      button.createSpan({ text: "\u786E\u8BA4" });
+      button.createSpan({ text: this.t("sidebar.confirm") });
     };
     const scheduleReset = () => {
       clearResetTimer();
@@ -2453,7 +2815,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   addSyncAction(container, mark) {
     var _a;
     const status = ((_a = mark.remote) == null ? void 0 : _a.status) || "pending";
-    const label = status === "synced" ? "\u5DF2\u540C\u6B65\u5230\u98DE\u4E66" : status === "failed" ? "\u540C\u6B65\u98DE\u4E66\u5931\u8D25" : "\u540C\u6B65\u5230\u98DE\u4E66";
+    const label = status === "synced" ? this.t("sidebar.syncedToLark") : status === "failed" ? this.t("sidebar.syncLarkFailed") : this.t("sidebar.syncToLark");
     const button = container.createEl("button", {
       cls: `side-mark-card-icon-button side-mark-sync-action is-${status}`,
       attr: { type: "button", title: label, "aria-label": label }
@@ -2502,10 +2864,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
         clearResetTimer();
         isConfirming = true;
         button.addClass("is-confirming");
-        button.setAttr("title", "\u786E\u8BA4\u5220\u9664");
-        button.setAttr("aria-label", "\u786E\u8BA4\u5220\u9664");
+        button.setAttr("title", this.t("sidebar.confirmDelete"));
+        button.setAttr("aria-label", this.t("sidebar.confirmDelete"));
         iconEl.empty();
-        labelEl.setText("\u786E\u8BA4");
+        labelEl.setText(this.t("sidebar.confirm"));
         scheduleReset();
         return;
       }
@@ -2519,7 +2881,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   async syncMark(markId) {
     try {
       await this.plugin.syncMarkToLark(markId);
-      new import_obsidian8.Notice("\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002");
+      new import_obsidian8.Notice(this.t("notice.syncedToLark"));
     } catch (error) {
       new import_obsidian8.Notice(error instanceof Error ? error.message : String(error), 8e3);
     }
@@ -2542,20 +2904,20 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     await this.plugin.deleteMark(markId);
   }
 };
-function formatReplyTime(value) {
+function formatReplyTime(value, t) {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
     return "";
   }
   const diffMs = Date.now() - timestamp;
   if (diffMs < 6e4) {
-    return "\u521A\u521A";
+    return t("sidebar.justNow");
   }
   if (diffMs < 36e5) {
-    return `${Math.floor(diffMs / 6e4)} \u5206\u949F\u524D`;
+    return t("sidebar.minutesAgo", { count: Math.floor(diffMs / 6e4) });
   }
   if (diffMs < 864e5) {
-    return `${Math.floor(diffMs / 36e5)} \u5C0F\u65F6\u524D`;
+    return t("sidebar.hoursAgo", { count: Math.floor(diffMs / 36e5) });
   }
   return new Date(timestamp).toLocaleDateString();
 }
@@ -2752,16 +3114,16 @@ async function syncMarkToLark(plugin, file, source, mark) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const binding = readLarkBinding(source);
   if (!binding.doc) {
-    throw new Error("\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002");
+    throw new Error(plugin.t("error.noLarkBinding"));
   }
-  const replies = getReplies(mark);
+  const replies = getReplies(plugin, mark);
   if ((_a = mark.remote) == null ? void 0 : _a.larkCommentId) {
     return await syncRepliesToExistingLarkComment(plugin, binding, mark, replies);
   }
   const syncState = await readSyncState(plugin);
   const docState = findDocumentState(syncState, binding.doc);
   if (!docState || !docState.titleBlockId && !docState.units.length) {
-    throw new Error("\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002");
+    throw new Error(plugin.t("error.noLarkBlockMap"));
   }
   const blockId = findRemoteBlockId(
     source,
@@ -2771,16 +3133,16 @@ async function syncMarkToLark(plugin, file, source, mark) {
     docState.titleBlockId
   );
   if (!blockId) {
-    throw new Error("\u6CA1\u6709\u627E\u5230\u8BE5\u6807\u6CE8\u547D\u4E2D\u7684\u7B2C\u4E00\u4E2A\u98DE\u4E66 block\u3002");
+    throw new Error(plugin.t("error.noLarkBlock"));
   }
-  const [firstReply, ...restReplies] = replies.length ? replies : [{ content: "\uFF08\u65E0\u8BC4\u8BBA\uFF09" }];
+  const [firstReply, ...restReplies] = replies.length ? replies : [{ content: plugin.t("lark.emptyComment") }];
   const result = await runLarkCreateComment(plugin, {
     doc: binding.doc,
     blockId,
     content: buildCommentElements(firstReply.content)
   });
   if (!result.ok) {
-    throw new Error(((_b = result.error) == null ? void 0 : _b.message) || ((_c = result.error) == null ? void 0 : _c.hint) || "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002");
+    throw new Error(((_b = result.error) == null ? void 0 : _b.message) || ((_c = result.error) == null ? void 0 : _c.hint) || plugin.t("error.larkCreateCommentFailed"));
   }
   const commentId = (_d = result.data) == null ? void 0 : _d.comment_id;
   const replyIds = [(_e = result.data) == null ? void 0 : _e.reply_id].filter(isNonEmptyString);
@@ -2792,7 +3154,7 @@ async function syncMarkToLark(plugin, file, source, mark) {
         content: buildReplyBody(reply.content)
       });
       if (!replyResult.ok) {
-        throw new Error(((_f = replyResult.error) == null ? void 0 : _f.message) || ((_g = replyResult.error) == null ? void 0 : _g.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+        throw new Error(((_f = replyResult.error) == null ? void 0 : _f.message) || ((_g = replyResult.error) == null ? void 0 : _g.hint) || plugin.t("error.larkCreateReplyFailed"));
       }
       if ((_h = replyResult.data) == null ? void 0 : _h.reply_id) {
         replyIds.push(replyResult.data.reply_id);
@@ -2812,32 +3174,32 @@ async function syncMarkToLark(plugin, file, source, mark) {
   };
 }
 async function setLarkCommentResolved(plugin, mark, isSolved) {
-  const { doc, commentId } = getRemoteCommentReference(mark);
+  const { doc, commentId } = getRemoteCommentReference(plugin, mark);
   const result = await runLarkPatchComment(plugin, { doc, commentId, isSolved });
-  assertLarkCommandOk(result, "lark-cli \u66F4\u65B0\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\u3002");
+  assertLarkCommandOk(result, plugin.t("error.larkUpdateCommentFailed"));
 }
 async function deleteLarkComment(plugin, mark) {
-  const { doc, commentId } = getRemoteCommentReference(mark);
+  const { doc, commentId } = getRemoteCommentReference(plugin, mark);
   const storedReplyIds = getDeleteAllLarkReplyIds(mark.remote);
-  const replies = getReplies(mark);
+  const replies = getReplies(plugin, mark);
   const idsToDelete = storedReplyIds.length >= replies.length ? storedReplyIds : await findLarkReplyIds(plugin, doc, commentId);
   if (idsToDelete.length === 0) {
-    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u3002");
+    throw new Error(plugin.t("error.missingLarkReplyId"));
   }
   for (const replyId of [...idsToDelete].reverse()) {
     const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId });
-    assertLarkCommandOk(result, "lark-cli \u5220\u9664\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+    assertLarkCommandOk(result, plugin.t("error.larkDeleteReplyFailed"));
   }
 }
 async function deleteLarkCommentReply(plugin, mark, replyId) {
   var _a, _b;
-  const { doc, commentId } = getRemoteCommentReference(mark);
-  const replies = getReplies(mark);
+  const { doc, commentId } = getRemoteCommentReference(plugin, mark);
+  const replies = getReplies(plugin, mark);
   const replyIndex = replies.findIndex((reply) => reply.id === replyId);
   if (replyIndex === -1) {
-    throw new Error("\u627E\u4E0D\u5230\u8981\u5220\u9664\u7684\u672C\u5730\u8BC4\u8BBA\u56DE\u590D\u3002");
+    throw new Error(plugin.t("error.localReplyNotFound"));
   }
-  const syncedReplyCount = findSyncedReplyCount(mark, replies);
+  const syncedReplyCount = findSyncedReplyCount(plugin, mark, replies);
   if (replyIndex >= syncedReplyCount) {
     return null;
   }
@@ -2846,10 +3208,10 @@ async function deleteLarkCommentReply(plugin, mark, replyId) {
   const remoteReplyIds = storedReplyIds.length >= syncedReplyCount || shouldUseLegacyLastReplyId ? storedReplyIds : await findLarkReplyIds(plugin, doc, commentId);
   const remoteReplyId = remoteReplyIds[replyIndex] || (replyIndex === syncedReplyCount - 1 ? (_b = mark.remote) == null ? void 0 : _b.larkReplyId : "");
   if (!remoteReplyId) {
-    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u56DE\u590D ID\uFF0C\u65E0\u6CD5\u5220\u9664\u8FDC\u7AEF\u8BC4\u8BBA\u56DE\u590D\u3002");
+    throw new Error(plugin.t("error.missingRemoteReplyId"));
   }
   const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId: remoteReplyId });
-  assertLarkCommandOk(result, "lark-cli \u5220\u9664\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+  assertLarkCommandOk(result, plugin.t("error.larkDeleteReplyFailed"));
   const syncedRepliesAfterDelete = replies.slice(0, syncedReplyCount).filter((reply) => reply.id !== replyId);
   const remainingReplies = replies.filter((reply) => reply.id !== replyId);
   const hasPendingReplies = remainingReplies.length > syncedRepliesAfterDelete.length;
@@ -2873,12 +3235,12 @@ async function canSyncMarkToLark(plugin, source) {
   const docState = findDocumentState(syncState, binding.doc);
   return Boolean((docState == null ? void 0 : docState.titleBlockId) || (docState == null ? void 0 : docState.units.length));
 }
-function getRemoteCommentReference(mark) {
+function getRemoteCommentReference(plugin, mark) {
   var _a, _b, _c;
   const doc = ((_a = mark.remote) == null ? void 0 : _a.larkDocToken) || ((_b = mark.remote) == null ? void 0 : _b.larkDocUrl) || "";
   const commentId = ((_c = mark.remote) == null ? void 0 : _c.larkCommentId) || "";
   if (!doc || !commentId) {
-    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA\u540C\u6B65\u4FE1\u606F\uFF0C\u65E0\u6CD5\u64CD\u4F5C\u8FDC\u7AEF\u8BC4\u8BBA\u3002");
+    throw new Error(plugin.t("error.missingLarkCommentInfo"));
   }
   return { doc, commentId };
 }
@@ -2913,16 +3275,16 @@ function getLarkSyncPluginStatus(plugin) {
   }
   return "disabled";
 }
-function getLarkSyncPluginStatusText(status) {
+function getLarkSyncPluginStatusText(status, language = "zh-CN") {
   switch (status) {
     case "enabled":
-      return "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u542F\u7528\u3002";
+      return translate(language, "lark.status.enabled");
     case "disabled":
-      return "\u72B6\u6001\uFF1AFeishu Lark CLI Sync \u5DF2\u5B89\u88C5\u4F46\u672A\u542F\u7528\u3002";
+      return translate(language, "lark.status.disabled");
     case "not-installed":
-      return "\u72B6\u6001\uFF1A\u672A\u5B89\u88C5 Feishu Lark CLI Sync\u3002";
+      return translate(language, "lark.status.notInstalled");
     case "unknown":
-      return "\u72B6\u6001\uFF1A\u65E0\u6CD5\u68C0\u6D4B Feishu Lark CLI Sync\u3002";
+      return translate(language, "lark.status.unknown");
   }
 }
 function getLarkSyncPluginStatusClass(status) {
@@ -3001,9 +3363,9 @@ async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) 
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const commentId = (_a = mark.remote) == null ? void 0 : _a.larkCommentId;
   if (!commentId) {
-    throw new Error("\u7F3A\u5C11\u98DE\u4E66\u8BC4\u8BBA ID\uFF0C\u65E0\u6CD5\u8FFD\u52A0\u56DE\u590D\u3002");
+    throw new Error(plugin.t("error.missingLarkCommentId"));
   }
-  const syncedReplyCount = findSyncedReplyCount(mark, replies);
+  const syncedReplyCount = findSyncedReplyCount(plugin, mark, replies);
   const pendingReplies = replies.slice(syncedReplyCount);
   let lastReplyId = (_b = mark.remote) == null ? void 0 : _b.larkReplyId;
   const knownReplyIds = getStoredLarkReplyIdList(mark.remote);
@@ -3015,7 +3377,7 @@ async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) 
       content: buildReplyBody(reply.content)
     });
     if (!result.ok) {
-      throw new Error(((_c = result.error) == null ? void 0 : _c.message) || ((_d = result.error) == null ? void 0 : _d.hint) || "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002");
+      throw new Error(((_c = result.error) == null ? void 0 : _c.message) || ((_d = result.error) == null ? void 0 : _d.hint) || plugin.t("error.larkCreateReplyFailed"));
     }
     lastReplyId = ((_e = result.data) == null ? void 0 : _e.reply_id) || lastReplyId;
     if ((_f = result.data) == null ? void 0 : _f.reply_id) {
@@ -3035,22 +3397,22 @@ async function syncRepliesToExistingLarkComment(plugin, binding, mark, replies) 
     error: void 0
   };
 }
-function findSyncedReplyCount(mark, replies) {
+function findSyncedReplyCount(plugin, mark, replies) {
   var _a;
   const syncedHash = (_a = mark.remote) == null ? void 0 : _a.syncedHash;
   if (syncedHash === void 0) {
-    throw new Error("\u7F3A\u5C11\u4E0A\u6B21\u540C\u6B65\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u5224\u65AD\u54EA\u4E9B\u56DE\u590D\u5DF2\u540C\u6B65\u3002\u8BF7\u5728\u98DE\u4E66\u4E2D\u786E\u8BA4\u540E\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002");
+    throw new Error(plugin.t("error.missingSyncRecord"));
   }
   const syncedThreadContent = readSyncedThreadContent(syncedHash, mark.anchor.selectedText);
   if (syncedThreadContent === null) {
-    throw new Error("\u8BC4\u8BBA\u5B9A\u4F4D\u6587\u672C\u5DF2\u53D8\u5316\uFF0C\u65E0\u6CD5\u5B89\u5168\u8FFD\u52A0\u98DE\u4E66\u56DE\u590D\u3002\u8BF7\u91CD\u65B0\u521B\u5EFA\u8BC4\u8BBA\u3002");
+    throw new Error(plugin.t("error.commentAnchorChanged"));
   }
   for (let index = 0; index <= replies.length; index++) {
     if (getThreadContent(replies.slice(0, index)) === syncedThreadContent) {
       return index;
     }
   }
-  throw new Error("\u5DF2\u540C\u6B65\u7684\u65E7\u8BC4\u8BBA\u5185\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u6682\u4E0D\u652F\u6301\u540C\u6B65\u7F16\u8F91\u6216\u5220\u9664\u540E\u7684\u56DE\u590D\u3002");
+  throw new Error(plugin.t("error.syncedCommentChanged"));
 }
 function readSyncedThreadContent(syncedHash, selectedText) {
   const prefix = `${selectedText}
@@ -3060,10 +3422,10 @@ function readSyncedThreadContent(syncedHash, selectedText) {
   }
   return syncedHash.slice(prefix.length);
 }
-function getReplies(mark) {
+function getReplies(plugin, mark) {
   var _a;
   return ((_a = mark.replies) == null ? void 0 : _a.length) ? mark.replies : mark.note.content.trim() ? [{
-    authorName: "\u6211",
+    authorName: plugin.settings.commentAuthorName,
     content: mark.note.content,
     createdAt: mark.note.createdAt
   }] : [];
@@ -3078,7 +3440,7 @@ ${getThreadContent(replies)}`;
 async function runLarkCreateComment(plugin, input) {
   try {
     const replyElements = JSON.parse(input.content);
-    return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
+    return normalizeLarkCommentResult(plugin, await runLarkCliViaSyncPlugin(plugin, [
       "drive",
       "file.comments",
       "create_v2",
@@ -3106,7 +3468,7 @@ async function runLarkCreateComment(plugin, input) {
 }
 async function runLarkCreateReply(plugin, input) {
   try {
-    return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
+    return normalizeLarkCommentResult(plugin, await runLarkCliViaSyncPlugin(plugin, [
       "drive",
       "file.comment.replys",
       "create",
@@ -3174,7 +3536,7 @@ async function findLarkReplyIds(plugin, doc, commentId) {
       "100",
       "--json"
     ]);
-    assertLarkCommandOk(result, "lark-cli \u83B7\u53D6\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\u3002");
+    assertLarkCommandOk(result, plugin.t("error.larkGetRepliesFailed"));
     const items = getLarkReplyItems(result);
     return items.map((item) => item.reply_id || "").filter(Boolean);
   } catch (error) {
@@ -3189,7 +3551,9 @@ async function runRawLarkCliViaSyncPlugin(plugin, args) {
   var _a, _b;
   const status = getLarkSyncPluginStatus(plugin);
   if (status !== "enabled") {
-    throw new Error(`${getLarkSyncPluginStatusText(status)} \u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`);
+    throw new Error(plugin.t("error.larkPluginUnavailable", {
+      status: getLarkSyncPluginStatusText(status, plugin.settings.language)
+    }));
   }
   const syncPlugin = getLarkSyncPluginBridge(plugin);
   const executable = await ((_a = syncPlugin == null ? void 0 : syncPlugin.resolveLarkCliPath) == null ? void 0 : _a.call(syncPlugin)) || "lark-cli";
@@ -3230,12 +3594,14 @@ async function runLarkDeleteReply(plugin, input) {
 async function runLarkCliViaSyncPlugin(plugin, args) {
   const status = getLarkSyncPluginStatus(plugin);
   if (status !== "enabled") {
-    throw new Error(`${getLarkSyncPluginStatusText(status)} \u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`);
+    throw new Error(plugin.t("error.larkPluginUnavailable", {
+      status: getLarkSyncPluginStatusText(status, plugin.settings.language)
+    }));
   }
   const syncPlugin = getLarkSyncPluginBridge(plugin);
   const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
   if (!runLarkCliCommand) {
-    throw new Error("Feishu Lark CLI Sync \u672A\u66B4\u9732 CLI \u6267\u884C\u80FD\u529B\uFF0C\u8BF7\u5347\u7EA7\u8BE5\u63D2\u4EF6\u3002");
+    throw new Error(plugin.t("error.larkPluginNoCli"));
   }
   return await runLarkCliCommand.call(syncPlugin, args);
 }
@@ -3259,7 +3625,7 @@ function getLarkSyncPluginBridge(plugin) {
 function getObsidianPluginManager(plugin) {
   return plugin.app.plugins || null;
 }
-function normalizeLarkCommentResult(result) {
+function normalizeLarkCommentResult(plugin, result) {
   if (typeof result.ok === "boolean") {
     return result;
   }
@@ -3275,7 +3641,7 @@ function normalizeLarkCommentResult(result) {
   return {
     ok: false,
     error: {
-      message: "lark-cli \u672A\u8FD4\u56DE comment_id\u3002"
+      message: plugin.t("error.larkNoCommentId")
     }
   };
 }
@@ -3636,6 +4002,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.currentDocument = null;
+    this.ribbonIconEl = null;
+    this.registeredCommandIds = [];
     this.activeEditorView = null;
     this.pendingCommentSelection = null;
     this.readingSelection = null;
@@ -3649,27 +4017,14 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     await this.loadSettings();
     (0, import_obsidian10.addIcon)(FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG);
     this.store = new SideMarkStore(this.app, this.settings);
-    this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action));
-    this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action));
-    this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target));
-    this.commentPopover = new CommentPopover();
-    this.markStylePopover = new MarkStylePopover();
+    this.createFloatingControls();
     this.registerEditorExtension(createSideMarkEditorExtension(this));
     this.registerMarkdownPostProcessor((element, context) => {
       void this.renderReadingModeMarks(element, context.sourcePath, context);
     });
     this.registerView(SIDE_MARK_VIEW_TYPE, (leaf) => new SideMarkSidebarView(leaf, this));
-    this.addRibbonIcon(FLOAT_MARK_ICON_ID, "\u6253\u5F00\u6B63\u6587\u6807\u6CE8", () => void this.openSidebar());
-    this.addCommand({
-      id: "open-side-mark-sidebar",
-      name: "\u6253\u5F00\u6B63\u6587\u6807\u6CE8",
-      callback: () => void this.openSidebar()
-    });
-    this.addCommand({
-      id: "create-side-comment",
-      name: "\u4ECE\u5F53\u524D\u9009\u533A\u521B\u5EFA\u8BC4\u8BBA",
-      editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
-    });
+    this.ribbonIconEl = this.addRibbonIcon(FLOAT_MARK_ICON_ID, this.t("app.openSidebar"), () => void this.openSidebar());
+    this.registerLocalizedCommands();
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
       void this.reloadCurrentDocument();
       this.syncPreviewMarkObservers();
@@ -3682,7 +4037,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         void this.reloadCurrentDocument();
       }
     }));
-    this.addSettingTab(new SideMarkSettingTab(this));
+    this.settingTab = new SideMarkSettingTab(this);
+    this.addSettingTab(this.settingTab);
     await this.reloadCurrentDocument();
   }
   onunload() {
@@ -3698,15 +4054,84 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   async loadSettings() {
     const saved = await this.loadData();
+    const hasSavedLanguage = (saved == null ? void 0 : saved.language) === "zh-CN" || (saved == null ? void 0 : saved.language) === "en";
+    const language = hasSavedLanguage ? saved.language : getInitialPluginLanguage(this.app, (0, import_obsidian10.getLanguage)());
+    const commentAuthorName = (saved == null ? void 0 : saved.commentAuthorName) || getDefaultCommentAuthorName(language);
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...saved || {}
+      ...saved || {},
+      language,
+      commentAuthorName
     };
+    if (!hasSavedLanguage) {
+      await this.saveData(this.settings);
+    }
   }
   async saveSettings() {
     var _a;
     await this.saveData(this.settings);
     (_a = this.store) == null ? void 0 : _a.updateSettings(this.settings);
+  }
+  t(key, params) {
+    return translate(this.settings.language, key, params);
+  }
+  async setLanguage(language) {
+    const nextLanguage = normalizePluginLanguage(language, "zh-CN");
+    if (this.settings.language === nextLanguage) {
+      return;
+    }
+    this.settings.language = nextLanguage;
+    await this.saveSettings();
+    await this.refreshLanguage();
+  }
+  async refreshLanguage() {
+    var _a, _b, _c, _d, _e, _f;
+    (_a = this.toolbar) == null ? void 0 : _a.destroy();
+    (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
+    (_c = this.blockToolbar) == null ? void 0 : _c.destroy();
+    (_d = this.commentPopover) == null ? void 0 : _d.destroy();
+    (_e = this.markStylePopover) == null ? void 0 : _e.destroy();
+    this.createFloatingControls();
+    this.refreshRibbonTooltip();
+    this.refreshLocalizedCommands();
+    (_f = this.settingTab) == null ? void 0 : _f.display();
+    await this.refreshSidebar();
+  }
+  registerLocalizedCommands() {
+    this.registerCommand({
+      id: "open-side-mark-sidebar",
+      name: this.t("app.openSidebar"),
+      callback: () => void this.openSidebar()
+    });
+    this.registerCommand({
+      id: "create-side-comment",
+      name: this.t("app.createCommentFromSelection"),
+      editorCallback: (_editor) => void this.createCommentFromActiveSelection("")
+    });
+  }
+  registerCommand(command) {
+    const registeredCommand = this.addCommand(command);
+    this.registeredCommandIds.push(registeredCommand.id);
+  }
+  refreshLocalizedCommands() {
+    for (const commandId of this.registeredCommandIds) {
+      this.removeCommand(commandId);
+    }
+    this.registeredCommandIds = [];
+    this.registerLocalizedCommands();
+  }
+  refreshRibbonTooltip() {
+    var _a, _b;
+    const label = this.t("app.openSidebar");
+    (_a = this.ribbonIconEl) == null ? void 0 : _a.setAttr("aria-label", label);
+    (_b = this.ribbonIconEl) == null ? void 0 : _b.setAttr("title", label);
+  }
+  createFloatingControls() {
+    this.toolbar = new SelectionToolbar((action) => void this.handleToolbarAction(action), (key) => this.t(key));
+    this.readingToolbar = new ReadingSelectionToolbar((action) => void this.handleReadingToolbarAction(action), (key) => this.t(key));
+    this.blockToolbar = new HoverBlockToolbar((action, target) => void this.handleBlockAction(action, target), (key) => this.t(key));
+    this.commentPopover = new CommentPopover((key) => this.t(key));
+    this.markStylePopover = new MarkStylePopover((key) => this.t(key));
   }
   getActiveMarkdownFile() {
     const view = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView);
@@ -3926,7 +4351,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       await setLarkCommentResolved(this, mark, isSolved);
     })().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian10.Notice(`\u540C\u6B65\u98DE\u4E66\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\uFF1A${message}`, 8e3);
+      new import_obsidian10.Notice(this.t("notice.larkStatusSyncFailed", { message }), 8e3);
     });
   }
   deleteRemoteCommentInBackground(mark) {
@@ -3940,7 +4365,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian10.Notice(`\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u5931\u8D25\uFF1A${message}`, 8e3);
+      new import_obsidian10.Notice(this.t("notice.larkDeleteCommentFailed", { message }), 8e3);
     });
   }
   deleteRemoteCommentReplyInBackground(filePath, mark, replyId) {
@@ -3963,7 +4388,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian10.Notice(`\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\uFF1A${message}`, 8e3);
+      new import_obsidian10.Notice(this.t("notice.larkDeleteReplyFailed", { message }), 8e3);
     });
   }
   async handleToolbarAction(action) {
@@ -4110,7 +4535,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     }
     if (action === "copy") {
       await navigator.clipboard.writeText(view.state.doc.sliceString(target.from, target.to));
-      new import_obsidian10.Notice("\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002");
+      new import_obsidian10.Notice(this.t("notice.blockCopied"));
       return;
     }
     this.applyBlockStyle(view, target, action);
@@ -4322,7 +4747,7 @@ ${stripped}
   async createCommentFromActiveSelection(noteContent) {
     const view = this.activeEditorView;
     if (!view) {
-      new import_obsidian10.Notice("\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002");
+      new import_obsidian10.Notice(this.t("notice.noEditorSelection"));
       return;
     }
     await this.createMarkFromView(view, "comment", noteContent);
@@ -4433,7 +4858,7 @@ ${stripped}
     }
     void this.syncMarkToLarkIfReady(markId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian10.Notice(`\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A${message}`, 8e3);
+      new import_obsidian10.Notice(this.t("notice.autoSyncLarkFailed", { message }), 8e3);
     });
   }
   async syncMarkToLarkIfReady(markId) {
@@ -4762,16 +5187,22 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian10.Setting(containerEl).setName("\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F").addToggle((toggle) => {
+    new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.language.name")).setDesc(this.plugin.t("settings.language.desc")).addDropdown((dropdown) => {
+      dropdown.addOption("zh-CN", this.plugin.t("settings.language.zh")).addOption("en", this.plugin.t("settings.language.en")).setValue(this.plugin.settings.language || "zh-CN").onChange(async (value) => {
+        await this.plugin.setLanguage(value);
+      });
+    });
+    new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.autoOpenSidebar.name")).addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
         await this.plugin.saveSettings();
       });
     });
     this.renderLarkSyncSetting(containerEl);
-    new import_obsidian10.Setting(containerEl).setName("\u8BC4\u8BBA\u663E\u793A\u540D\u79F0").setDesc("\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002").addText((text) => {
+    new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.commentAuthorName.name")).setDesc(this.plugin.t("settings.commentAuthorName.desc")).addText((text) => {
       text.setValue(this.plugin.settings.commentAuthorName).onChange(async (value) => {
-        this.plugin.settings.commentAuthorName = value.trim() || DEFAULT_SETTINGS.commentAuthorName;
+        const language = this.plugin.settings.language || "zh-CN";
+        this.plugin.settings.commentAuthorName = value.trim() || getDefaultCommentAuthorName(language);
         await this.plugin.saveSettings();
       });
     });
@@ -4779,13 +5210,15 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
   renderLarkSyncSetting(containerEl) {
     const status = getLarkSyncPluginStatus(this.plugin);
     const canEnableSync = status === "enabled";
-    const setting = new import_obsidian10.Setting(containerEl).setName("\u6807\u6CE8\u540C\u6B65\u98DE\u4E66").setDesc("\u5F00\u542F\u540E\uFF0C\u6DFB\u52A0\u672C\u5730\u8BC4\u8BBA\u6216\u56DE\u590D\u4F1A\u901A\u8FC7 Feishu Lark CLI Sync \u540C\u6B65\u5230\u98DE\u4E66\u3002CLI \u914D\u7F6E\u7531\u8BE5\u63D2\u4EF6\u7BA1\u7406\u3002").addToggle((toggle) => {
+    const setting = new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.larkSync.name")).setDesc(this.plugin.t("settings.larkSync.desc")).addToggle((toggle) => {
       toggle.setValue(canEnableSync && this.plugin.settings.autoSyncToLark).onChange(async (value) => {
         if (value && !canEnableSync) {
           toggle.setValue(false);
           this.plugin.settings.autoSyncToLark = false;
           await this.plugin.saveSettings();
-          new import_obsidian10.Notice(`${getLarkSyncPluginStatusText(status)} \u65E0\u6CD5\u5F00\u542F\u6807\u6CE8\u540C\u6B65\uFF0C\u8BF7\u5148\u5B89\u88C5\u5E76\u542F\u7528\u8BE5\u63D2\u4EF6\u3002`, 8e3);
+          new import_obsidian10.Notice(this.plugin.t("settings.larkSync.enableBlocked", {
+            status: getLarkSyncPluginStatusText(status, this.plugin.settings.language)
+          }), 8e3);
           return;
         }
         this.plugin.settings.autoSyncToLark = value;
@@ -4794,7 +5227,7 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
     });
     const statusEl = setting.descEl.createDiv({
       cls: `side-mark-lark-sync-plugin-status ${getLarkSyncPluginStatusClass(status)}`,
-      text: getLarkSyncPluginStatusText(status)
+      text: getLarkSyncPluginStatusText(status, this.plugin.settings.language)
     });
     statusEl.setAttr("aria-live", "polite");
   }

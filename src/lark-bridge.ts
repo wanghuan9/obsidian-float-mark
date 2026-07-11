@@ -4,6 +4,7 @@ import { promisify } from "util";
 import type SideMarkPlugin from "./main";
 import { findRemoteBlockId, type RemoteUnit } from "./block-map";
 import type { RemoteSyncState, SideMark } from "./types";
+import { translate, type PluginLanguage } from "./i18n";
 
 export const LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 const SYNC_STATE_FILE = "lark-sync-state.json";
@@ -68,10 +69,10 @@ interface LarkSyncPluginBridge {
 export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source: string, mark: SideMark): Promise<RemoteSyncState> {
 	const binding = readLarkBinding(source);
 	if (!binding.doc) {
-		throw new Error("当前笔记没有 lark_doc_url 或 lark_doc_token。请先用 Feishu Lark CLI Sync 同步这篇文档。");
+		throw new Error(plugin.t("error.noLarkBinding"));
 	}
 
-	const replies = getReplies(mark);
+	const replies = getReplies(plugin, mark);
 	if (mark.remote?.larkCommentId) {
 		return await syncRepliesToExistingLarkComment(plugin, binding, mark, replies);
 	}
@@ -79,7 +80,7 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 	const syncState = await readSyncState(plugin);
 	const docState = findDocumentState(syncState, binding.doc);
 	if (!docState || (!docState.titleBlockId && !docState.units.length)) {
-		throw new Error("没有找到飞书 block 映射。请先用 Feishu Lark CLI Sync 同步一次当前文档。");
+		throw new Error(plugin.t("error.noLarkBlockMap"));
 	}
 
 	const blockId = findRemoteBlockId(
@@ -90,19 +91,19 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		docState.titleBlockId
 	);
 	if (!blockId) {
-		throw new Error("没有找到该标注命中的第一个飞书 block。");
+		throw new Error(plugin.t("error.noLarkBlock"));
 	}
 
 	const [firstReply, ...restReplies] = replies.length
 		? replies
-		: [{ content: "（无评论）" }];
+		: [{ content: plugin.t("lark.emptyComment") }];
 	const result = await runLarkCreateComment(plugin, {
 		doc: binding.doc,
 		blockId,
 		content: buildCommentElements(firstReply.content)
 	});
 	if (!result.ok) {
-		throw new Error(result.error?.message || result.error?.hint || "lark-cli 添加评论失败。");
+		throw new Error(result.error?.message || result.error?.hint || plugin.t("error.larkCreateCommentFailed"));
 	}
 	const commentId = result.data?.comment_id;
 	const replyIds = [result.data?.reply_id].filter(isNonEmptyString);
@@ -114,7 +115,7 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 				content: buildReplyBody(reply.content)
 			});
 			if (!replyResult.ok) {
-				throw new Error(replyResult.error?.message || replyResult.error?.hint || "lark-cli 添加回复失败。");
+				throw new Error(replyResult.error?.message || replyResult.error?.hint || plugin.t("error.larkCreateReplyFailed"));
 			}
 			if (replyResult.data?.reply_id) {
 				replyIds.push(replyResult.data.reply_id);
@@ -136,37 +137,37 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 }
 
 export async function setLarkCommentResolved(plugin: SideMarkPlugin, mark: SideMark, isSolved: boolean): Promise<void> {
-	const { doc, commentId } = getRemoteCommentReference(mark);
+	const { doc, commentId } = getRemoteCommentReference(plugin, mark);
 	const result = await runLarkPatchComment(plugin, { doc, commentId, isSolved });
-	assertLarkCommandOk(result, "lark-cli 更新评论状态失败。");
+	assertLarkCommandOk(result, plugin.t("error.larkUpdateCommentFailed"));
 }
 
 export async function deleteLarkComment(plugin: SideMarkPlugin, mark: SideMark): Promise<void> {
-	const { doc, commentId } = getRemoteCommentReference(mark);
+	const { doc, commentId } = getRemoteCommentReference(plugin, mark);
 	const storedReplyIds = getDeleteAllLarkReplyIds(mark.remote);
-	const replies = getReplies(mark);
+	const replies = getReplies(plugin, mark);
 	const idsToDelete = storedReplyIds.length >= replies.length
 		? storedReplyIds
 		: await findLarkReplyIds(plugin, doc, commentId);
 	if (idsToDelete.length === 0) {
-		throw new Error("缺少飞书回复 ID，无法删除远端评论。");
+		throw new Error(plugin.t("error.missingLarkReplyId"));
 	}
 
 	for (const replyId of [...idsToDelete].reverse()) {
 		const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId });
-		assertLarkCommandOk(result, "lark-cli 删除评论回复失败。");
+		assertLarkCommandOk(result, plugin.t("error.larkDeleteReplyFailed"));
 	}
 }
 
 export async function deleteLarkCommentReply(plugin: SideMarkPlugin, mark: SideMark, replyId: string): Promise<RemoteSyncState | null> {
-	const { doc, commentId } = getRemoteCommentReference(mark);
-	const replies = getReplies(mark);
+	const { doc, commentId } = getRemoteCommentReference(plugin, mark);
+	const replies = getReplies(plugin, mark);
 	const replyIndex = replies.findIndex((reply) => reply.id === replyId);
 	if (replyIndex === -1) {
-		throw new Error("找不到要删除的本地评论回复。");
+		throw new Error(plugin.t("error.localReplyNotFound"));
 	}
 
-	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+	const syncedReplyCount = findSyncedReplyCount(plugin, mark, replies);
 	if (replyIndex >= syncedReplyCount) {
 		return null;
 	}
@@ -178,11 +179,11 @@ export async function deleteLarkCommentReply(plugin: SideMarkPlugin, mark: SideM
 		: await findLarkReplyIds(plugin, doc, commentId);
 	const remoteReplyId = remoteReplyIds[replyIndex] || (replyIndex === syncedReplyCount - 1 ? mark.remote?.larkReplyId : "");
 	if (!remoteReplyId) {
-		throw new Error("缺少飞书回复 ID，无法删除远端评论回复。");
+		throw new Error(plugin.t("error.missingRemoteReplyId"));
 	}
 
 	const result = await runLarkDeleteReply(plugin, { doc, commentId, replyId: remoteReplyId });
-	assertLarkCommandOk(result, "lark-cli 删除评论回复失败。");
+	assertLarkCommandOk(result, plugin.t("error.larkDeleteReplyFailed"));
 
 	const syncedRepliesAfterDelete = replies
 		.slice(0, syncedReplyCount)
@@ -212,11 +213,11 @@ export async function canSyncMarkToLark(plugin: SideMarkPlugin, source: string):
 	return Boolean(docState?.titleBlockId || docState?.units.length);
 }
 
-function getRemoteCommentReference(mark: SideMark): { doc: string; commentId: string } {
+function getRemoteCommentReference(plugin: SideMarkPlugin, mark: SideMark): { doc: string; commentId: string } {
 	const doc = mark.remote?.larkDocToken || mark.remote?.larkDocUrl || "";
 	const commentId = mark.remote?.larkCommentId || "";
 	if (!doc || !commentId) {
-		throw new Error("缺少飞书评论同步信息，无法操作远端评论。");
+		throw new Error(plugin.t("error.missingLarkCommentInfo"));
 	}
 	return { doc, commentId };
 }
@@ -255,16 +256,16 @@ export function getLarkSyncPluginStatus(plugin: SideMarkPlugin): LarkSyncPluginS
 	return "disabled";
 }
 
-export function getLarkSyncPluginStatusText(status: LarkSyncPluginStatus): string {
+export function getLarkSyncPluginStatusText(status: LarkSyncPluginStatus, language: PluginLanguage | undefined = "zh-CN"): string {
 	switch (status) {
 		case "enabled":
-			return "状态：Feishu Lark CLI Sync 已启用。";
+			return translate(language, "lark.status.enabled");
 		case "disabled":
-			return "状态：Feishu Lark CLI Sync 已安装但未启用。";
+			return translate(language, "lark.status.disabled");
 		case "not-installed":
-			return "状态：未安装 Feishu Lark CLI Sync。";
+			return translate(language, "lark.status.notInstalled");
 		case "unknown":
-			return "状态：无法检测 Feishu Lark CLI Sync。";
+			return translate(language, "lark.status.unknown");
 	}
 }
 
@@ -355,10 +356,10 @@ async function syncRepliesToExistingLarkComment(
 ): Promise<RemoteSyncState> {
 	const commentId = mark.remote?.larkCommentId;
 	if (!commentId) {
-		throw new Error("缺少飞书评论 ID，无法追加回复。");
+		throw new Error(plugin.t("error.missingLarkCommentId"));
 	}
 
-	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+	const syncedReplyCount = findSyncedReplyCount(plugin, mark, replies);
 	const pendingReplies = replies.slice(syncedReplyCount);
 	let lastReplyId = mark.remote?.larkReplyId;
 	const knownReplyIds = getStoredLarkReplyIdList(mark.remote);
@@ -374,7 +375,7 @@ async function syncRepliesToExistingLarkComment(
 			content: buildReplyBody(reply.content)
 		});
 		if (!result.ok) {
-			throw new Error(result.error?.message || result.error?.hint || "lark-cli 添加回复失败。");
+			throw new Error(result.error?.message || result.error?.hint || plugin.t("error.larkCreateReplyFailed"));
 		}
 		lastReplyId = result.data?.reply_id || lastReplyId;
 		if (result.data?.reply_id) {
@@ -396,19 +397,19 @@ async function syncRepliesToExistingLarkComment(
 	};
 }
 
-function findPendingReplies(mark: SideMark, replies: LarkReply[]): LarkReply[] {
-	const syncedReplyCount = findSyncedReplyCount(mark, replies);
+function findPendingReplies(plugin: SideMarkPlugin, mark: SideMark, replies: LarkReply[]): LarkReply[] {
+	const syncedReplyCount = findSyncedReplyCount(plugin, mark, replies);
 	return replies.slice(syncedReplyCount);
 }
 
-function findSyncedReplyCount(mark: SideMark, replies: LarkReply[]): number {
+function findSyncedReplyCount(plugin: SideMarkPlugin, mark: SideMark, replies: LarkReply[]): number {
 	const syncedHash = mark.remote?.syncedHash;
 	if (syncedHash === undefined) {
-		throw new Error("缺少上次同步记录，无法判断哪些回复已同步。请在飞书中确认后重新创建评论。");
+		throw new Error(plugin.t("error.missingSyncRecord"));
 	}
 	const syncedThreadContent = readSyncedThreadContent(syncedHash, mark.anchor.selectedText);
 	if (syncedThreadContent === null) {
-		throw new Error("评论定位文本已变化，无法安全追加飞书回复。请重新创建评论。");
+		throw new Error(plugin.t("error.commentAnchorChanged"));
 	}
 
 	for (let index = 0; index <= replies.length; index++) {
@@ -416,7 +417,7 @@ function findSyncedReplyCount(mark: SideMark, replies: LarkReply[]): number {
 			return index;
 		}
 	}
-	throw new Error("已同步的旧评论内容发生变化，暂不支持同步编辑或删除后的回复。");
+	throw new Error(plugin.t("error.syncedCommentChanged"));
 }
 
 function readSyncedThreadContent(syncedHash: string, selectedText: string): string | null {
@@ -427,12 +428,12 @@ function readSyncedThreadContent(syncedHash: string, selectedText: string): stri
 	return syncedHash.slice(prefix.length);
 }
 
-function getReplies(mark: SideMark): LarkReply[] {
+function getReplies(plugin: SideMarkPlugin, mark: SideMark): LarkReply[] {
 	return mark.replies?.length
 		? mark.replies
 		: mark.note.content.trim()
 			? [{
-				authorName: "我",
+				authorName: plugin.settings.commentAuthorName,
 				content: mark.note.content,
 				createdAt: mark.note.createdAt
 			}]
@@ -450,7 +451,7 @@ function buildSyncedHash(selectedText: string, replies: LarkReply[]): string {
 async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string; blockId: string; content: string }): Promise<LarkCliResult> {
 	try {
 		const replyElements: unknown = JSON.parse(input.content);
-		return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
+		return normalizeLarkCommentResult(plugin, await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comments",
 			"create_v2",
@@ -479,7 +480,7 @@ async function runLarkCreateComment(plugin: SideMarkPlugin, input: { doc: string
 
 async function runLarkCreateReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; content: string }): Promise<LarkCliResult> {
 	try {
-		return normalizeLarkCommentResult(await runLarkCliViaSyncPlugin(plugin, [
+		return normalizeLarkCommentResult(plugin, await runLarkCliViaSyncPlugin(plugin, [
 			"drive",
 			"file.comment.replys",
 			"create",
@@ -549,7 +550,7 @@ async function findLarkReplyIds(plugin: SideMarkPlugin, doc: string, commentId: 
 			"100",
 			"--json"
 		]);
-		assertLarkCommandOk(result, "lark-cli 获取评论回复失败。");
+		assertLarkCommandOk(result, plugin.t("error.larkGetRepliesFailed"));
 		const items = getLarkReplyItems(result);
 		return items
 			.map((item) => item.reply_id || "")
@@ -566,7 +567,9 @@ async function findLarkReplyIds(plugin: SideMarkPlugin, doc: string, commentId: 
 async function runRawLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
 	const status = getLarkSyncPluginStatus(plugin);
 	if (status !== "enabled") {
-		throw new Error(`${getLarkSyncPluginStatusText(status)} 请先安装并启用该插件。`);
+		throw new Error(plugin.t("error.larkPluginUnavailable", {
+			status: getLarkSyncPluginStatusText(status, plugin.settings.language)
+		}));
 	}
 	const syncPlugin = getLarkSyncPluginBridge(plugin);
 	const executable = await syncPlugin?.resolveLarkCliPath?.() || "lark-cli";
@@ -609,12 +612,14 @@ async function runLarkDeleteReply(plugin: SideMarkPlugin, input: { doc: string; 
 async function runLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
 	const status = getLarkSyncPluginStatus(plugin);
 	if (status !== "enabled") {
-		throw new Error(`${getLarkSyncPluginStatusText(status)} 请先安装并启用该插件。`);
+		throw new Error(plugin.t("error.larkPluginUnavailable", {
+			status: getLarkSyncPluginStatusText(status, plugin.settings.language)
+		}));
 	}
 	const syncPlugin = getLarkSyncPluginBridge(plugin);
 	const runLarkCliCommand = syncPlugin?.runLarkCliCommand || syncPlugin?.runLarkCli;
 	if (!runLarkCliCommand) {
-		throw new Error("Feishu Lark CLI Sync 未暴露 CLI 执行能力，请升级该插件。");
+		throw new Error(plugin.t("error.larkPluginNoCli"));
 	}
 	return await runLarkCliCommand.call(syncPlugin, args);
 }
@@ -641,7 +646,7 @@ function getObsidianPluginManager(plugin: SideMarkPlugin): ObsidianPluginManager
 	return ((plugin.app as AppWithPluginManager).plugins || null);
 }
 
-function normalizeLarkCommentResult(result: LarkCliResult): LarkCliResult {
+function normalizeLarkCommentResult(plugin: SideMarkPlugin, result: LarkCliResult): LarkCliResult {
 	if (typeof result.ok === "boolean") {
 		return result;
 	}
@@ -657,7 +662,7 @@ function normalizeLarkCommentResult(result: LarkCliResult): LarkCliResult {
 	return {
 		ok: false,
 		error: {
-			message: "lark-cli 未返回 comment_id。"
+			message: plugin.t("error.larkNoCommentId")
 		}
 	};
 }

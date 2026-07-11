@@ -1,3 +1,5 @@
+import type { PluginLanguage } from "./i18n";
+
 export const DATA_DIR = ".obsidian-float-marks";
 
 export type MarkKind = "highlight" | "underline" | "comment";
@@ -86,6 +88,7 @@ export interface SideMarkDocument {
 
 export interface SideMarkSettings {
 	dataDir: string;
+	language?: PluginLanguage;
 	autoOpenSidebar: boolean;
 	autoSyncToLark: boolean;
 	preferBodyBlockForLark: boolean;
@@ -94,6 +97,7 @@ export interface SideMarkSettings {
 
 export const DEFAULT_SETTINGS: SideMarkSettings = {
 	dataDir: DATA_DIR,
+	language: undefined,
 	autoOpenSidebar: true,
 	autoSyncToLark: false,
 	preferBodyBlockForLark: false,

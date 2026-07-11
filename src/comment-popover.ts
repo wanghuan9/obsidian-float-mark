@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
+import type { I18nKey } from "./i18n";
 
 export class CommentPopover {
 	private readonly el: HTMLDivElement;
@@ -9,33 +10,33 @@ export class CommentPopover {
 	private hideTimer: number | null = null;
 	private readonly outsideMouseDownHandler = (event: MouseEvent) => this.handleOutsideMouseDown(event);
 
-	constructor() {
+	constructor(private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-comment-popover" });
 		this.el.hide();
 		this.el.addEventListener("mouseenter", () => this.cancelHide());
 		this.el.addEventListener("mouseleave", () => this.scheduleHide());
 		const header = this.el.createDiv({ cls: "side-mark-comment-popover-header" });
-		header.createSpan({ text: "评论" });
+		header.createSpan({ text: this.t("popover.commentTitle") });
 		const closeButton = header.createEl("button", {
 			cls: "side-mark-icon-button",
-			attr: { type: "button", "aria-label": "关闭" }
+			attr: { type: "button", "aria-label": this.t("popover.close") }
 		});
 		setIcon(closeButton, "x");
 		closeButton.addEventListener("click", () => this.hide());
 
 		this.textarea = this.el.createEl("textarea", {
 			cls: "side-mark-comment-textarea",
-			attr: { placeholder: "填写评论" }
+			attr: { placeholder: this.t("popover.commentPlaceholder") }
 		});
 		const actions = this.el.createDiv({ cls: "side-mark-comment-actions" });
 		const cancel = actions.createEl("button", {
-			text: "取消",
+			text: this.t("popover.cancel"),
 			cls: "side-mark-secondary-button",
 			attr: { type: "button" }
 		});
 		cancel.addEventListener("click", () => this.hide());
 		const save = actions.createEl("button", {
-			text: "保存",
+			text: this.t("popover.save"),
 			cls: "side-mark-primary-button",
 			attr: { type: "button" }
 		});
