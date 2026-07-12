@@ -27,8 +27,7 @@ var import_obsidian10 = require("obsidian");
 
 // src/editor-extension.ts
 var import_obsidian = require("obsidian");
-var import_state = require("@codemirror/state");
-var import_view = require("@codemirror/view");
+var import_view2 = require("@codemirror/view");
 
 // src/dom-utils.ts
 function getActiveDocument() {
@@ -48,6 +47,69 @@ function isInputEvent(event) {
   return event.instanceOf(InputEvent);
 }
 
+// src/editor-decorations.ts
+var import_state = require("@codemirror/state");
+var import_view = require("@codemirror/view");
+function buildEditorDecorationLayers(marks, docLength, pendingSelection) {
+  const regularRanges = [];
+  const outerRanges = [];
+  for (const mark of marks) {
+    if (mark.status === "orphaned" || mark.status === "resolved") {
+      continue;
+    }
+    const from = clampOffset(mark.anchor.startOffset, docLength);
+    const to = Math.max(from, clampOffset(mark.anchor.endOffset, docLength));
+    if (from === to) {
+      continue;
+    }
+    const hasOuterBackground = mark.mark.kind === "highlight" && mark.mark.backgroundColor !== "none";
+    const regularBackground = hasOuterBackground ? "none" : mark.mark.backgroundColor;
+    regularRanges.push(import_view.Decoration.mark({
+      class: [
+        "side-mark",
+        `side-mark--${mark.mark.kind}`,
+        `side-mark--${mark.mark.color}`,
+        `side-mark--text-${mark.mark.textColor}`,
+        `side-mark--background-${regularBackground}`
+      ].join(" "),
+      attributes: {
+        "data-side-mark-id": mark.id,
+        title: mark.note.content || "FloatMark"
+      }
+    }).range(from, to));
+    if (hasOuterBackground) {
+      outerRanges.push(import_view.Decoration.mark({
+        class: [
+          "side-mark-editor-background",
+          "side-mark--highlight",
+          `side-mark--background-${mark.mark.backgroundColor}`
+        ].join(" ")
+      }).range(from, to));
+    }
+  }
+  addPendingSelection(regularRanges, pendingSelection, docLength);
+  return {
+    decorations: import_state.RangeSet.of(regularRanges, true),
+    outerDecorations: import_state.RangeSet.of(outerRanges, true)
+  };
+}
+function addPendingSelection(ranges, pendingSelection, docLength) {
+  if (!pendingSelection) {
+    return;
+  }
+  const from = clampOffset(pendingSelection.from, docLength);
+  const to = Math.max(from, clampOffset(pendingSelection.to, docLength));
+  if (from === to) {
+    return;
+  }
+  ranges.push(import_view.Decoration.mark({
+    class: "side-mark-pending-comment-selection"
+  }).range(from, to));
+}
+function clampOffset(offset, docLength) {
+  return Math.max(0, Math.min(offset, docLength));
+}
+
 // src/mark-click-guard.ts
 function shouldOpenMarkForSelection(hasTextSelection) {
   return !hasTextSelection;
@@ -58,12 +120,14 @@ function hasNonEmptyDomSelection(selection) {
 
 // src/editor-extension.ts
 function createSideMarkEditorExtension(plugin) {
-  return import_view.ViewPlugin.fromClass(
+  return import_view2.ViewPlugin.fromClass(
     class SideMarkEditorPlugin {
       constructor(view) {
         this.view = view;
         this.selectionTimer = null;
-        this.decorations = this.buildDecorations();
+        const layers = this.buildDecorationLayers();
+        this.decorations = layers.decorations;
+        this.outerDecorations = layers.outerDecorations;
         this.mouseupHandler = () => this.scheduleSelectionCheck();
         this.keyupHandler = () => this.scheduleSelectionCheck();
         this.clickHandler = (event) => this.handleMarkClick(event);
@@ -79,7 +143,9 @@ function createSideMarkEditorExtension(plugin) {
       }
       update(update) {
         if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
-          this.decorations = this.buildDecorations();
+          const layers = this.buildDecorationLayers();
+          this.decorations = layers.decorations;
+          this.outerDecorations = layers.outerDecorations;
           if (update.viewportChanged) {
             plugin.hideBlockToolbar();
           }
@@ -139,48 +205,18 @@ function createSideMarkEditorExtension(plugin) {
         const bottom = Math.max(start.bottom, end.bottom);
         return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
       }
-      buildDecorations() {
+      buildDecorationLayers() {
         var _a;
         const filePath = this.getFilePath();
         if (!filePath || ((_a = plugin.currentDocument) == null ? void 0 : _a.filePath) !== filePath) {
-          return import_view.Decoration.none;
+          return {
+            decorations: import_view2.Decoration.none,
+            outerDecorations: import_view2.Decoration.none
+          };
         }
-        const ranges = [];
         const docLength = this.view.state.doc.length;
-        for (const mark of plugin.currentDocument.marks) {
-          if (mark.status === "orphaned" || mark.status === "resolved") {
-            continue;
-          }
-          const from = Math.max(0, Math.min(mark.anchor.startOffset, docLength));
-          const to = Math.max(from, Math.min(mark.anchor.endOffset, docLength));
-          if (from === to) {
-            continue;
-          }
-          ranges.push(import_view.Decoration.mark({
-            class: [
-              "side-mark",
-              `side-mark--${mark.mark.kind}`,
-              `side-mark--${mark.mark.color}`,
-              `side-mark--text-${mark.mark.textColor}`,
-              `side-mark--background-${mark.mark.backgroundColor}`
-            ].join(" "),
-            attributes: {
-              "data-side-mark-id": mark.id,
-              title: mark.note.content || "FloatMark"
-            }
-          }).range(from, to));
-        }
         const pendingCommentSelection = plugin.getPendingCommentSelection(filePath);
-        if (pendingCommentSelection) {
-          const from = Math.max(0, Math.min(pendingCommentSelection.from, docLength));
-          const to = Math.max(from, Math.min(pendingCommentSelection.to, docLength));
-          if (from !== to) {
-            ranges.push(import_view.Decoration.mark({
-              class: "side-mark-pending-comment-selection"
-            }).range(from, to));
-          }
-        }
-        return import_state.RangeSet.of(ranges, true);
+        return buildEditorDecorationLayers(plugin.currentDocument.marks, docLength, pendingCommentSelection);
       }
       getFilePath() {
         var _a, _b;
@@ -264,7 +300,13 @@ function createSideMarkEditorExtension(plugin) {
       }
     },
     {
-      decorations: (value) => value.decorations
+      decorations: (value) => value.decorations,
+      provide: (editorPlugin) => import_view2.EditorView.outerDecorations.of(
+        (view) => {
+          var _a;
+          return ((_a = view.plugin(editorPlugin)) == null ? void 0 : _a.outerDecorations) || import_view2.Decoration.none;
+        }
+      )
     }
   );
 }

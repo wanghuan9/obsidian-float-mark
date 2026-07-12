@@ -1,14 +1,16 @@
 import { editorInfoField } from "obsidian";
-import { RangeSet, type Extension, type Range } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type SideMarkPlugin from "./main";
 import { getActiveSelection, isHtmlElement } from "./dom-utils";
+import { buildEditorDecorationLayers, type EditorDecorationLayers } from "./editor-decorations";
 import { shouldOpenMarkForSelection } from "./mark-click-guard";
 
 export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension {
 	return ViewPlugin.fromClass(
 		class SideMarkEditorPlugin {
 			decorations: DecorationSet;
+			outerDecorations: DecorationSet;
 			private readonly mouseupHandler: () => void;
 			private readonly keyupHandler: () => void;
 			private readonly clickHandler: (event: MouseEvent) => void;
@@ -18,7 +20,9 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			private selectionTimer: number | null = null;
 
 			constructor(private readonly view: EditorView) {
-				this.decorations = this.buildDecorations();
+				const layers = this.buildDecorationLayers();
+				this.decorations = layers.decorations;
+				this.outerDecorations = layers.outerDecorations;
 				this.mouseupHandler = () => this.scheduleSelectionCheck();
 				this.keyupHandler = () => this.scheduleSelectionCheck();
 				this.clickHandler = (event) => this.handleMarkClick(event);
@@ -35,7 +39,9 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 
 			update(update: ViewUpdate): void {
 				if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
-					this.decorations = this.buildDecorations();
+					const layers = this.buildDecorationLayers();
+					this.decorations = layers.decorations;
+					this.outerDecorations = layers.outerDecorations;
 					if (update.viewportChanged) {
 						plugin.hideBlockToolbar();
 					}
@@ -99,47 +105,17 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
 			}
 
-			private buildDecorations(): DecorationSet {
+			private buildDecorationLayers(): EditorDecorationLayers {
 				const filePath = this.getFilePath();
 				if (!filePath || plugin.currentDocument?.filePath !== filePath) {
-					return Decoration.none;
+					return {
+						decorations: Decoration.none,
+						outerDecorations: Decoration.none
+					};
 				}
-				const ranges: Range<Decoration>[] = [];
 				const docLength = this.view.state.doc.length;
-				for (const mark of plugin.currentDocument.marks) {
-					if (mark.status === "orphaned" || mark.status === "resolved") {
-						continue;
-					}
-					const from = Math.max(0, Math.min(mark.anchor.startOffset, docLength));
-					const to = Math.max(from, Math.min(mark.anchor.endOffset, docLength));
-					if (from === to) {
-						continue;
-					}
-					ranges.push(Decoration.mark({
-						class: [
-							"side-mark",
-							`side-mark--${mark.mark.kind}`,
-							`side-mark--${mark.mark.color}`,
-							`side-mark--text-${mark.mark.textColor}`,
-							`side-mark--background-${mark.mark.backgroundColor}`
-						].join(" "),
-						attributes: {
-							"data-side-mark-id": mark.id,
-							title: mark.note.content || "FloatMark"
-						}
-					}).range(from, to));
-				}
 				const pendingCommentSelection = plugin.getPendingCommentSelection(filePath);
-				if (pendingCommentSelection) {
-					const from = Math.max(0, Math.min(pendingCommentSelection.from, docLength));
-					const to = Math.max(from, Math.min(pendingCommentSelection.to, docLength));
-					if (from !== to) {
-						ranges.push(Decoration.mark({
-							class: "side-mark-pending-comment-selection"
-						}).range(from, to));
-					}
-				}
-				return RangeSet.of(ranges, true);
+				return buildEditorDecorationLayers(plugin.currentDocument.marks, docLength, pendingCommentSelection);
 			}
 
 			private getFilePath(): string | null {
@@ -228,7 +204,10 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 		},
 		{
-			decorations: (value) => value.decorations
+			decorations: (value) => value.decorations,
+			provide: (editorPlugin) => EditorView.outerDecorations.of((view) =>
+				view.plugin(editorPlugin)?.outerDecorations || Decoration.none
+			)
 		}
 	);
 }
