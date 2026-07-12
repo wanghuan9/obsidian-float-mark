@@ -519,6 +519,21 @@ function getPopoverAxisPosition(preferred, size, fallback, viewportSize) {
 
 // src/hover-block-toolbar.ts
 var import_obsidian3 = require("obsidian");
+
+// src/block-menu-position.ts
+function calculateBlockMenuPlacement(input) {
+  const naturalMenuHeight = Math.max(0, input.naturalMenuHeight);
+  const spaceBelow = Math.max(0, input.viewportHeight - input.pillBottom - input.gap - input.viewportPadding);
+  const spaceAbove = Math.max(0, input.pillTop - input.gap - input.viewportPadding);
+  const minimumBelowHeight = naturalMenuHeight * input.minimumBelowRatio;
+  const opensAbove = spaceBelow < minimumBelowHeight && spaceAbove > spaceBelow;
+  const availableHeight = opensAbove ? spaceAbove : spaceBelow;
+  const maxHeight = Math.min(naturalMenuHeight, availableHeight);
+  const top = opensAbove ? input.pillTop - input.gap - maxHeight : input.pillBottom + input.gap;
+  return { opensAbove, top, maxHeight };
+}
+
+// src/hover-block-toolbar.ts
 var HEADING_SUBMENU_BUTTONS = [
   { action: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4", compact: true },
   { action: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5", compact: true },
@@ -544,7 +559,7 @@ var ACTION_BUTTONS = [
 var MENU_VIEWPORT_PADDING = 8;
 var MENU_PILL_GAP = 6;
 var MENU_DEFAULT_MAX_HEIGHT = 360;
-var MENU_MIN_HEIGHT = 120;
+var MENU_MINIMUM_BELOW_RATIO = 0.5;
 var HoverBlockToolbar = class {
   constructor(onAction, t) {
     this.onAction = onAction;
@@ -713,17 +728,24 @@ var HoverBlockToolbar = class {
     const pillRect = this.pill.getBoundingClientRect();
     const menuWidth = this.menu.offsetWidth || 240;
     const naturalMenuHeight = Math.min(this.menu.scrollHeight || this.menu.offsetHeight, MENU_DEFAULT_MAX_HEIGHT);
-    const spaceBelow = window.innerHeight - pillRect.bottom - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-    const spaceAbove = pillRect.top - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-    const openAbove = spaceBelow < naturalMenuHeight && spaceAbove > spaceBelow;
-    const availableHeight = Math.max(MENU_MIN_HEIGHT, openAbove ? spaceAbove : spaceBelow);
-    const menuHeight = Math.min(naturalMenuHeight, availableHeight);
+    const placement = calculateBlockMenuPlacement({
+      pillTop: pillRect.top,
+      pillBottom: pillRect.bottom,
+      naturalMenuHeight,
+      viewportHeight: window.innerHeight,
+      viewportPadding: MENU_VIEWPORT_PADDING,
+      gap: MENU_PILL_GAP,
+      minimumBelowRatio: MENU_MINIMUM_BELOW_RATIO
+    });
     const left = clamp2(pillRect.left, MENU_VIEWPORT_PADDING, window.innerWidth - menuWidth - MENU_VIEWPORT_PADDING);
-    const preferredTop = openAbove ? pillRect.top - MENU_PILL_GAP - menuHeight : pillRect.bottom + MENU_PILL_GAP;
-    const top = clamp2(preferredTop, MENU_VIEWPORT_PADDING, window.innerHeight - menuHeight - MENU_VIEWPORT_PADDING);
-    this.menu.style.maxHeight = `${availableHeight}px`;
+    if (placement.opensAbove) {
+      this.menu.addClass("is-above");
+    } else {
+      this.menu.removeClass("is-above");
+    }
+    this.menu.style.maxHeight = `${placement.maxHeight}px`;
     this.menu.style.left = `${left}px`;
-    this.menu.style.top = `${top}px`;
+    this.menu.style.top = `${placement.top}px`;
   }
   isMenuOpen() {
     return this.menu.isShown() || this.menu.hasClass("is-open");

@@ -11,7 +11,7 @@
 		"release:flow": "node scripts/release-flow.mjs",
 		"release:official": "node scripts/release-official.mjs",
 		"release:publish": "node scripts/release.mjs --publish",
-		"test": "node test/test-i18n.mjs && node test/test-anchors.mjs && node test/test-block-map.mjs && node test/test-mark-appearance.mjs && node test/test-mark-click-guard.mjs && node test/test-editor-decorations.mjs && node test/test-reading-selection.mjs && node test/test-reading-view-renderer.mjs"
+		"test": "node test/test-i18n.mjs && node test/test-anchors.mjs && node test/test-block-map.mjs && node test/test-block-menu-position.mjs && node test/test-mark-appearance.mjs && node test/test-mark-click-guard.mjs && node test/test-editor-decorations.mjs && node test/test-reading-selection.mjs && node test/test-reading-view-renderer.mjs"
 	},
 	"keywords": [
 		"obsidian",
