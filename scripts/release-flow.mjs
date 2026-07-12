@@ -5,6 +5,7 @@ import { constants } from "fs";
 import readline from "readline/promises";
 import { promisify } from "util";
 import { RELEASE_ASSETS } from "./release-assets.mjs";
+import { validateChineseReleaseNotes } from "./release-notes.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,9 +30,9 @@ const RELEASE_NOTE_SECTION_ORDER = [
 	"improved"
 ];
 const RELEASE_NOTE_SECTION_TITLES = {
-	added: "Added",
-	fixed: "Fixed",
-	improved: "Improved"
+	added: "新增",
+	fixed: "修复",
+	improved: "优化"
 };
 const RELEASE_NOTE_TYPE_SECTIONS = {
 	feat: "added",
@@ -270,7 +271,7 @@ function formatReleaseNoteSections(subjects) {
 	if (blocks.length > 0) {
 		return blocks.join("\n\n");
 	}
-	return "## Improved\n\n- No code changes since the previous release tag.";
+	return "## 优化\n\n- 自上一个版本以来没有代码变更。";
 }
 
 function parseReleaseNoteEntry(subject) {
@@ -290,9 +291,9 @@ function normalizeReleaseNoteText(description) {
 	const withoutScope = description.replace(/^(?:\[[^\]]+\]|\([^)]+\))\s*/u, "");
 	const trimmed = withoutScope.trim().replace(/\.$/, "");
 	if (!trimmed) {
-		return "Updated release content";
+		return "更新发布内容";
 	}
-	return `${trimmed.slice(0, 1).toUpperCase()}${trimmed.slice(1)}`;
+	return trimmed;
 }
 
 async function confirm(prompt, message) {
@@ -303,10 +304,8 @@ async function confirm(prompt, message) {
 }
 
 async function validateReleaseNotes(file) {
-	const content = (await readFile(file, "utf8")).trim();
-	if (!content) {
-		throw new Error(`Release notes cannot be empty: ${file}`);
-	}
+	const content = await readFile(file, "utf8");
+	validateChineseReleaseNotes(content, file);
 }
 
 async function updateVersionFiles(version) {
