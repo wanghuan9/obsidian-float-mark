@@ -1,121 +1,122 @@
 # FloatMark
 
-[English](./README.md) | [简体中文](./README.zh-CN.md)
+[简体中文](./README.md) | [English](./README.en.md)
 
-FloatMark is an Obsidian plugin for inline marks, comments, and floating quick-action toolbars, bringing a Feishu / Lark Docs-like experience to local notes.
+FloatMark 是 Obsidian 的标注、评论与浮动快速操作工具栏插件，在本地笔记中提供类似飞书 / Lark 文档的操作体验。
 
-It focuses on three core workflows: highlight or annotate text, manage comment discussions in a sidebar, and use selection or block-level floating toolbars for fast text and block actions. Comments can also be synced to Feishu / Lark when needed.
+它围绕三个核心场景：给正文做高亮标注，在侧边栏管理评论讨论，以及通过选区浮窗和块左侧菜单快速处理文本与内容块。评论也可按需同步到飞书 / Lark。
 
-## Features
+FloatMark is an Obsidian plugin for inline highlights, comments, and floating quick-action toolbars. It brings a Feishu / Lark Docs-like workflow to local notes, with optional comment synchronization to Feishu / Lark.
 
-- **Feishu-like selection toolbar**: select text and run bold, italic, strikethrough, inline code, highlight, and comment actions near the selection.
-- **Left-side block hover menu**: move the mouse to the left side of a paragraph, heading, list, quote, or code block to format the current block as body text, a heading, a list, a task, a quote, or a code block, or to comment, copy, or delete it.
-- **Inline highlight marks**: highlights stay anchored to the original text in both editing mode and reading mode, with configurable text and background colors.
-- **Comments and Lark sync**: manage document-level comment threads in the sidebar, including edit, reply, resolve, delete, jump back to source, and optional Feishu / Lark comment sync.
-- **Local sidecar storage**: comments and visual marks are stored under `.obsidian-float-marks/` instead of being written into the Markdown body.
-- **Anchor relocation**: after small text edits, FloatMark tries to relocate marks by offset, context, and selected text.
+## 功能
 
-## Usage
+- **飞书式选区浮窗**：选中文本后在选区附近显示浮动工具栏，可以快速执行加粗、斜体、删除线、行内代码、高亮和评论等操作。
+- **块左侧快捷浮窗**：鼠标移动到段落、标题、列表、引用或代码块等模块左侧时，显示块级快捷入口，可将当前块切换为正文、标题、列表、任务、引用、代码块，也可评论、复制或删除当前块。
+- **正文高亮标注**：支持为正文添加高亮标注，可自定义文字色与背景色；高亮标注在编辑模式和阅读模式中都会定位到原文。
+- **评论与飞书同步**：侧边栏按当前文档展示评论线程，支持编辑、回复、解决、删除、跳转回正文，并可将本地评论同步为飞书 / Lark 文档评论。
+- **本地 sidecar 存储**：评论和视觉标注保存到 `.obsidian-float-marks/`，不会把评论内容直接写进 Markdown 正文。
+- **锚点重定位**：当文档内容发生轻微变化时，会尝试通过偏移、上下文和选中文本重新定位标注。
 
-### Floating Quick-Action Toolbars
+## 使用
 
-Select text in editing mode or reading mode, and FloatMark shows a floating toolbar near the selection for bold, italic, strikethrough, inline code, highlight marks, and comments. Move the mouse to the left side of a content block to open block-level quick actions.
+### 浮动快速操作工具栏
+
+在编辑模式或阅读模式中选中文本后，FloatMark 会在选区附近显示浮动工具栏，可直接执行加粗、斜体、删除线、行内代码、高亮标注和评论操作。鼠标移动到内容块左侧时，也可以通过块级浮动菜单快速调整块格式。
 
 <table>
   <tr>
     <td width="62%" align="center">
-      <img src="docs/screenshots/selection-toolbar.png" alt="Floating quick-action toolbar after selecting text" width="100%">
+      <img src="docs/screenshots/selection-toolbar.png" alt="选中文本后的浮动快速操作工具栏" width="100%">
     </td>
     <td width="38%" align="center">
-      <img src="docs/screenshots/selection-format-menu.png" alt="Format menu inside the selection toolbar" width="100%">
+      <img src="docs/screenshots/selection-format-menu.png" alt="选区工具栏中的格式菜单" width="100%">
     </td>
   </tr>
 </table>
 
-After selecting text, the quick-action toolbar appears first. Open the format menu to switch body text, headings, lists, quotes, and more.
+选中文本后先显示快速操作工具栏；展开格式菜单后，可以继续切换正文、标题、列表、引用等格式。
 
 <table>
   <tr>
     <td width="42%" align="center">
-      <img src="docs/screenshots/selection-flow-entry.png" alt="Block hover entry beside the document heading" width="100%">
+      <img src="docs/screenshots/selection-flow-entry.png" alt="块左侧浮动入口" width="100%">
     </td>
     <td width="58%" align="center">
-      <img src="docs/screenshots/selection-flow-format-menu.png" alt="Expanded format menu" width="100%">
+      <img src="docs/screenshots/selection-flow-format-menu.png" alt="展开后的格式菜单" width="100%">
     </td>
   </tr>
 </table>
 
-The block entry stays compact until expanded, then exposes block format changes, comments, copy, and delete actions.
+块级入口保持轻量，展开后才显示完整操作：切换块格式、评论、复制或删除当前块。
 
-### Inline Highlight Marks
+### 正文高亮标注
 
-Inline highlight marks are rendered directly on the source text, making it easy to separate highlights, risks, open questions, and passages worth revisiting. Marks stay anchored to the source text in both editing mode and reading mode.
-
+正文高亮标注会直接显示在原文中，适合区分重点、风险、待确认内容和后续需要回看的片段。标注在编辑模式和阅读模式中都会定位到原文。
 <p align="center">
-  <img src="docs/screenshots/highlight-style-popover.png" alt="Text and background color picker for highlight marks" width="58%">
+  <img src="docs/screenshots/highlight-style-popover.png" alt="高亮标注的文字色与背景色选择" width="58%">
 </p>
 
-When creating highlight marks, choose text and background colors to distinguish different types of information.
+创建高亮标注时，可以选择文字色和背景色，让不同类型的信息更容易区分。
 
 <table>
   <tr>
     <td width="68%" align="center">
-      <img src="docs/screenshots/inline-marks.png" alt="Inline highlight marks with multiple colors in the document body" width="100%">
+      <img src="docs/screenshots/inline-marks.png" alt="正文中的多颜色高亮标注效果" width="100%">
     </td>
     <td width="32%" align="center">
-      <img src="docs/screenshots/highlight-sidebar.png" alt="Highlight-mark list in the sidebar" width="100%">
+      <img src="docs/screenshots/highlight-sidebar.png" alt="侧边栏中的高亮标注列表" width="100%">
     </td>
   </tr>
 </table>
 
-Multi-color highlights render directly in the document body. The sidebar collects highlight marks for review, color or note edits, and jump-back navigation.
+多颜色高亮直接显示在正文中；侧边栏可以集中查看当前文档中的高亮标注，并继续调整颜色、备注或定位到原文。
 
-Markdown formatting actions update the note body. Comments and visual marks are stored in sidecar JSON by default, so they do not pollute the Markdown content.
+Markdown 格式操作会修改当前笔记正文；评论和视觉标注默认保存到 sidecar JSON，不污染 Markdown 内容。
 
-### Comments and Feishu / Lark Sync
+### 评论与飞书 / Lark 同步
 
-Click the ribbon highlighter icon or open FloatMark from the command palette. The sidebar lists comment threads for the current document and supports editing, replying, resolving, deleting, and jumping back to the source text.
+点击左侧栏高亮图标，或使用命令面板打开 FloatMark 侧边栏。侧边栏会展示当前文档的评论线程，支持编辑、回复、解决、删除和跳转回正文。
 
-Local comments can be synced from the sidebar to a published Feishu / Lark document with one click. After syncing, they appear as native Feishu / Lark comment threads for remote collaboration.
+本地评论可以从侧边栏一键同步到已发布的飞书 / Lark 文档。同步后，评论会显示为飞书 / Lark 文档中的原生评论线程，方便继续在远端协作。
 
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/screenshots/local-comment-sidebar.png" alt="Local comment sidebar in Obsidian" width="100%">
+      <img src="docs/screenshots/local-comment-sidebar.png" alt="Obsidian 中的本地评论侧边栏" width="100%">
     </td>
     <td width="50%" align="center">
-      <img src="docs/screenshots/lark-comment-sync.png" alt="Native comment threads after syncing to Feishu / Lark" width="100%">
+      <img src="docs/screenshots/lark-comment-sync.png" alt="同步到飞书 / Lark 后的原生评论线程" width="100%">
     </td>
   </tr>
 </table>
 
-The left image shows local comment threads in Obsidian; the right image shows the native Feishu / Lark comments after one-click sync.
+左侧是 Obsidian 中的本地评论线程，右侧是一键同步后出现在飞书 / Lark 文档侧边栏的原生评论。
 
-## Relationship With Feishu Lark CLI Sync
+## 与 Feishu Lark CLI Sync 的关系
 
-FloatMark does **not** require `obsidian-feishu-lark-cli-sync`. It works independently as a local marking and commenting plugin.
+FloatMark **不依赖** `obsidian-feishu-lark-cli-sync`，它可以独立作为本地标注和评论插件使用。
 
-You only need the sync plugin when you want to push local comments to Feishu / Lark:
+只有当你希望把本地评论同步到飞书 / Lark 文档时，才需要配合使用：
 
-- `obsidian-feishu-lark-cli-sync` publishes or synchronizes Obsidian Markdown notes to Feishu / Lark documents.
-- FloatMark owns local selection marks, side comments, and remote comment sync to the mapped document block.
+- `obsidian-feishu-lark-cli-sync` 负责把 Obsidian Markdown 发布或同步为飞书 / Lark 文档。
+- FloatMark 负责本地选区标注、侧边评论，以及把评论同步到已发布文档的对应 block。
 
-Lark comment sync requires:
+同步到飞书 / Lark 需要满足：
 
-- The current note contains `lark_doc_url` or `lark_doc_token`.
-- The sync plugin has generated a block mapping file:
+- 当前笔记包含 `lark_doc_url` 或 `lark_doc_token`。
+- 已存在同步插件生成的 block 映射文件：
 
 ```text
 .obsidian/plugins/feishu-lark-cli-sync/lark-sync-state.json
 ```
 
-- The local machine has an authenticated `lark-cli`.
+- 本机已安装并登录 `lark-cli`。
 
-## Preparing Feishu / Lark Sync
+## 使用前准备：飞书 / Lark 同步
 
-Skip this section if you only use local marks and comments.
+如果只使用本地标注和评论，可以跳过本节。
 
-To sync comments to Feishu / Lark, install and authenticate `lark-cli` first:
+如需同步到飞书 / Lark，请先安装并登录 `lark-cli`：
 
 ```bash
 npm install -g @larksuite/cli
@@ -124,28 +125,28 @@ lark-cli auth login
 lark-cli auth status
 ```
 
-Then publish the current note with [Feishu Lark CLI Sync](https://github.com/wanghuan9/obsidian-feishu-lark-cli-sync) so the note has a `lark_doc_url` binding and block mapping.
+然后使用 [Feishu Lark CLI Sync](https://github.com/wanghuan9/obsidian-feishu-lark-cli-sync) 发布当前笔记，使笔记获得 `lark_doc_url` 绑定和 block 映射。
 
-## Settings
+## 设置
 
-- `Language`: choose the FloatMark interface language. When no language is saved yet, FloatMark initializes from the current Obsidian language once, then uses the saved setting.
-- `Open sidebar after creating a mark`: opens the sidebar after creating a mark or comment.
-- `Sync marks to Feishu`: syncs local comments and replies through Feishu Lark CLI Sync after they are created.
-- `Feishu Lark CLI Sync`: shows the sync plugin status. The CLI path, authentication, and command execution are managed by Feishu Lark CLI Sync.
-- `Comment display name`: author name shown in local sidebar threads.
+- `语言`：选择 FloatMark 界面语言；首次没有语言记录时会跟随 Obsidian 当前语言初始化，之后以设置中保存的语言为准。
+- `创建标注后打开侧栏`：创建评论或标注后自动打开侧边栏。
+- `标注同步飞书`：开启后，添加本地评论或回复会通过 Feishu Lark CLI Sync 同步到飞书 / Lark。
+- `Feishu Lark CLI Sync`：展示同步插件状态；飞书 CLI 路径、登录和执行能力由 Feishu Lark CLI Sync 管理。
+- `评论显示名称`：本地侧边栏评论线程中的作者显示名。
 
-## Notes
+## 说明
 
-- FloatMark is local-first and does not require a network service by default.
-- Local comments and visual marks are stored under `.obsidian-float-marks/`.
-- Feishu / Lark sync is executed through the local `lark-cli`; the plugin does not store App Secret, access tokens, or OAuth configuration.
-- Remote comment sync is optional. Notes that have not been published to Feishu / Lark can still use all local marking and commenting features.
+- FloatMark 以本地 Obsidian vault 为主，默认不需要网络服务。
+- 本地评论和视觉标注保存在 `.obsidian-float-marks/`，不是 Markdown 正文的一部分。
+- 飞书 / Lark 同步通过本机 `lark-cli` 执行，不在插件中保存 App Secret、access token 或 OAuth 配置。
+- 远端评论同步是可选能力；没有发布到飞书 / Lark 的笔记仍可正常使用本地标注和评论。
 
-## Installation
+## 安装
 
-### Manual Installation
+### 手动安装
 
-Build the plugin from source:
+当前可以通过源码构建后手动安装到 Obsidian vault：
 
 ```bash
 git clone https://github.com/wanghuan9/obsidian-float-mark.git
@@ -154,7 +155,7 @@ npm install
 npm run build
 ```
 
-Then copy these files into your vault plugin directory, for example `.obsidian/plugins/float-mark/`:
+然后将以下文件复制到你的 vault 插件目录，例如 `.obsidian/plugins/float-mark/`：
 
 ```text
 manifest.json
@@ -162,9 +163,9 @@ main.js
 styles.css
 ```
 
-Restart Obsidian and enable `FloatMark` under Settings -> Community plugins.
+重启 Obsidian 后，在设置 -> 社区插件中启用 `FloatMark`。
 
-## Development
+## 开发
 
 ```bash
 npm install
@@ -172,8 +173,8 @@ npm run build
 npm test
 ```
 
-After changing source files, run `npm run build` again to generate `main.js`.
+修改源码后，需要重新执行 `npm run build` 生成 `main.js`。
 
-## License
+## 许可
 
 MIT License

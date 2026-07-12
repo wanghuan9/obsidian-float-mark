@@ -77,11 +77,12 @@ assert.doesNotMatch(
 );
 
 const readmeSource = await readFile("README.md", "utf8");
-const chineseReadmeSource = await readFile("README.zh-CN.md", "utf8");
+const englishReadmeSource = await readFile("README.en.md", "utf8");
+assert.match(readmeSource, /FloatMark 是 Obsidian/);
 assert.match(readmeSource, /FloatMark is an Obsidian plugin/);
-assert.match(readmeSource, /\[简体中文\]\(\.\/README\.zh-CN\.md\)/);
-assert.match(chineseReadmeSource, /FloatMark 是 Obsidian/);
-assert.match(chineseReadmeSource, /\[English\]\(\.\/README\.md\)/);
+assert.match(readmeSource, /\[English\]\(\.\/README\.en\.md\)/);
+assert.match(englishReadmeSource, /FloatMark is an Obsidian plugin/);
+assert.match(englishReadmeSource, /\[简体中文\]\(\.\/README\.md\)/);
 
 const stylesSource = await readFile("styles.css", "utf8");
 const importantCount = stylesSource.match(/!important/g)?.length || 0;
