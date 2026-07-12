@@ -389,8 +389,28 @@
 	will-change: opacity, transform;
 }
 
+.side-mark-block-menu:not(.side-mark-block-submenu) {
+	box-sizing: border-box;
+	width: 248px;
+	padding: 0;
+	transform: translateY(6px) scale(0.965);
+}
+
+.side-mark-block-menu:not(.side-mark-block-submenu) > .side-mark-block-menu-list {
+	padding: 4px;
+}
+
+.side-mark-block-menu:not(.side-mark-block-submenu).is-above {
+	transform: translateY(-6px) scale(0.965);
+	transform-origin: bottom left;
+}
+
 .side-mark-block-menu.is-open {
 	opacity: 1;
+	transform: translateY(0) scale(1);
+}
+
+.side-mark-block-menu:not(.side-mark-block-submenu).is-open {
 	transform: translateY(0) scale(1);
 }
 
@@ -776,6 +796,15 @@
 
 .side-mark-reading .side-mark-reading-inline-content {
 	background: transparent;
+}
+
+.markdown-source-view.mod-cm6 .side-mark-editor-background .cm-inline-code {
+	background: transparent;
+}
+
+.side-mark-editor-background .side-mark-editor-content.side-mark--comment {
+	background: transparent;
+	border-bottom: 0;
 }
 
 .side-mark-reading-flash {

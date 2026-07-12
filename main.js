@@ -27,8 +27,7 @@ var import_obsidian10 = require("obsidian");
 
 // src/editor-extension.ts
 var import_obsidian = require("obsidian");
-var import_state = require("@codemirror/state");
-var import_view = require("@codemirror/view");
+var import_view2 = require("@codemirror/view");
 
 // src/dom-utils.ts
 function getActiveDocument() {
@@ -48,6 +47,114 @@ function isInputEvent(event) {
   return event.instanceOf(InputEvent);
 }
 
+// src/editor-decorations.ts
+var import_state = require("@codemirror/state");
+var import_view = require("@codemirror/view");
+
+// src/mark-appearance.ts
+function hasContinuousMarkPaint(mark) {
+  return mark.mark.kind === "comment" || mark.mark.kind === "highlight" && mark.mark.backgroundColor !== "none";
+}
+function resolveMarkBackground(mark, marks) {
+  if (mark.mark.backgroundColor !== "none") {
+    return { color: mark.mark.backgroundColor, inherited: false };
+  }
+  if (mark.mark.kind !== "highlight" || mark.status !== "active") {
+    return { color: "none", inherited: false };
+  }
+  let inheritedMark = null;
+  let inheritedIndex = -1;
+  for (let index = 0; index < marks.length; index += 1) {
+    const candidate = marks[index];
+    if (!candidate) {
+      continue;
+    }
+    if (!isInheritedBackgroundCandidate(mark, candidate)) {
+      continue;
+    }
+    if (inheritedMark && compareMarkRangeSpecificity(candidate, inheritedMark, index, inheritedIndex) >= 0) {
+      continue;
+    }
+    inheritedMark = candidate;
+    inheritedIndex = index;
+  }
+  return inheritedMark ? { color: inheritedMark.mark.backgroundColor, inherited: true } : { color: "none", inherited: false };
+}
+function compareMarkRangeSpecificity(left, right, leftIndex, rightIndex) {
+  const leftLength = left.anchor.endOffset - left.anchor.startOffset;
+  const rightLength = right.anchor.endOffset - right.anchor.startOffset;
+  return leftLength - rightLength || left.anchor.startOffset - right.anchor.startOffset || rightIndex - leftIndex || left.id.localeCompare(right.id);
+}
+function isInheritedBackgroundCandidate(mark, candidate) {
+  return candidate.id !== mark.id && candidate.filePath === mark.filePath && candidate.mark.kind === "highlight" && candidate.status === "active" && candidate.mark.backgroundColor !== "none" && candidate.anchor.startOffset <= mark.anchor.startOffset && candidate.anchor.endOffset >= mark.anchor.endOffset;
+}
+
+// src/editor-decorations.ts
+function buildEditorDecorationLayers(marks, docLength, pendingSelection) {
+  const regularRanges = [];
+  const outerRanges = [];
+  for (const mark of marks) {
+    if (mark.status === "orphaned" || mark.status === "resolved") {
+      continue;
+    }
+    const from = clampOffset(mark.anchor.startOffset, docLength);
+    const to = Math.max(from, clampOffset(mark.anchor.endOffset, docLength));
+    if (from === to) {
+      continue;
+    }
+    const hasContinuousPaint = hasContinuousMarkPaint(mark);
+    const regularBackground = hasContinuousPaint ? "none" : mark.mark.backgroundColor;
+    regularRanges.push(import_view.Decoration.mark({
+      class: [
+        "side-mark",
+        hasContinuousPaint ? "side-mark-editor-content" : "",
+        `side-mark--${mark.mark.kind}`,
+        `side-mark--${mark.mark.color}`,
+        `side-mark--text-${mark.mark.textColor}`,
+        `side-mark--background-${regularBackground}`
+      ].filter(Boolean).join(" "),
+      attributes: {
+        "data-side-mark-id": mark.id,
+        title: mark.note.content || "FloatMark"
+      }
+    }).range(from, to));
+    if (hasContinuousPaint) {
+      outerRanges.push(import_view.Decoration.mark({
+        class: buildOuterPaintClasses(mark)
+      }).range(from, to));
+    }
+  }
+  addPendingSelection(regularRanges, pendingSelection, docLength);
+  return {
+    decorations: import_state.RangeSet.of(regularRanges, true),
+    outerDecorations: import_state.RangeSet.of(outerRanges, true)
+  };
+}
+function buildOuterPaintClasses(mark) {
+  const paintClass = mark.mark.kind === "comment" ? `side-mark--${mark.mark.color}` : `side-mark--background-${mark.mark.backgroundColor}`;
+  return [
+    "side-mark-editor-background",
+    `side-mark--${mark.mark.kind}`,
+    paintClass
+  ].join(" ");
+}
+function addPendingSelection(ranges, pendingSelection, docLength) {
+  if (!pendingSelection) {
+    return;
+  }
+  const from = clampOffset(pendingSelection.from, docLength);
+  const to = Math.max(from, clampOffset(pendingSelection.to, docLength));
+  if (from === to) {
+    return;
+  }
+  ranges.push(import_view.Decoration.mark({
+    class: "side-mark-pending-comment-selection"
+  }).range(from, to));
+}
+function clampOffset(offset, docLength) {
+  return Math.max(0, Math.min(offset, docLength));
+}
+
 // src/mark-click-guard.ts
 function shouldOpenMarkForSelection(hasTextSelection) {
   return !hasTextSelection;
@@ -58,12 +165,14 @@ function hasNonEmptyDomSelection(selection) {
 
 // src/editor-extension.ts
 function createSideMarkEditorExtension(plugin) {
-  return import_view.ViewPlugin.fromClass(
+  return import_view2.ViewPlugin.fromClass(
     class SideMarkEditorPlugin {
       constructor(view) {
         this.view = view;
         this.selectionTimer = null;
-        this.decorations = this.buildDecorations();
+        const layers = this.buildDecorationLayers();
+        this.decorations = layers.decorations;
+        this.outerDecorations = layers.outerDecorations;
         this.mouseupHandler = () => this.scheduleSelectionCheck();
         this.keyupHandler = () => this.scheduleSelectionCheck();
         this.clickHandler = (event) => this.handleMarkClick(event);
@@ -79,7 +188,9 @@ function createSideMarkEditorExtension(plugin) {
       }
       update(update) {
         if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
-          this.decorations = this.buildDecorations();
+          const layers = this.buildDecorationLayers();
+          this.decorations = layers.decorations;
+          this.outerDecorations = layers.outerDecorations;
           if (update.viewportChanged) {
             plugin.hideBlockToolbar();
           }
@@ -139,48 +250,18 @@ function createSideMarkEditorExtension(plugin) {
         const bottom = Math.max(start.bottom, end.bottom);
         return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
       }
-      buildDecorations() {
+      buildDecorationLayers() {
         var _a;
         const filePath = this.getFilePath();
         if (!filePath || ((_a = plugin.currentDocument) == null ? void 0 : _a.filePath) !== filePath) {
-          return import_view.Decoration.none;
+          return {
+            decorations: import_view2.Decoration.none,
+            outerDecorations: import_view2.Decoration.none
+          };
         }
-        const ranges = [];
         const docLength = this.view.state.doc.length;
-        for (const mark of plugin.currentDocument.marks) {
-          if (mark.status === "orphaned" || mark.status === "resolved") {
-            continue;
-          }
-          const from = Math.max(0, Math.min(mark.anchor.startOffset, docLength));
-          const to = Math.max(from, Math.min(mark.anchor.endOffset, docLength));
-          if (from === to) {
-            continue;
-          }
-          ranges.push(import_view.Decoration.mark({
-            class: [
-              "side-mark",
-              `side-mark--${mark.mark.kind}`,
-              `side-mark--${mark.mark.color}`,
-              `side-mark--text-${mark.mark.textColor}`,
-              `side-mark--background-${mark.mark.backgroundColor}`
-            ].join(" "),
-            attributes: {
-              "data-side-mark-id": mark.id,
-              title: mark.note.content || "FloatMark"
-            }
-          }).range(from, to));
-        }
         const pendingCommentSelection = plugin.getPendingCommentSelection(filePath);
-        if (pendingCommentSelection) {
-          const from = Math.max(0, Math.min(pendingCommentSelection.from, docLength));
-          const to = Math.max(from, Math.min(pendingCommentSelection.to, docLength));
-          if (from !== to) {
-            ranges.push(import_view.Decoration.mark({
-              class: "side-mark-pending-comment-selection"
-            }).range(from, to));
-          }
-        }
-        return import_state.RangeSet.of(ranges, true);
+        return buildEditorDecorationLayers(plugin.currentDocument.marks, docLength, pendingCommentSelection);
       }
       getFilePath() {
         var _a, _b;
@@ -264,7 +345,13 @@ function createSideMarkEditorExtension(plugin) {
       }
     },
     {
-      decorations: (value) => value.decorations
+      decorations: (value) => value.decorations,
+      provide: (editorPlugin) => import_view2.EditorView.outerDecorations.of(
+        (view) => {
+          var _a;
+          return ((_a = view.plugin(editorPlugin)) == null ? void 0 : _a.outerDecorations) || import_view2.Decoration.none;
+        }
+      )
     }
   );
 }
@@ -432,6 +519,21 @@ function getPopoverAxisPosition(preferred, size, fallback, viewportSize) {
 
 // src/hover-block-toolbar.ts
 var import_obsidian3 = require("obsidian");
+
+// src/block-menu-position.ts
+function calculateBlockMenuPlacement(input) {
+  const naturalMenuHeight = Math.max(0, input.naturalMenuHeight);
+  const spaceBelow = Math.max(0, input.viewportHeight - input.pillBottom - input.gap - input.viewportPadding);
+  const spaceAbove = Math.max(0, input.pillTop - input.gap - input.viewportPadding);
+  const minimumBelowHeight = naturalMenuHeight * input.minimumBelowRatio;
+  const opensAbove = spaceBelow < minimumBelowHeight && spaceAbove > spaceBelow;
+  const availableHeight = opensAbove ? spaceAbove : spaceBelow;
+  const maxHeight = Math.min(naturalMenuHeight, availableHeight);
+  const top = opensAbove ? input.pillTop - input.gap - maxHeight : input.pillBottom + input.gap;
+  return { opensAbove, top, maxHeight };
+}
+
+// src/hover-block-toolbar.ts
 var HEADING_SUBMENU_BUTTONS = [
   { action: "heading-4", labelKey: "toolbar.heading4", shortcut: "H4", compact: true },
   { action: "heading-5", labelKey: "toolbar.heading5", shortcut: "H5", compact: true },
@@ -457,7 +559,7 @@ var ACTION_BUTTONS = [
 var MENU_VIEWPORT_PADDING = 8;
 var MENU_PILL_GAP = 6;
 var MENU_DEFAULT_MAX_HEIGHT = 360;
-var MENU_MIN_HEIGHT = 120;
+var MENU_MINIMUM_BELOW_RATIO = 0.5;
 var HoverBlockToolbar = class {
   constructor(onAction, t) {
     this.onAction = onAction;
@@ -626,17 +728,24 @@ var HoverBlockToolbar = class {
     const pillRect = this.pill.getBoundingClientRect();
     const menuWidth = this.menu.offsetWidth || 240;
     const naturalMenuHeight = Math.min(this.menu.scrollHeight || this.menu.offsetHeight, MENU_DEFAULT_MAX_HEIGHT);
-    const spaceBelow = window.innerHeight - pillRect.bottom - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-    const spaceAbove = pillRect.top - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-    const openAbove = spaceBelow < naturalMenuHeight && spaceAbove > spaceBelow;
-    const availableHeight = Math.max(MENU_MIN_HEIGHT, openAbove ? spaceAbove : spaceBelow);
-    const menuHeight = Math.min(naturalMenuHeight, availableHeight);
+    const placement = calculateBlockMenuPlacement({
+      pillTop: pillRect.top,
+      pillBottom: pillRect.bottom,
+      naturalMenuHeight,
+      viewportHeight: window.innerHeight,
+      viewportPadding: MENU_VIEWPORT_PADDING,
+      gap: MENU_PILL_GAP,
+      minimumBelowRatio: MENU_MINIMUM_BELOW_RATIO
+    });
     const left = clamp2(pillRect.left, MENU_VIEWPORT_PADDING, window.innerWidth - menuWidth - MENU_VIEWPORT_PADDING);
-    const preferredTop = openAbove ? pillRect.top - MENU_PILL_GAP - menuHeight : pillRect.bottom + MENU_PILL_GAP;
-    const top = clamp2(preferredTop, MENU_VIEWPORT_PADDING, window.innerHeight - menuHeight - MENU_VIEWPORT_PADDING);
-    this.menu.style.maxHeight = `${availableHeight}px`;
+    if (placement.opensAbove) {
+      this.menu.addClass("is-above");
+    } else {
+      this.menu.removeClass("is-above");
+    }
+    this.menu.style.maxHeight = `${placement.maxHeight}px`;
     this.menu.style.left = `${left}px`;
-    this.menu.style.top = `${top}px`;
+    this.menu.style.top = `${placement.top}px`;
   }
   isMenuOpen() {
     return this.menu.isShown() || this.menu.hasClass("is-open");
@@ -2022,41 +2131,6 @@ var FLOAT_MARK_ICON_SVG = `
 	<path d="M30 10h40"/>
 </g>
 `;
-
-// src/mark-appearance.ts
-function resolveMarkBackground(mark, marks) {
-  if (mark.mark.backgroundColor !== "none") {
-    return { color: mark.mark.backgroundColor, inherited: false };
-  }
-  if (mark.mark.kind !== "highlight" || mark.status !== "active") {
-    return { color: "none", inherited: false };
-  }
-  let inheritedMark = null;
-  let inheritedIndex = -1;
-  for (let index = 0; index < marks.length; index += 1) {
-    const candidate = marks[index];
-    if (!candidate) {
-      continue;
-    }
-    if (!isInheritedBackgroundCandidate(mark, candidate)) {
-      continue;
-    }
-    if (inheritedMark && compareMarkRangeSpecificity(candidate, inheritedMark, index, inheritedIndex) >= 0) {
-      continue;
-    }
-    inheritedMark = candidate;
-    inheritedIndex = index;
-  }
-  return inheritedMark ? { color: inheritedMark.mark.backgroundColor, inherited: true } : { color: "none", inherited: false };
-}
-function compareMarkRangeSpecificity(left, right, leftIndex, rightIndex) {
-  const leftLength = left.anchor.endOffset - left.anchor.startOffset;
-  const rightLength = right.anchor.endOffset - right.anchor.startOffset;
-  return leftLength - rightLength || left.anchor.startOffset - right.anchor.startOffset || rightIndex - leftIndex || left.id.localeCompare(right.id);
-}
-function isInheritedBackgroundCandidate(mark, candidate) {
-  return candidate.id !== mark.id && candidate.filePath === mark.filePath && candidate.mark.kind === "highlight" && candidate.status === "active" && candidate.mark.backgroundColor !== "none" && candidate.anchor.startOffset <= mark.anchor.startOffset && candidate.anchor.endOffset >= mark.anchor.endOffset;
-}
 
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
@@ -3756,7 +3830,7 @@ function promoteFullyMarkedInlineCodeElements(container) {
   const codeElements = Array.from(container.querySelectorAll("code")).filter((code) => !code.closest("pre"));
   for (const code of codeElements) {
     const commonWrappers = getCommonReadingMarkWrappers(code);
-    if (!commonWrappers.some(hasExplicitReadingBackground)) {
+    if (!commonWrappers.some(hasContinuousReadingPaint)) {
       continue;
     }
     for (const wrapper of commonWrappers) {
@@ -3808,10 +3882,8 @@ function getCommonReadingMarkWrappers(code) {
   }
   return wrapperPaths[0].filter((wrapper) => commonMarkIds.has(wrapper.dataset.sideMarkReadingId)).reverse();
 }
-function hasExplicitReadingBackground(wrapper) {
-  return wrapper.classList.contains("side-mark--highlight") && Array.from(wrapper.classList).some(
-    (className) => className.startsWith("side-mark--background-") && className !== "side-mark--background-none"
-  );
+function hasContinuousReadingPaint(wrapper) {
+  return wrapper.classList.contains("side-mark-reading-continuous-paint");
 }
 function planNodeSegments(range, plannedMarks) {
   const intersections = plannedMarks.map((item) => intersectMarkWithNode(range, item)).filter((intersection) => intersection !== null);
@@ -3877,11 +3949,12 @@ function createReadingMarkWrapper(document, mark, onClick) {
   wrapper.className = [
     "side-mark",
     "side-mark-reading",
+    hasContinuousMarkPaint(mark) ? "side-mark-reading-continuous-paint" : "",
     `side-mark--${mark.mark.kind}`,
     `side-mark--${mark.mark.color}`,
     `side-mark--text-${mark.mark.textColor}`,
     `side-mark--background-${mark.mark.backgroundColor}`
-  ].join(" ");
+  ].filter(Boolean).join(" ");
   wrapper.dataset.sideMarkReadingId = mark.id;
   wrapper.title = mark.note.content || "FloatMark";
   wrapper.addEventListener("click", (event) => {
@@ -4037,7 +4110,7 @@ function offsetToLineColumn2(lineStarts, offset) {
 }
 function findBestRenderedMatch(renderedText, mark) {
   const context = getRenderedAnchorContext(mark);
-  for (const selectedText of toRenderedTextCandidates(mark.anchor.selectedText)) {
+  for (const selectedText of toRenderedTextCandidates(mark)) {
     const start = findBestRenderedTextStart(renderedText, selectedText, mark, context);
     if (start >= 0) {
       return { start, end: start + selectedText.length };
@@ -4118,18 +4191,253 @@ function commonPrefixLength(left, right) {
   }
   return length;
 }
-function toRenderedTextCandidates(selectedText) {
+function toRenderedTextCandidates(mark) {
+  const selectedText = mark.anchor.selectedText;
   const normalized = normalizeWhitespace(selectedText).trim();
   const stripped = normalizeWhitespace(stripMarkdownSyntax(selectedText)).trim();
+  const truncatedCodeBoundaries = getTruncatedCodeBoundaries(mark);
+  const boundaryStripped = truncatedCodeBoundaries ? normalizeWhitespace(stripMarkdownSyntax(selectedText, truncatedCodeBoundaries)).trim() : "";
   const candidates = [
     selectedText,
     normalized,
-    stripped
+    stripped,
+    boundaryStripped
   ].filter(Boolean);
   return Array.from(new Set(candidates));
 }
-function stripMarkdownSyntax(text) {
-  return text.replace(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+/gm, "").replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, "").replace(/^[\t ]{0,3}>[\t ]?/gm, "").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\]\([^)]+\)/g, "").replace(/`([^`]+)`/g, "$1").replace(/\*\*(.*?)\*\*/g, "$1").replace(/(^|[^\w])__([^\n]+?)__(?=$|[^\w])/g, "$1$2").replace(/\*([^*\n]+)\*/g, "$1").replace(/(^|[^\w])_([^\n]+?)_(?=$|[^\w])/g, "$1$2").replace(/~~(.*?)~~/g, "$1").replace(/<[^>]+>/g, "");
+function stripMarkdownSyntax(text, truncatedBoundaries) {
+  const sentinel = findUnusedSentinel(text);
+  const protectedCodeContents = [];
+  const protectedText = stripInlineCodeSyntax(text, truncatedBoundaries, (content) => {
+    const index = protectedCodeContents.push(content) - 1;
+    return `${sentinel}${index}${sentinel}`;
+  });
+  const stripped = protectedText.replace(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+/gm, "").replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, "").replace(/^[\t ]{0,3}>[\t ]?/gm, "").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\]\([^)]+\)/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/(^|[^\w])__([^\n]+?)__(?=$|[^\w])/g, "$1$2").replace(/\*([^*\n]+)\*/g, "$1").replace(/(^|[^\w])_([^\n]+?)_(?=$|[^\w])/g, "$1$2").replace(/~~(.*?)~~/g, "$1").replace(/<[^>]+>/g, "");
+  const tokenPattern = new RegExp(`${escapeRegExp(sentinel)}(\\d+)${escapeRegExp(sentinel)}`, "gu");
+  return stripped.replace(tokenPattern, (_match, index) => protectedCodeContents[Number(index)] || "");
+}
+function findUnusedSentinel(text) {
+  const usedCharacters = new Set(text);
+  const privateUseRanges = [[57344, 63743], [983040, 1048573], [1048576, 1114109]];
+  for (const [start, end] of privateUseRanges) {
+    for (let codePoint = start; codePoint <= end; codePoint += 1) {
+      const candidate = String.fromCodePoint(codePoint);
+      if (!usedCharacters.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  const fallbackCharacter = "\uE000";
+  const occurrenceCount = Array.from(text).filter((character) => character === fallbackCharacter).length;
+  return fallbackCharacter.repeat(occurrenceCount + 1);
+}
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function stripInlineCodeSyntax(text, truncatedBoundaries, protectContent) {
+  var _a;
+  const truncatedRuns = findTruncatedCodeRuns(text, truncatedBoundaries);
+  const removableRuns = truncatedRuns.allStarts;
+  const closingRuns = buildClosingCodeRuns(text, removableRuns);
+  let result = "";
+  let index = 0;
+  const prefixStart = truncatedRuns.prefixClosingStarts.values().next().value;
+  if (prefixStart !== void 0) {
+    result += protectContent(text.slice(0, prefixStart));
+    index = prefixStart + countCodeTicks(text, prefixStart);
+  }
+  while (index < text.length) {
+    if (text[index] === "\\") {
+      const backslashCount = countBackslashes(text, index);
+      index += backslashCount;
+      if (text[index] !== "`") {
+        result += "\\".repeat(backslashCount);
+        continue;
+      }
+      if (truncatedRuns.prefixClosingStarts.has(index)) {
+        result += "\\".repeat(backslashCount);
+        continue;
+      }
+      result += "\\".repeat(Math.floor(backslashCount / 2));
+      if (backslashCount % 2 === 1) {
+        result += "`";
+        index += 1;
+        continue;
+      }
+    }
+    if (text[index] !== "`") {
+      result += text[index];
+      index += 1;
+      continue;
+    }
+    const runLength = countCodeTicks(text, index);
+    const contentStart = index + runLength;
+    if (removableRuns.has(index)) {
+      if (truncatedRuns.suffixOpeningStarts.has(index)) {
+        result += protectContent(text.slice(contentStart));
+        index = text.length;
+        continue;
+      }
+      index = contentStart;
+      continue;
+    }
+    const closingStart = (_a = closingRuns.get(index)) != null ? _a : -1;
+    if (closingStart >= 0) {
+      result += protectContent(text.slice(contentStart, closingStart));
+      index = closingStart + runLength;
+      continue;
+    }
+    result += "`".repeat(runLength);
+    index = contentStart;
+  }
+  return result;
+}
+function findTruncatedCodeRuns(text, boundaries) {
+  const allStarts = /* @__PURE__ */ new Set();
+  const prefixClosingStarts = /* @__PURE__ */ new Set();
+  const suffixOpeningStarts = /* @__PURE__ */ new Set();
+  if (!boundaries) {
+    return { allStarts, prefixClosingStarts, suffixOpeningStarts };
+  }
+  const allCodeRuns = findAllCodeTickRuns(text);
+  const unescapedCodeRuns = findCodeTickRuns(text);
+  if (boundaries.prefixRunLength > 0) {
+    const prefixMatch = allCodeRuns.find((run) => run.length === boundaries.prefixRunLength);
+    if (prefixMatch) {
+      allStarts.add(prefixMatch.start);
+      prefixClosingStarts.add(prefixMatch.start);
+    }
+  }
+  if (boundaries.suffixRunLength > 0) {
+    const suffixMatch = findLastCodeRunByLength(unescapedCodeRuns, boundaries.suffixRunLength, allStarts);
+    if (suffixMatch) {
+      allStarts.add(suffixMatch.start);
+      suffixOpeningStarts.add(suffixMatch.start);
+    }
+  }
+  return { allStarts, prefixClosingStarts, suffixOpeningStarts };
+}
+function findCodeTickRuns(text) {
+  const runs = [];
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] === "\\") {
+      const backslashCount = countBackslashes(text, index);
+      index += backslashCount;
+      if (text[index] !== "`") {
+        continue;
+      }
+      if (backslashCount % 2 === 1) {
+        index += 1;
+        continue;
+      }
+    }
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    const runLength = countCodeTicks(text, index);
+    runs.push({ start: index, length: runLength });
+    index += runLength;
+  }
+  return runs;
+}
+function findLastCodeRunByLength(runs, length, excludedStarts) {
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    if (runs[index].length === length && !excludedStarts.has(runs[index].start)) {
+      return runs[index];
+    }
+  }
+  return void 0;
+}
+function buildClosingCodeRuns(text, excludedStarts) {
+  const closingStartsByLength = /* @__PURE__ */ new Map();
+  for (const run of findAllCodeTickRuns(text)) {
+    if (excludedStarts.has(run.start)) {
+      continue;
+    }
+    const starts = closingStartsByLength.get(run.length) || [];
+    starts.push(run.start);
+    closingStartsByLength.set(run.length, starts);
+  }
+  const closingStartByOpeningStart = /* @__PURE__ */ new Map();
+  for (const run of findCodeTickRuns(text)) {
+    if (excludedStarts.has(run.start)) {
+      continue;
+    }
+    const starts = closingStartsByLength.get(run.length) || [];
+    const closingStart = findFirstStartAtOrAfter(starts, run.start + run.length);
+    if (closingStart !== void 0) {
+      closingStartByOpeningStart.set(run.start, closingStart);
+    }
+  }
+  return closingStartByOpeningStart;
+}
+function findFirstStartAtOrAfter(starts, minimum) {
+  let low = 0;
+  let high = starts.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (starts[middle] < minimum) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return starts[low];
+}
+function findAllCodeTickRuns(text) {
+  const runs = [];
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    const length = countCodeTicks(text, index);
+    runs.push({ start: index, length });
+    index += length;
+  }
+  return runs;
+}
+function countBackslashes(text, start) {
+  let end = start;
+  while (text[end] === "\\") {
+    end += 1;
+  }
+  return end - start;
+}
+function countCodeTicks(text, start) {
+  let end = start;
+  while (text[end] === "`") {
+    end += 1;
+  }
+  return end - start;
+}
+function getTruncatedCodeBoundaries(mark) {
+  const prefixRunLength = getBoundaryCodeRunLength(mark.anchor.prefix, "end");
+  const suffixRunLength = getBoundaryCodeRunLength(mark.anchor.suffix, "start");
+  return prefixRunLength > 0 || suffixRunLength > 0 ? { prefixRunLength, suffixRunLength } : void 0;
+}
+function getBoundaryCodeRunLength(text, side) {
+  if (side === "start") {
+    return text[0] === "`" ? countCodeTicks(text, 0) : 0;
+  }
+  let start = text.length;
+  while (start > 0 && text[start - 1] === "`") {
+    start -= 1;
+  }
+  if (start === text.length || isEscapedAt(text, start)) {
+    return 0;
+  }
+  return text.length - start;
+}
+function isEscapedAt(text, index) {
+  let backslashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) {
+    backslashCount += 1;
+  }
+  return backslashCount % 2 === 1;
 }
 function normalizeWhitespace(text) {
   return text.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");

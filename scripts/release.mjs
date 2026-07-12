@@ -4,6 +4,7 @@ import { access, readFile, stat } from "fs/promises";
 import { constants } from "fs";
 import { promisify } from "util";
 import { RELEASE_ASSETS } from "./release-assets.mjs";
+import { validateChineseReleaseNotes } from "./release-notes.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -61,6 +62,7 @@ async function validateReleaseAssets() {
 
 async function validatePublishInputs(version, releaseNotesPath) {
 	await assertFileExists(releaseNotesPath, `Release notes file is required: ${releaseNotesPath}`);
+	validateChineseReleaseNotes(await readFile(releaseNotesPath, "utf8"), releaseNotesPath);
 	await run("git", ["rev-parse", "--verify", `refs/tags/${version}`]);
 	await run("gh", ["auth", "status"]);
 }

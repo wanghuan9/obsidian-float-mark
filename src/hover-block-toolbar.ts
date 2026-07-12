@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { calculateBlockMenuPlacement } from "./block-menu-position";
 import { getActiveBody } from "./dom-utils";
 import type { I18nKey } from "./i18n";
 
@@ -64,7 +65,7 @@ const ACTION_BUTTONS: MenuButton[] = [
 const MENU_VIEWPORT_PADDING = 8;
 const MENU_PILL_GAP = 6;
 const MENU_DEFAULT_MAX_HEIGHT = 360;
-const MENU_MIN_HEIGHT = 120;
+const MENU_MINIMUM_BELOW_RATIO = 0.5;
 
 export class HoverBlockToolbar {
 	private readonly pill: HTMLDivElement;
@@ -253,17 +254,24 @@ export class HoverBlockToolbar {
 		const pillRect = this.pill.getBoundingClientRect();
 		const menuWidth = this.menu.offsetWidth || 240;
 		const naturalMenuHeight = Math.min(this.menu.scrollHeight || this.menu.offsetHeight, MENU_DEFAULT_MAX_HEIGHT);
-		const spaceBelow = window.innerHeight - pillRect.bottom - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-		const spaceAbove = pillRect.top - MENU_PILL_GAP - MENU_VIEWPORT_PADDING;
-		const openAbove = spaceBelow < naturalMenuHeight && spaceAbove > spaceBelow;
-		const availableHeight = Math.max(MENU_MIN_HEIGHT, openAbove ? spaceAbove : spaceBelow);
-		const menuHeight = Math.min(naturalMenuHeight, availableHeight);
+		const placement = calculateBlockMenuPlacement({
+			pillTop: pillRect.top,
+			pillBottom: pillRect.bottom,
+			naturalMenuHeight,
+			viewportHeight: window.innerHeight,
+			viewportPadding: MENU_VIEWPORT_PADDING,
+			gap: MENU_PILL_GAP,
+			minimumBelowRatio: MENU_MINIMUM_BELOW_RATIO
+		});
 		const left = clamp(pillRect.left, MENU_VIEWPORT_PADDING, window.innerWidth - menuWidth - MENU_VIEWPORT_PADDING);
-		const preferredTop = openAbove ? pillRect.top - MENU_PILL_GAP - menuHeight : pillRect.bottom + MENU_PILL_GAP;
-		const top = clamp(preferredTop, MENU_VIEWPORT_PADDING, window.innerHeight - menuHeight - MENU_VIEWPORT_PADDING);
-		this.menu.style.maxHeight = `${availableHeight}px`;
+		if (placement.opensAbove) {
+			this.menu.addClass("is-above");
+		} else {
+			this.menu.removeClass("is-above");
+		}
+		this.menu.style.maxHeight = `${placement.maxHeight}px`;
 		this.menu.style.left = `${left}px`;
-		this.menu.style.top = `${top}px`;
+		this.menu.style.top = `${placement.top}px`;
 	}
 
 	private isMenuOpen(): boolean {

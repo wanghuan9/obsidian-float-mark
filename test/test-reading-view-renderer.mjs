@@ -27,8 +27,13 @@ function createMark({
 	lineStart = 1,
 	lineEnd = lineStart,
 	columnStart = 1,
+	kind = "highlight",
+	color = "green",
 	textColor = "default",
-	backgroundColor = "red-light"
+	backgroundColor = "red-light",
+	noteContent = "",
+	prefix = "",
+	suffix = ""
 } = {}) {
 	return {
 		id,
@@ -37,8 +42,8 @@ function createMark({
 			startOffset,
 			endOffset,
 			selectedText,
-			prefix: "",
-			suffix: "",
+			prefix,
+			suffix,
 			position: {
 				lineStart,
 				lineEnd,
@@ -47,13 +52,13 @@ function createMark({
 			}
 		},
 		mark: {
-			kind: "highlight",
-			color: "green",
+			kind,
+			color,
 			textColor,
 			backgroundColor
 		},
 		note: {
-			content: "",
+			content: noteContent,
 			createdAt: "",
 			updatedAt: ""
 		},
@@ -176,6 +181,222 @@ assert.equal(continuousInlineRoot.innerHTML, continuousInlineFirstRenderHtml);
 renderReadingMarks(continuousInlineRoot, "所有 `代码` 引用", [], () => undefined);
 assert.equal(continuousInlineRoot.innerHTML, continuousInlineOriginalHtml);
 
+const commentSource = [
+	"**后台查询字段来源**：",
+	"",
+	"- 主账号名称：`partner_account.name`（`WHERE account_type=1`）",
+	"- 主账号手机号：`partner_account.phone`（`WHERE account_type=1`）",
+	"- 主账号创建时间：`pjt_partner_info.create_dt"
+].join("\n");
+const commentRenderedText = [
+	"后台查询字段来源：",
+	"主账号名称：partner_account.name（WHERE account_type=1）",
+	"主账号手机号：partner_account.phone（WHERE account_type=1）",
+	"主账号创建时间：pjt_partner_info.create_dt"
+].join("\n");
+const commentDom = new JSDOM(`
+	<div id="root"><p><strong>后台查询字段来源</strong>：</p><ul><li>主账号名称：<code>partner_account.name</code>（<code>WHERE account_type=1</code>）</li><li>主账号手机号：<code>partner_account.phone</code>（<code>WHERE account_type=1</code>）</li><li>主账号创建时间：<code>pjt_partner_info.create_dt</code></li></ul></div>
+`);
+const commentRoot = commentDom.window.document.querySelector("#root");
+const commentOriginalHtml = commentRoot.innerHTML;
+const commentMark = createMark({
+	id: "continuous-comment",
+	selectedText: commentSource,
+	startOffset: 3795,
+	endOffset: 3959,
+	lineStart: 121,
+	lineEnd: 125,
+	kind: "comment",
+	color: "yellow",
+	backgroundColor: "none",
+	noteContent: "22",
+	prefix: "hone` 不再下沉到此表，改为存入 `partner_account`。\n\n\n",
+	suffix: "`\n\n### 6.2.4 统一账号表（partner_account）"
+});
+assert.deepEqual(findReadingMatchForTest(commentRenderedText, commentMark), {
+	start: 0,
+	end: commentRenderedText.length
+});
+renderReadingMarks(commentRoot, commentSource, [commentMark], () => undefined);
+const commentWrappers = Array.from(
+	commentRoot.querySelectorAll('[data-side-mark-reading-id="continuous-comment"]')
+);
+assert.equal(commentWrappers.map((wrapper) => wrapper.textContent).join(""), commentRoot.textContent);
+assert.equal(commentWrappers.every((wrapper) => wrapper.classList.contains("side-mark--comment")), true);
+for (const code of commentRoot.querySelectorAll("code")) {
+	assert.equal(code.parentElement.dataset.sideMarkReadingId, "continuous-comment");
+	assert.equal(code.classList.contains("side-mark-reading-inline-content"), true);
+}
+const commentFirstRenderHtml = commentRoot.innerHTML;
+renderReadingMarks(commentRoot, commentSource, [commentMark], () => undefined);
+assert.equal(commentRoot.innerHTML, commentFirstRenderHtml);
+renderReadingMarks(commentRoot, commentSource, [], () => undefined);
+assert.equal(commentRoot.innerHTML, commentOriginalHtml);
+
+const escapedLiteralAndPartialCodeMark = createMark({
+	id: "escaped-literal-partial-code",
+	selectedText: "\\`literal and `partial",
+	startOffset: 0,
+	endOffset: 22,
+	suffix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("`literal and partial", escapedLiteralAndPartialCodeMark), {
+	start: 0,
+	end: 20
+});
+const evenBackslashesAndPartialCodeMark = createMark({
+	id: "even-backslashes-partial-code",
+	selectedText: "\\\\`partial",
+	startOffset: 0,
+	endOffset: 10,
+	suffix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("\\partial", evenBackslashesAndPartialCodeMark), {
+	start: 0,
+	end: 8
+});
+const oddBackslashesAndLiteralTickMark = createMark({
+	id: "odd-backslashes-literal-tick",
+	selectedText: "\\\\\\`literal",
+	startOffset: 0,
+	endOffset: 11,
+	suffix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("\\`literal", oddBackslashesAndLiteralTickMark), {
+	start: 0,
+	end: 9
+});
+const escapedTickBeforeCodeSpanMark = createMark({
+	id: "escaped-tick-before-code-span",
+	selectedText: "\\``code`",
+	startOffset: 0,
+	endOffset: 8
+});
+assert.deepEqual(findReadingMatchForTest("`code", escapedTickBeforeCodeSpanMark), {
+	start: 0,
+	end: 5
+});
+const mixedTickRunsWithSuffixBoundaryMark = createMark({
+	id: "mixed-tick-runs-suffix-boundary",
+	selectedText: "value ` literal and ``partial",
+	startOffset: 0,
+	endOffset: 29,
+	suffix: "``"
+});
+assert.deepEqual(
+	findReadingMatchForTest("value ` literal and partial", mixedTickRunsWithSuffixBoundaryMark),
+	{ start: 0, end: 27 }
+);
+const mixedTickRunsWithPrefixBoundaryMark = createMark({
+	id: "mixed-tick-runs-prefix-boundary",
+	selectedText: "partial`` and value ` literal",
+	startOffset: 0,
+	endOffset: 29,
+	prefix: "``"
+});
+assert.deepEqual(
+	findReadingMatchForTest("partial and value ` literal", mixedTickRunsWithPrefixBoundaryMark),
+	{ start: 0, end: 27 }
+);
+const sameLengthTickRunsWithPrefixBoundaryMark = createMark({
+	id: "same-length-tick-runs-prefix-boundary",
+	selectedText: "partial` and value ` literal",
+	startOffset: 0,
+	endOffset: 28,
+	prefix: "`"
+});
+assert.deepEqual(
+	findReadingMatchForTest("partial and value ` literal", sameLengthTickRunsWithPrefixBoundaryMark),
+	{ start: 0, end: 27 }
+);
+const backslashBeforePrefixClosingRunMark = createMark({
+	id: "backslash-before-prefix-closing-run",
+	selectedText: "partial\\` and literal",
+	startOffset: 0,
+	endOffset: 21,
+	prefix: "`"
+});
+assert.deepEqual(
+	findReadingMatchForTest("partial\\ and literal", backslashBeforePrefixClosingRunMark),
+	{ start: 0, end: 20 }
+);
+const prefixAndSuffixBoundaryMark = createMark({
+	id: "prefix-and-suffix-boundary",
+	selectedText: "left` middle `right",
+	startOffset: 0,
+	endOffset: 19,
+	prefix: "`",
+	suffix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("left middle right", prefixAndSuffixBoundaryMark), {
+	start: 0,
+	end: 17
+});
+const mismatchedBoundaryRunMark = createMark({
+	id: "mismatched-boundary-run",
+	selectedText: "value ` literal",
+	startOffset: 0,
+	endOffset: 15,
+	suffix: "``"
+});
+assert.equal(findReadingMatchForTest("value  literal", mismatchedBoundaryRunMark), null);
+const doubleCodeMark = createMark({
+	id: "double-code",
+	selectedText: "``code ` tick``",
+	startOffset: 0,
+	endOffset: 15
+});
+assert.deepEqual(findReadingMatchForTest("code ` tick", doubleCodeMark), { start: 0, end: 11 });
+const markdownLiteralInCompleteCodeMark = createMark({
+	id: "markdown-literal-complete-code",
+	selectedText: "`**code**`",
+	startOffset: 0,
+	endOffset: 10
+});
+assert.deepEqual(findReadingMatchForTest("**code**", markdownLiteralInCompleteCodeMark), {
+	start: 0,
+	end: 8
+});
+const placeholderCollisionMark = createMark({
+	id: "placeholder-collision",
+	selectedText: "`x` \uE000**0**\uE001",
+	startOffset: 0,
+	endOffset: 11
+});
+assert.deepEqual(findReadingMatchForTest("x \uE0000\uE001", placeholderCollisionMark), {
+	start: 0,
+	end: 5
+});
+const markdownLiteralInSuffixCodeMark = createMark({
+	id: "markdown-literal-suffix-code",
+	selectedText: "`**code**",
+	startOffset: 0,
+	endOffset: 9,
+	suffix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("**code**", markdownLiteralInSuffixCodeMark), {
+	start: 0,
+	end: 8
+});
+const markdownLiteralInPrefixCodeMark = createMark({
+	id: "markdown-literal-prefix-code",
+	selectedText: "_code_`",
+	startOffset: 0,
+	endOffset: 7,
+	prefix: "`"
+});
+assert.deepEqual(findReadingMatchForTest("_code_", markdownLiteralInPrefixCodeMark), {
+	start: 0,
+	end: 6
+});
+const visibleUnpairedTickMark = createMark({
+	id: "visible-unpaired-tick",
+	selectedText: "value ` literal",
+	startOffset: 0,
+	endOffset: 15
+});
+assert.equal(findReadingMatchForTest("value  literal", visibleUnpairedTickMark), null);
+
 const partialCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
 const partialCodeRoot = partialCodeDom.window.document.querySelector("#root");
 const partialCodeOriginalHtml = partialCodeRoot.innerHTML;
@@ -194,6 +415,25 @@ assert.equal(partialCode.classList.contains("side-mark-reading-inline-content"),
 assert.equal(partialCode.querySelector(".side-mark-reading").textContent, "cd");
 renderReadingMarks(partialCodeRoot, "abcdef", [], () => undefined);
 assert.equal(partialCodeRoot.innerHTML, partialCodeOriginalHtml);
+
+const partialCommentCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
+const partialCommentCodeRoot = partialCommentCodeDom.window.document.querySelector("#root");
+const partialCommentMark = createMark({
+	id: "partial-comment-code",
+	selectedText: "cd",
+	startOffset: 2,
+	endOffset: 4,
+	columnStart: 3,
+	kind: "comment",
+	color: "yellow",
+	backgroundColor: "none",
+	noteContent: "comment"
+});
+renderReadingMarks(partialCommentCodeRoot, "abcdef", [partialCommentMark], () => undefined);
+const partialCommentCode = partialCommentCodeRoot.querySelector("code");
+assert.equal(partialCommentCode.parentElement, partialCommentCodeRoot.querySelector("p"));
+assert.equal(partialCommentCode.classList.contains("side-mark-reading-inline-content"), false);
+assert.equal(partialCommentCode.querySelector(".side-mark--comment").textContent, "cd");
 
 const overlappingCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
 const overlappingCodeRoot = overlappingCodeDom.window.document.querySelector("#root");
