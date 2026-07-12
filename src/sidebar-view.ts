@@ -442,14 +442,14 @@ export class SideMarkSidebarView extends ItemView {
 		if (background.inherited) {
 			backgroundSwatch.setAttr("title", this.t("sidebar.inheritedBackground"));
 		}
-		meta.createSpan({ text: this.t("sidebar.background") });
+		const backgroundLabel = meta.createSpan({
+			text: background.inherited
+				? `${this.t("sidebar.background")}(${this.t("sidebar.inherited")})`
+				: this.t("sidebar.background")
+		});
 		if (background.inherited) {
-			const inherited = meta.createSpan({
-				cls: "side-mark-marker-inherited-label",
-				text: this.t("sidebar.inherited")
-			});
-			inherited.setAttr("title", this.t("sidebar.inheritedBackground"));
-			inherited.setAttr("aria-label", this.t("sidebar.inheritedBackground"));
+			backgroundLabel.setAttr("title", this.t("sidebar.inheritedBackground"));
+			backgroundLabel.setAttr("aria-label", this.t("sidebar.inheritedBackground"));
 		}
 	}
 
