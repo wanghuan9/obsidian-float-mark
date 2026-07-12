@@ -1,6 +1,6 @@
 # FloatMark
 
-简体中文 | [English](./README.en.md)
+[简体中文](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.md) | [English](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.en.md)
 
 FloatMark 是 Obsidian 的标注、评论与浮动快速操作工具栏插件，在本地笔记中提供类似飞书 / Lark 文档的操作体验。
 
