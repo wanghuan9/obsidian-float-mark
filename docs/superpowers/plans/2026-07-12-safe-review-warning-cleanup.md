@@ -22,6 +22,7 @@
 
 **Files:**
 - Create: `test/test-review-warnings.mjs`
+- Create: `src/lark-cli-bridge.ts`（计划偏差：首轮 review 要求增加可执行桥接契约测试）
 - Modify: `package.json`
 - Modify: `src/lark-bridge.ts:1-66, 529-624`
 - Modify: `src/reading-view-renderer.ts:278-292, 621-630`
@@ -31,7 +32,7 @@
 - Consumes: `LarkSyncPluginBridge.runLarkCliCommand(args: string[], options?: { cwd?: string }): Promise<LarkCliResult>`。
 - Produces: `findLarkReplyIds` 继续返回 `Promise<string[]>`，命令参数和 `LarkCliResult.data.items` / `LarkCliResult.items` 解析规则不变。
 
-- [ ] **Step 1: 写入失败的静态契约测试**
+- [x] **Step 1: 写入失败的静态契约测试**
 
 创建 `test/test-review-warnings.mjs`：
 
@@ -66,13 +67,13 @@ console.log("review warning tests passed");
 " && node test/test-review-warnings.mjs"
 ```
 
-- [ ] **Step 2: 运行测试并确认按预期失败**
+- [x] **Step 2: 运行测试并确认按预期失败**
 
 Run: `rtk node test/test-review-warnings.mjs`
 
 Expected: FAIL，首先命中 `child_process` 断言。
 
-- [ ] **Step 3: 最小化修改飞书命令桥接**
+- [x] **Step 3: 最小化修改飞书命令桥接**
 
 在 `src/lark-bridge.ts` 中删除：
 
@@ -114,7 +115,7 @@ const result = await runLarkCliViaSyncPlugin(plugin, [
 
 完整删除 `runRawLarkCliViaSyncPlugin`；保留 `runLarkCliViaSyncPlugin`、`assertLarkCommandOk` 和错误转换逻辑。
 
-- [ ] **Step 4: 最小化修改 TypeScript 类型表达**
+- [x] **Step 4: 最小化修改 TypeScript 类型表达**
 
 在 `src/reading-view-renderer.ts` 中使用显式数组泛型：
 
@@ -128,7 +129,7 @@ const nextContentBlocks = new Array<Element | null>(textNodes.length).fill(null)
 const prefixStart = truncatedRuns.prefixClosingStarts.values().next().value;
 ```
 
-- [ ] **Step 5: 运行任务测试和生产构建**
+- [x] **Step 5: 运行任务测试和生产构建**
 
 Run: `rtk node test/test-review-warnings.mjs`
 

@@ -3060,9 +3060,7 @@ function formatReplyTime(value, t) {
 }
 
 // src/lark-bridge.ts
-var import_child_process = require("child_process");
 var import_obsidian9 = require("obsidian");
-var import_util = require("util");
 
 // src/block-map.ts
 var LARK_BINDING_KEYS = /* @__PURE__ */ new Set([
@@ -3243,10 +3241,47 @@ function createLineStarts(markdown) {
   return starts;
 }
 
+// src/lark-cli-bridge.ts
+async function executeLarkCliCommand(syncPlugin, args, missingCommandMessage) {
+  const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
+  if (!runLarkCliCommand) {
+    throw new Error(missingCommandMessage);
+  }
+  return await runLarkCliCommand.call(syncPlugin, args);
+}
+function buildLarkReplyListArgs(fileToken, commentId) {
+  return [
+    "drive",
+    "file.comment.replys",
+    "list",
+    "--as",
+    "user",
+    "--file-token",
+    fileToken,
+    "--file-type",
+    "docx",
+    "--comment-id",
+    commentId,
+    "--page-size",
+    "100",
+    "--json"
+  ];
+}
+function getLarkReplyIds(result) {
+  var _a;
+  const items = ((_a = result.data) == null ? void 0 : _a.items) || result.items || [];
+  return items.map((item) => item.reply_id || "").filter(Boolean);
+}
+function assertLarkCommandOk(result, fallbackMessage) {
+  var _a, _b;
+  if (result.ok === false) {
+    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || fallbackMessage);
+  }
+}
+
 // src/lark-bridge.ts
 var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
-var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 async function syncMarkToLark(plugin, file, source, mark) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const binding = readLarkBinding(source);
@@ -3390,10 +3425,6 @@ function getDeleteAllLarkReplyIds(remote) {
 }
 function getStoredLarkReplyIdList(remote) {
   return ((remote == null ? void 0 : remote.larkReplyIds) || []).filter(isNonEmptyString);
-}
-function getLarkReplyItems(result) {
-  var _a;
-  return ((_a = result.data) == null ? void 0 : _a.items) || result.items || [];
 }
 function isNonEmptyString(value) {
   return Boolean(value);
@@ -3657,25 +3688,10 @@ async function runLarkPatchComment(plugin, input) {
 }
 async function findLarkReplyIds(plugin, doc, commentId) {
   try {
-    const result = await runRawLarkCliViaSyncPlugin(plugin, [
-      "drive",
-      "file.comment.replys",
-      "list",
-      "--as",
-      "user",
-      "--file-token",
-      extractDocumentToken(doc),
-      "--file-type",
-      "docx",
-      "--comment-id",
-      commentId,
-      "--page-size",
-      "100",
-      "--json"
-    ]);
+    const args = buildLarkReplyListArgs(extractDocumentToken(doc), commentId);
+    const result = await runLarkCliViaSyncPlugin(plugin, args);
     assertLarkCommandOk(result, plugin.t("error.larkGetRepliesFailed"));
-    const items = getLarkReplyItems(result);
-    return items.map((item) => item.reply_id || "").filter(Boolean);
+    return getLarkReplyIds(result);
   } catch (error) {
     const message = getExecErrorMessage(error);
     if (message) {
@@ -3683,23 +3699,6 @@ async function findLarkReplyIds(plugin, doc, commentId) {
     }
     throw error;
   }
-}
-async function runRawLarkCliViaSyncPlugin(plugin, args) {
-  var _a, _b;
-  const status = getLarkSyncPluginStatus(plugin);
-  if (status !== "enabled") {
-    throw new Error(plugin.t("error.larkPluginUnavailable", {
-      status: getLarkSyncPluginStatusText(status, plugin.settings.language)
-    }));
-  }
-  const syncPlugin = getLarkSyncPluginBridge(plugin);
-  const executable = await ((_a = syncPlugin == null ? void 0 : syncPlugin.resolveLarkCliPath) == null ? void 0 : _a.call(syncPlugin)) || "lark-cli";
-  const env = await ((_b = syncPlugin == null ? void 0 : syncPlugin.buildCommandEnvironment) == null ? void 0 : _b.call(syncPlugin, executable)) || process.env;
-  const { stdout } = await execFileAsync(executable, args, {
-    env,
-    maxBuffer: 20 * 1024 * 1024
-  });
-  return JSON.parse(stdout.toString());
 }
 async function runLarkDeleteReply(plugin, input) {
   try {
@@ -3736,17 +3735,7 @@ async function runLarkCliViaSyncPlugin(plugin, args) {
     }));
   }
   const syncPlugin = getLarkSyncPluginBridge(plugin);
-  const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
-  if (!runLarkCliCommand) {
-    throw new Error(plugin.t("error.larkPluginNoCli"));
-  }
-  return await runLarkCliCommand.call(syncPlugin, args);
-}
-function assertLarkCommandOk(result, fallbackMessage) {
-  var _a, _b;
-  if (result.ok === false) {
-    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || fallbackMessage);
-  }
+  return await executeLarkCliCommand(syncPlugin, args, plugin.t("error.larkPluginNoCli"));
 }
 function getExecErrorMessage(error) {
   if (!error || typeof error !== "object") {
