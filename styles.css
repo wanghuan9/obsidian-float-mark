@@ -252,6 +252,10 @@
 	--side-mark-icon-stroke: var(--icon-s-stroke-width, 2px);
 }
 
+.side-mark-selection-menu:not(.side-mark-selection-submenu) > .side-mark-selection-menu-row:first-child .side-mark-selection-menu-icon {
+	font-size: 18px;
+}
+
 .side-mark-selection-menu .side-mark-selection-menu-row:hover .side-mark-selection-menu-icon {
 	color: var(--text-normal);
 }
@@ -441,6 +445,10 @@
 	line-height: 1;
 	--side-mark-icon-size: 16px;
 	--side-mark-icon-stroke: var(--icon-s-stroke-width, 2px);
+}
+
+.side-mark-block-menu:not(.side-mark-block-submenu) .side-mark-block-menu-list > .side-mark-block-menu-compact:first-child .side-mark-block-menu-row-icon {
+	font-size: 18px;
 }
 
 .side-mark-block-menu .side-mark-block-menu-compact:hover .side-mark-block-menu-row-icon,
