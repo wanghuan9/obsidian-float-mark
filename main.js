@@ -3646,39 +3646,93 @@ function normalizeLarkCommentResult(plugin, result) {
 }
 
 // src/reading-view-renderer.ts
+var READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
+var ANCHOR_CONTEXT_LENGTH = 40;
 function renderReadingMarks(container, source, marks, onClick) {
   clearReadingMarks(container);
   const activeMarks = marks.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText).map((mark) => ({ mark }));
   const ranges = collectTextNodes(container);
-  const fullText = ranges.map((range) => range.node.data).join("");
+  const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
   const plannedMarks = activeMarks.map(({ mark }) => {
     const match = findBestRenderedMatch(fullText, mark);
     return match ? { mark, match } : null;
-  }).filter((item) => item !== null).sort((left, right) => right.match.start - left.match.start || right.match.end - left.match.end);
-  for (const item of plannedMarks) {
-    wrapReadingMark(ranges, item.mark, item.match, onClick);
-  }
+  }).filter((item) => item !== null);
+  applyReadingMarkFragments(ranges, plannedMarks, onClick);
 }
 function clearReadingMarks(container) {
   const wrappers = Array.from(container.querySelectorAll(".side-mark-reading"));
-  for (const wrapper of wrappers) {
+  for (const wrapper of wrappers.reverse()) {
     wrapper.replaceWith(...Array.from(wrapper.childNodes));
   }
   container.normalize();
 }
-function wrapReadingMark(ranges, mark, match, onClick) {
-  const start = match.start;
-  const end = match.end;
-  const startRange = ranges.find((range) => range.start <= start && range.end >= start);
-  const endRange = ranges.find((range) => range.start <= end && range.end >= end);
-  if (!startRange || !endRange) {
-    return;
+function applyReadingMarkFragments(ranges, plannedMarks, onClick) {
+  for (const range of ranges) {
+    const segments = planNodeSegments(range, plannedMarks);
+    if (segments.length === 0) {
+      continue;
+    }
+    replaceTextNodeWithSegments(range.node, segments, onClick);
   }
-  const activeDocument = getActiveDocument();
-  const domRange = activeDocument.createRange();
-  domRange.setStart(startRange.node, start - startRange.start);
-  domRange.setEnd(endRange.node, end - endRange.start);
-  const wrapper = activeDocument.createElement("span");
+}
+function planNodeSegments(range, plannedMarks) {
+  const intersections = plannedMarks.map((item) => intersectMarkWithNode(range, item)).filter((intersection) => intersection !== null);
+  if (intersections.length === 0) {
+    return [];
+  }
+  const boundaries = Array.from(new Set(intersections.flatMap((intersection) => [intersection.start, intersection.end]))).sort((left, right) => left - right);
+  const segments = [];
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index] || 0;
+    const end = boundaries[index + 1] || start;
+    const items = intersections.filter((intersection) => intersection.start < end && intersection.end > start).map((intersection) => intersection.item).sort(compareReadingMarkSpecificity);
+    if (start < end && items.length > 0) {
+      segments.push({ start, end, items });
+    }
+  }
+  return segments;
+}
+function intersectMarkWithNode(range, item) {
+  const start = Math.max(range.start, item.match.start);
+  const end = Math.min(range.end, item.match.end);
+  if (start >= end) {
+    return null;
+  }
+  return {
+    item,
+    start: start - range.start,
+    end: end - range.start
+  };
+}
+function compareReadingMarkSpecificity(left, right) {
+  const leftLength = left.match.end - left.match.start;
+  const rightLength = right.match.end - right.match.start;
+  return leftLength - rightLength || left.match.start - right.match.start || left.mark.id.localeCompare(right.mark.id);
+}
+function replaceTextNodeWithSegments(node, segments, onClick) {
+  const document = node.ownerDocument;
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const segment of segments) {
+    if (cursor < segment.start) {
+      fragment.append(document.createTextNode(node.data.slice(cursor, segment.start)));
+    }
+    let content = document.createTextNode(node.data.slice(segment.start, segment.end));
+    for (const item of segment.items) {
+      const wrapper = createReadingMarkWrapper(document, item.mark, onClick);
+      wrapper.append(content);
+      content = wrapper;
+    }
+    fragment.append(content);
+    cursor = segment.end;
+  }
+  if (cursor < node.data.length) {
+    fragment.append(document.createTextNode(node.data.slice(cursor)));
+  }
+  node.replaceWith(fragment);
+}
+function createReadingMarkWrapper(document, mark, onClick) {
+  const wrapper = document.createElement("span");
   wrapper.className = [
     "side-mark",
     "side-mark-reading",
@@ -3694,57 +3748,162 @@ function wrapReadingMark(ranges, mark, match, onClick) {
     event.stopPropagation();
     onClick(mark.id, wrapper.getBoundingClientRect());
   });
-  try {
-    wrapper.append(domRange.extractContents());
-    domRange.insertNode(wrapper);
-  } catch (e) {
-    return;
-  }
+  return wrapper;
 }
 function collectTextNodes(container) {
+  var _a, _b;
   const nodes = [];
-  const walker = getActiveDocument().createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+  const nodeFilter = (_a = container.ownerDocument.defaultView) == null ? void 0 : _a.NodeFilter;
+  if (!nodeFilter) {
+    return nodes;
+  }
+  const walker = container.ownerDocument.createTreeWalker(container, nodeFilter.SHOW_TEXT, {
     acceptNode(node2) {
-      var _a;
+      var _a2;
       const parent = node2.parentElement;
       if (!parent || parent.closest(".side-mark-reading")) {
-        return NodeFilter.FILTER_REJECT;
+        return nodeFilter.FILTER_REJECT;
       }
       if (parent.closest("script, style")) {
-        return NodeFilter.FILTER_REJECT;
+        return nodeFilter.FILTER_REJECT;
       }
-      return ((_a = node2.textContent) == null ? void 0 : _a.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      return ((_a2 = node2.textContent) == null ? void 0 : _a2.trim()) ? nodeFilter.FILTER_ACCEPT : nodeFilter.FILTER_SKIP;
     }
   });
   let offset = 0;
+  let previousBlock = null;
+  let previousText = null;
   let node = walker.nextNode();
   while (node) {
     const text = node;
+    const block = ((_b = text.parentElement) == null ? void 0 : _b.closest(READING_BLOCK_SELECTOR)) || text.parentElement;
+    const hasStructuralBreak = previousText ? hasLineBreakBetween(previousText, text) : false;
+    const separatorBefore = nodes.length > 0 && (block !== previousBlock || hasStructuralBreak) ? "\n" : "";
+    offset += separatorBefore.length;
     const length = text.data.length;
-    nodes.push({ node: text, start: offset, end: offset + length });
+    nodes.push({ node: text, start: offset, end: offset + length, separatorBefore });
     offset += length;
+    previousBlock = block;
+    previousText = text;
     node = walker.nextNode();
   }
   return nodes;
 }
+function hasLineBreakBetween(previous, current) {
+  const range = previous.ownerDocument.createRange();
+  range.setStart(previous, previous.data.length);
+  range.setEnd(current, 0);
+  return Boolean(range.cloneContents().querySelector("br"));
+}
+function buildSourceLineStarts(source) {
+  const lineStarts = [0];
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] === "\n") {
+      lineStarts.push(index + 1);
+    }
+  }
+  return lineStarts;
+}
+function getReadingMarksForSection(source, marks, sectionLineStart, sectionLineEnd, lineStarts = buildSourceLineStarts(source)) {
+  const sectionStartOffset = getLineStartOffset(source, lineStarts, sectionLineStart);
+  const sectionEndOffset = getLineStartOffset(source, lineStarts, sectionLineEnd + 1);
+  return marks.map((mark) => clipMarkToSection(
+    source,
+    lineStarts,
+    mark,
+    sectionStartOffset,
+    sectionEndOffset,
+    sectionLineStart
+  )).filter((mark) => mark !== null);
+}
+function clipMarkToSection(source, lineStarts, mark, sectionStartOffset, sectionEndOffset, sectionLineStart) {
+  const start = Math.max(mark.anchor.startOffset, sectionStartOffset);
+  const end = Math.min(mark.anchor.endOffset, sectionEndOffset);
+  if (start >= end) {
+    return null;
+  }
+  const startPosition = offsetToLineColumn2(lineStarts, start);
+  const endPosition = offsetToLineColumn2(lineStarts, end);
+  return {
+    ...mark,
+    anchor: {
+      startOffset: start,
+      endOffset: end,
+      selectedText: source.slice(start, end),
+      prefix: source.slice(Math.max(0, start - ANCHOR_CONTEXT_LENGTH), start),
+      suffix: source.slice(end, end + ANCHOR_CONTEXT_LENGTH),
+      position: {
+        lineStart: Math.max(1, startPosition.line - sectionLineStart),
+        lineEnd: Math.max(1, endPosition.line - sectionLineStart),
+        columnStart: startPosition.column,
+        columnEnd: endPosition.column
+      }
+    }
+  };
+}
+function getLineStartOffset(source, lineStarts, zeroBasedLine) {
+  var _a;
+  return (_a = lineStarts[zeroBasedLine]) != null ? _a : source.length;
+}
+function offsetToLineColumn2(lineStarts, offset) {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const lineStart = lineStarts[middle] || 0;
+    if (lineStart <= offset) {
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  const lineIndex = Math.max(0, high);
+  return {
+    line: lineIndex + 1,
+    column: offset - (lineStarts[lineIndex] || 0) + 1
+  };
+}
 function findBestRenderedMatch(renderedText, mark) {
+  const context = getRenderedAnchorContext(mark);
   for (const selectedText of toRenderedTextCandidates(mark.anchor.selectedText)) {
-    const start = findBestRenderedTextStart(renderedText, selectedText, mark.anchor.position.lineStart);
+    const start = findBestRenderedTextStart(renderedText, selectedText, mark, context);
     if (start >= 0) {
       return { start, end: start + selectedText.length };
     }
-    const flexibleMatch = findWhitespaceInsensitiveMatch(renderedText, selectedText, mark.anchor.position.lineStart);
+    const flexibleMatch = findWhitespaceInsensitiveMatch(
+      renderedText,
+      selectedText,
+      mark,
+      context
+    );
     if (flexibleMatch) {
       return flexibleMatch;
     }
   }
   return null;
 }
-function findBestRenderedTextStart(renderedText, selectedText, lineStart) {
+function findBestRenderedTextStart(renderedText, selectedText, mark, context) {
+  const preferredOffset = estimateRenderedPositionOffset(
+    renderedText,
+    mark.anchor.position.lineStart,
+    mark.anchor.position.columnStart
+  );
+  return findBestTextStartNearOffset(renderedText, selectedText, preferredOffset, context);
+}
+function getRenderedAnchorContext(mark) {
+  return {
+    prefix: normalizeRenderedContext(stripMarkdownSyntax(mark.anchor.prefix)).slice(-80),
+    suffix: normalizeRenderedContext(stripMarkdownSyntax(mark.anchor.suffix)).slice(0, 80)
+  };
+}
+function normalizeRenderedContext(text) {
+  return text.replace(/\s+/g, " ");
+}
+function findBestTextStartNearOffset(text, selectedText, preferredOffset, context) {
   const candidates = [];
   let searchFrom = 0;
-  while (searchFrom <= renderedText.length) {
-    const index = renderedText.indexOf(selectedText, searchFrom);
+  while (searchFrom <= text.length) {
+    const index = text.indexOf(selectedText, searchFrom);
     if (index < 0) {
       break;
     }
@@ -3757,10 +3916,35 @@ function findBestRenderedTextStart(renderedText, selectedText, lineStart) {
   if (candidates.length === 1) {
     return candidates[0] || 0;
   }
-  const preferredLineOffset = estimateRenderedLineOffset(renderedText, lineStart);
-  return candidates.sort(
-    (left, right) => Math.abs(left - preferredLineOffset) - Math.abs(right - preferredLineOffset)
-  )[0] || candidates[0] || 0;
+  return chooseBestCandidate(candidates, (start) => start + selectedText.length, text, preferredOffset, context);
+}
+function chooseBestCandidate(candidates, getEnd, text, preferredOffset, context) {
+  return candidates.sort((left, right) => {
+    const rightScore = scoreCandidate(right, getEnd(right), text, preferredOffset, context);
+    const leftScore = scoreCandidate(left, getEnd(left), text, preferredOffset, context);
+    return rightScore - leftScore;
+  })[0] || candidates[0] || 0;
+}
+function scoreCandidate(start, end, text, preferredOffset, context) {
+  const renderedPrefix = text.slice(Math.max(0, start - context.prefix.length), start);
+  const renderedSuffix = text.slice(end, end + context.suffix.length);
+  const contextScore = commonSuffixLength(renderedPrefix, context.prefix) + commonPrefixLength(renderedSuffix, context.suffix);
+  const distanceScore = 1 / (1 + Math.abs(start - preferredOffset));
+  return contextScore * 1e3 + distanceScore;
+}
+function commonSuffixLength(left, right) {
+  let length = 0;
+  while (length < left.length && length < right.length && left[left.length - length - 1] === right[right.length - length - 1]) {
+    length += 1;
+  }
+  return length;
+}
+function commonPrefixLength(left, right) {
+  let length = 0;
+  while (length < left.length && length < right.length && left[length] === right[length]) {
+    length += 1;
+  }
+  return length;
 }
 function toRenderedTextCandidates(selectedText) {
   const normalized = normalizeWhitespace(selectedText).trim();
@@ -3773,21 +3957,45 @@ function toRenderedTextCandidates(selectedText) {
   return Array.from(new Set(candidates));
 }
 function stripMarkdownSyntax(text) {
-  return text.replace(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+/gm, "").replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, "").replace(/^[\t ]{0,3}>[\t ]?/gm, "").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/(\*\*|__)(.*?)\1/g, "$2").replace(/(\*|_)(.*?)\1/g, "$2").replace(/~~(.*?)~~/g, "$1").replace(/<[^>]+>/g, "");
+  return text.replace(/^[\t ]*(?:[-+*]|\d+[.)])[\t ]+/gm, "").replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, "").replace(/^[\t ]{0,3}>[\t ]?/gm, "").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\]\([^)]+\)/g, "").replace(/`([^`]+)`/g, "$1").replace(/\*\*(.*?)\*\*/g, "$1").replace(/(^|[^\w])__([^\n]+?)__(?=$|[^\w])/g, "$1$2").replace(/\*([^*\n]+)\*/g, "$1").replace(/(^|[^\w])_([^\n]+?)_(?=$|[^\w])/g, "$1$2").replace(/~~(.*?)~~/g, "$1").replace(/<[^>]+>/g, "");
 }
 function normalizeWhitespace(text) {
   return text.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");
 }
-function findWhitespaceInsensitiveMatch(renderedText, selectedText, lineStart) {
+function findWhitespaceInsensitiveMatch(renderedText, selectedText, mark, context) {
   const rendered = buildNonWhitespaceIndex(renderedText);
   const selected = selectedText.replace(/\s+/g, "");
   if (!selected) {
     return null;
   }
-  const start = findBestRenderedTextStart(rendered.text, selected, lineStart);
-  if (start < 0) {
+  const preferredOriginalOffset = estimateRenderedPositionOffset(
+    renderedText,
+    mark.anchor.position.lineStart,
+    mark.anchor.position.columnStart
+  );
+  const candidates = [];
+  let searchFrom = 0;
+  while (searchFrom <= rendered.text.length) {
+    const index = rendered.text.indexOf(selected, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    candidates.push(index);
+    searchFrom = index + Math.max(1, selected.length);
+  }
+  if (candidates.length === 0) {
     return null;
   }
+  const start = candidates.sort((left, right) => {
+    var _a, _b;
+    const leftStart = rendered.offsets[left] || 0;
+    const rightStart = rendered.offsets[right] || 0;
+    const leftEnd = ((_a = rendered.offsets[left + selected.length - 1]) != null ? _a : leftStart) + 1;
+    const rightEnd = ((_b = rendered.offsets[right + selected.length - 1]) != null ? _b : rightStart) + 1;
+    const rightScore = scoreCandidate(rightStart, rightEnd, renderedText, preferredOriginalOffset, context);
+    const leftScore = scoreCandidate(leftStart, leftEnd, renderedText, preferredOriginalOffset, context);
+    return rightScore - leftScore;
+  })[0] || candidates[0] || 0;
   const originalStart = rendered.offsets[start];
   const originalEnd = rendered.offsets[start + selected.length - 1];
   if (originalStart === void 0 || originalEnd === void 0) {
@@ -3811,17 +4019,17 @@ function buildNonWhitespaceIndex(text) {
   }
   return { text: indexedText, offsets };
 }
-function estimateRenderedLineOffset(renderedText, lineNumber) {
+function estimateRenderedPositionOffset(renderedText, lineNumber, columnNumber) {
   var _a;
   if (lineNumber <= 1) {
-    return 0;
+    return Math.min(renderedText.length, Math.max(0, columnNumber - 1));
   }
   const lines = renderedText.split(/\n/);
   let offset = 0;
   for (let index = 0; index < Math.min(lineNumber - 1, lines.length); index += 1) {
     offset += (((_a = lines[index]) == null ? void 0 : _a.length) || 0) + 1;
   }
-  return offset;
+  return Math.min(renderedText.length, offset + Math.max(0, columnNumber - 1));
 }
 
 // src/reading-selection.ts
@@ -4011,6 +4219,9 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.lastMarkdownFilePath = "";
     this.previewObservers = /* @__PURE__ */ new Map();
     this.previewRenderTimers = /* @__PURE__ */ new Map();
+    this.previewRenderGenerations = /* @__PURE__ */ new Map();
+    this.readingContainerGenerations = /* @__PURE__ */ new WeakMap();
+    this.sourceLineStartsCache = /* @__PURE__ */ new Map();
   }
   async onload() {
     await this.loadSettings();
@@ -4039,10 +4250,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.settingTab = new SideMarkSettingTab(this);
     this.addSettingTab(this.settingTab);
     await this.reloadCurrentDocument();
+    this.syncPreviewMarkObservers();
   }
   onunload() {
     var _a, _b, _c, _d, _e;
     this.clearPreviewMarkObservers();
+    this.sourceLineStartsCache.clear();
     this.clearReadingSelectionTimer();
     this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
@@ -4876,14 +5089,23 @@ ${stripped}
     return ((_a = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView)) == null ? void 0 : _a.editor) || null;
   }
   async renderReadingModeMarks(container, sourcePath, context) {
+    const generation = (this.readingContainerGenerations.get(container) || 0) + 1;
+    this.readingContainerGenerations.set(container, generation);
     const file = this.app.vault.getFileByPath(sourcePath);
     if (!file || file.extension !== "md") {
       return;
     }
     const source = await this.app.vault.read(file);
+    if (this.readingContainerGenerations.get(container) !== generation) {
+      return;
+    }
     const document = await this.store.relocateDocument(file.path, source);
+    if (this.readingContainerGenerations.get(container) !== generation) {
+      return;
+    }
     const section = context == null ? void 0 : context.getSectionInfo(container);
-    const marks = section ? getMarksInRenderedSection(document.marks, section.lineStart, section.lineEnd) : document.marks;
+    const lineStarts = this.getSourceLineStarts(file, source);
+    const marks = section ? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts) : document.marks;
     renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
   }
   syncPreviewMarkObservers() {
@@ -4893,49 +5115,89 @@ ${stripped}
       const view = leaf.view;
       if (view instanceof import_obsidian10.MarkdownView && view.getMode() === "preview" && ((_a = view.file) == null ? void 0 : _a.extension) === "md") {
         activeViews.add(view);
-        if (!this.previewObservers.has(view)) {
-          this.attachPreviewObserver(view);
-        }
+        this.ensurePreviewObserver(view);
         this.schedulePreviewViewRender(view);
       }
     }
-    for (const [view, observer] of this.previewObservers) {
+    for (const [view, state] of this.previewObservers) {
       if (!activeViews.has(view)) {
-        observer.disconnect();
+        state.observer.disconnect();
         this.previewObservers.delete(view);
-        const timer = this.previewRenderTimers.get(view);
-        if (timer !== void 0) {
-          window.clearTimeout(timer);
-          this.previewRenderTimers.delete(view);
-        }
+        this.clearPreviewRenderTimer(view);
+        this.previewRenderGenerations.delete(view);
       }
     }
   }
-  attachPreviewObserver(view) {
+  ensurePreviewObserver(view) {
+    const root = view.contentEl;
+    const existing = this.previewObservers.get(view);
+    if ((existing == null ? void 0 : existing.root) === root) {
+      this.observePreviewState(existing);
+      return existing;
+    }
+    existing == null ? void 0 : existing.observer.disconnect();
     const observer = new MutationObserver(() => this.schedulePreviewViewRender(view));
-    observer.observe(getPreviewSectionsContainer(view), { childList: true });
-    this.previewObservers.set(view, observer);
+    const state = { root, observer, isObserving: false };
+    this.previewObservers.set(view, state);
+    this.observePreviewState(state);
+    return state;
+  }
+  observePreviewState(state) {
+    if (state.isObserving) {
+      return;
+    }
+    state.observer.observe(state.root, { childList: true, subtree: true });
+    state.isObserving = true;
+  }
+  disconnectPreviewState(state) {
+    state.observer.disconnect();
+    state.isObserving = false;
   }
   schedulePreviewViewRender(view) {
-    const existing = this.previewRenderTimers.get(view);
-    if (existing !== void 0) {
-      window.clearTimeout(existing);
-    }
+    this.clearPreviewRenderTimer(view);
+    const generation = this.nextPreviewRenderGeneration(view);
     const timer = window.setTimeout(() => {
       this.previewRenderTimers.delete(view);
-      void this.renderPreviewMarksForView(view);
+      void this.renderPreviewMarksForView(view, generation);
     }, 60);
     this.previewRenderTimers.set(view, timer);
   }
+  clearPreviewRenderTimer(view) {
+    const timer = this.previewRenderTimers.get(view);
+    if (timer === void 0) {
+      return;
+    }
+    window.clearTimeout(timer);
+    this.previewRenderTimers.delete(view);
+  }
+  nextPreviewRenderGeneration(view) {
+    const generation = (this.previewRenderGenerations.get(view) || 0) + 1;
+    this.previewRenderGenerations.set(view, generation);
+    return generation;
+  }
+  getSourceLineStarts(file, source) {
+    const cached = this.sourceLineStartsCache.get(file.path);
+    if ((cached == null ? void 0 : cached.mtime) === file.stat.mtime && cached.size === file.stat.size) {
+      return cached.lineStarts;
+    }
+    const lineStarts = buildSourceLineStarts(source);
+    this.sourceLineStartsCache.set(file.path, {
+      mtime: file.stat.mtime,
+      size: file.stat.size,
+      lineStarts
+    });
+    return lineStarts;
+  }
   clearPreviewMarkObservers() {
-    for (const observer of this.previewObservers.values()) {
-      observer.disconnect();
+    for (const state of this.previewObservers.values()) {
+      state.observer.disconnect();
     }
     this.previewObservers.clear();
     for (const timer of this.previewRenderTimers.values()) {
       window.clearTimeout(timer);
     }
     this.previewRenderTimers.clear();
+    this.previewRenderGenerations.clear();
   }
   async renderPreviewMarksForFile(filePath) {
     var _a;
@@ -4944,33 +5206,55 @@ ${stripped}
       if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
         continue;
       }
-      await this.renderPreviewMarksForView(view);
+      this.clearPreviewRenderTimer(view);
+      const generation = this.nextPreviewRenderGeneration(view);
+      await this.renderPreviewMarksForView(view, generation);
     }
   }
-  async renderPreviewMarksForView(view) {
+  async renderPreviewMarksForView(view, generation) {
     const file = view.file;
     if (!file || file.extension !== "md" || view.getMode() !== "preview") {
       return;
     }
+    const filePath = file.path;
     const source = await this.app.vault.read(file);
+    if (!this.isCurrentPreviewRender(view, filePath, generation)) {
+      return;
+    }
     const document = await this.store.relocateDocument(file.path, source);
+    if (!this.isCurrentPreviewRender(view, filePath, generation)) {
+      return;
+    }
     const onClick = (markId, rect) => void this.openMark(markId, rect);
-    const sections = getPreviewSections(view);
-    if (sections.length > 0) {
-      for (const section of sections) {
-        const marks = getMarksInRenderedSection(document.marks, section.lineStart, section.lineEnd);
-        renderReadingMarks(section.el, source, marks, onClick);
+    const observerState = this.ensurePreviewObserver(view);
+    this.disconnectPreviewState(observerState);
+    try {
+      const sections = getPreviewSections(view);
+      if (sections.length > 0) {
+        const lineStarts = this.getSourceLineStarts(file, source);
+        for (const section of sections) {
+          const marks = getReadingMarksForSection(
+            source,
+            document.marks,
+            section.lineStart,
+            section.lineEnd,
+            lineStarts
+          );
+          renderReadingMarks(section.el, source, marks, onClick);
+        }
+        return;
       }
-      return;
-    }
-    const sectionEls = Array.from(view.contentEl.querySelectorAll(".markdown-preview-section"));
-    if (sectionEls.length > 0) {
-      for (const el of sectionEls) {
-        renderReadingMarks(el, source, document.marks, onClick);
+      const previewRoot = getPreviewSectionsContainer(view);
+      renderReadingMarks(previewRoot, source, document.marks, onClick);
+    } finally {
+      if (this.isCurrentPreviewRender(view, filePath, generation)) {
+        this.ensurePreviewObserver(view);
       }
-      return;
     }
-    renderReadingMarks(view.contentEl, source, document.marks, onClick);
+  }
+  isCurrentPreviewRender(view, filePath, generation) {
+    var _a;
+    return this.previewRenderGenerations.get(view) === generation && view.getMode() === "preview" && ((_a = view.file) == null ? void 0 : _a.path) === filePath;
   }
   jumpToReadingMark(markId) {
     var _a;
@@ -5159,13 +5443,6 @@ function getPreviewSections(view) {
     }
   }
   return result;
-}
-function getMarksInRenderedSection(marks, sectionLineStart, sectionLineEnd) {
-  return marks.filter((mark) => {
-    const markLineStart = mark.anchor.position.lineStart - 1;
-    const markLineEnd = mark.anchor.position.lineEnd - 1;
-    return markLineEnd >= sectionLineStart && markLineStart <= sectionLineEnd;
-  });
 }
 function getCssHighlights() {
   if (typeof CSS === "undefined") {
