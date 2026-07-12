@@ -1,5 +1,6 @@
 import { RangeSet, type Range } from "@codemirror/state";
 import { Decoration, type DecorationSet } from "@codemirror/view";
+import { hasContinuousMarkPaint } from "./mark-appearance";
 import type { SideMark } from "./types";
 
 export interface PendingEditorSelection {
@@ -28,28 +29,25 @@ export function buildEditorDecorationLayers(
 		if (from === to) {
 			continue;
 		}
-		const hasOuterBackground = mark.mark.kind === "highlight" && mark.mark.backgroundColor !== "none";
-		const regularBackground = hasOuterBackground ? "none" : mark.mark.backgroundColor;
+		const hasContinuousPaint = hasContinuousMarkPaint(mark);
+		const regularBackground = hasContinuousPaint ? "none" : mark.mark.backgroundColor;
 		regularRanges.push(Decoration.mark({
 			class: [
 				"side-mark",
+				hasContinuousPaint ? "side-mark-editor-content" : "",
 				`side-mark--${mark.mark.kind}`,
 				`side-mark--${mark.mark.color}`,
 				`side-mark--text-${mark.mark.textColor}`,
 				`side-mark--background-${regularBackground}`
-			].join(" "),
+			].filter(Boolean).join(" "),
 			attributes: {
 				"data-side-mark-id": mark.id,
 				title: mark.note.content || "FloatMark"
 			}
 		}).range(from, to));
-		if (hasOuterBackground) {
+		if (hasContinuousPaint) {
 			outerRanges.push(Decoration.mark({
-				class: [
-					"side-mark-editor-background",
-					"side-mark--highlight",
-					`side-mark--background-${mark.mark.backgroundColor}`
-				].join(" ")
+				class: buildOuterPaintClasses(mark)
 			}).range(from, to));
 		}
 	}
@@ -58,6 +56,17 @@ export function buildEditorDecorationLayers(
 		decorations: RangeSet.of(regularRanges, true),
 		outerDecorations: RangeSet.of(outerRanges, true)
 	};
+}
+
+function buildOuterPaintClasses(mark: SideMark): string {
+	const paintClass = mark.mark.kind === "comment"
+		? `side-mark--${mark.mark.color}`
+		: `side-mark--background-${mark.mark.backgroundColor}`;
+	return [
+		"side-mark-editor-background",
+		`side-mark--${mark.mark.kind}`,
+		paintClass
+	].join(" ");
 }
 
 function addPendingSelection(

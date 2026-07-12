@@ -782,6 +782,11 @@
 	background: transparent;
 }
 
+.side-mark-editor-background .side-mark-editor-content.side-mark--comment {
+	background: transparent;
+	border-bottom: 0;
+}
+
 .side-mark-reading-flash {
 	animation: side-mark-reading-flash 1.2s ease;
 }

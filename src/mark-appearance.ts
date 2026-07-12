@@ -5,6 +5,11 @@ export interface ResolvedMarkBackground {
 	inherited: boolean;
 }
 
+export function hasContinuousMarkPaint(mark: SideMark): boolean {
+	return mark.mark.kind === "comment"
+		|| (mark.mark.kind === "highlight" && mark.mark.backgroundColor !== "none");
+}
+
 export function resolveMarkBackground(mark: SideMark, marks: SideMark[]): ResolvedMarkBackground {
 	if (mark.mark.backgroundColor !== "none") {
 		return { color: mark.mark.backgroundColor, inherited: false };

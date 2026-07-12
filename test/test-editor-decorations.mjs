@@ -124,11 +124,15 @@ const boundaryOuter = collectDecorations(boundaryLayers.outerDecorations, 20);
 assert.deepEqual(
 	boundaryOuter.map(({ from, to }) => ({ from, to }))
 		.sort((left, right) => left.from - right.from || left.to - right.to),
-	[{ from: 0, to: 15 }, { from: 4, to: 12 }]
+	[{ from: 0, to: 15 }, { from: 2, to: 7 }, { from: 4, to: 12 }]
 );
 assert.equal(boundaryRegular.some((decoration) => decoration.spec.class === "side-mark-pending-comment-selection"), true);
 assert.equal(boundaryRegular.some((decoration) => decoration.spec.class.includes("side-mark--comment")), true);
-assert.equal(boundaryOuter.some((decoration) => decoration.spec.class.includes("side-mark--comment")), false);
+assert.equal(boundaryOuter.some((decoration) => decoration.spec.class.includes("side-mark--comment")), true);
+const regularComment = boundaryRegular.find((decoration) =>
+	decoration.spec.attributes?.["data-side-mark-id"] === "comment"
+);
+assert.match(regularComment.spec.class, /side-mark-editor-content/);
 
 const inactiveLayers = buildEditorDecorationLayers([
 	{ ...outerMark, status: "resolved" },
@@ -188,10 +192,44 @@ assert.equal(backgroundWrappers[0].textContent, source);
 assert.ok(view.dom.querySelectorAll('[data-side-mark-id="outer-background"]').length > 1);
 view.destroy();
 
+const commentLineSource = "主账号名称：`partner_account.name`（`WHERE account_type=1`）";
+const fullCommentMark = createMark({
+	id: "full-comment",
+	startOffset: 0,
+	endOffset: commentLineSource.length,
+	kind: "comment",
+	color: "yellow"
+});
+const commentLayers = buildEditorDecorationLayers([fullCommentMark], commentLineSource.length, null);
+const commentSyntaxRanges = ["partner_account.name", "WHERE account_type=1"].map((text) => {
+	const from = commentLineSource.indexOf(text);
+	return Decoration.mark({ class: "simulated-markdown-syntax" }).range(from, from + text.length);
+});
+const commentState = EditorState.create({
+	doc: commentLineSource,
+	extensions: [
+		EditorView.outerDecorations.of(commentLayers.outerDecorations),
+		EditorView.decorations.of(commentLayers.decorations),
+		EditorView.decorations.of(Decoration.set(commentSyntaxRanges, true))
+	]
+});
+const commentView = new EditorView({ state: commentState, parent: dom.window.document.querySelector("#editor") });
+const commentBackgroundWrappers = commentView.dom.querySelectorAll(
+	".side-mark-editor-background.side-mark--comment.side-mark--yellow"
+);
+assert.equal(commentBackgroundWrappers.length, 1);
+assert.equal(commentBackgroundWrappers[0].textContent, commentLineSource);
+assert.ok(commentView.dom.querySelectorAll('[data-side-mark-id="full-comment"]').length > 1);
+commentView.destroy();
+
 const stylesSource = await readFile("styles.css", "utf8");
 assert.match(
 	stylesSource,
 	/\.markdown-source-view\.mod-cm6 \.side-mark-editor-background \.cm-inline-code\s*\{\s*background: transparent;/
+);
+assert.match(
+	stylesSource,
+	/\.side-mark-editor-background \.side-mark-editor-content\.side-mark--comment\s*\{[^}]*background: transparent;[^}]*border-bottom: 0;/s
 );
 
 console.log("editor decoration tests passed");

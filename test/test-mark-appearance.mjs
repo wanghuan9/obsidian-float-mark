@@ -11,7 +11,7 @@ await esbuild.build({
 	outfile: "test/.tmp/mark-appearance.mjs"
 });
 
-const { resolveMarkBackground } = await import("./.tmp/mark-appearance.mjs");
+const { hasContinuousMarkPaint, resolveMarkBackground } = await import("./.tmp/mark-appearance.mjs");
 
 function createMark({
 	id,
@@ -42,6 +42,7 @@ function createMark({
 
 const child = createMark({ id: "child", startOffset: 20, endOffset: 24, textColor: "blue" });
 assert.deepEqual(resolveMarkBackground(child, []), { color: "none", inherited: false });
+assert.equal(hasContinuousMarkPaint(child), false);
 
 const redOuter = createMark({ id: "red-outer", startOffset: 0, endOffset: 100, backgroundColor: "red-light" });
 assert.deepEqual(resolveMarkBackground(child, [redOuter, child]), {
@@ -60,6 +61,7 @@ assert.deepEqual(resolveMarkBackground(explicitChild, [redOuter, explicitChild])
 	color: "purple-light",
 	inherited: false
 });
+assert.equal(hasContinuousMarkPaint(explicitChild), true);
 
 const nearerBlue = createMark({ id: "nearer-blue", startOffset: 10, endOffset: 30, backgroundColor: "blue-light" });
 const sameRangePurple = createMark({
@@ -119,6 +121,15 @@ const commentOuter = createMark({
 	backgroundColor: "red-light",
 	kind: "comment"
 });
+assert.equal(hasContinuousMarkPaint(commentOuter), true);
+const underlineWithBackground = createMark({
+	id: "underline-background",
+	startOffset: 0,
+	endOffset: 100,
+	backgroundColor: "red-light",
+	kind: "underline"
+});
+assert.equal(hasContinuousMarkPaint(underlineWithBackground), false);
 const noBackgroundOuter = createMark({ id: "no-background", startOffset: 0, endOffset: 100 });
 const otherFileOuter = createMark({
 	id: "other-file",
