@@ -4,6 +4,7 @@ import type { CommentReply, MarkColor, SideMark } from "./types";
 import { FLOAT_MARK_ICON_ID } from "./icons";
 import { isHtmlElement, isInputEvent } from "./dom-utils";
 import type { I18nKey } from "./i18n";
+import { resolveMarkBackground } from "./mark-appearance";
 
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
@@ -101,7 +102,7 @@ export class SideMarkSidebarView extends ItemView {
 			if (this.activeTab === "comments") {
 				this.renderCard(container, mark);
 			} else {
-				this.renderMarkCard(container, mark);
+				this.renderMarkCard(container, mark, allMarks);
 			}
 		}
 	}
@@ -372,9 +373,10 @@ export class SideMarkSidebarView extends ItemView {
 		this.renderReplyComposer(card, mark);
 	}
 
-	private renderMarkCard(container: HTMLElement, mark: SideMark): void {
+	private renderMarkCard(container: HTMLElement, mark: SideMark, marks: SideMark[]): void {
+		const background = resolveMarkBackground(mark, marks);
 		const card = container.createDiv({
-			cls: `side-mark-card side-mark-marker-card is-background-${mark.mark.backgroundColor}${mark.status === "resolved" ? " is-resolved" : ""}`
+			cls: `side-mark-card side-mark-marker-card is-background-${background.color}${mark.status === "resolved" ? " is-resolved" : ""}`
 		});
 		card.dataset.sideMarkCardId = mark.id;
 		if (mark.id === this.focusedMarkId) {
@@ -421,7 +423,7 @@ export class SideMarkSidebarView extends ItemView {
 		card.addEventListener("mouseleave", () => menu.hide());
 
 		const quote = card.createDiv({
-			cls: `side-mark-card-quote side-mark-marker-preview side-mark--text-${mark.mark.textColor} side-mark--background-${mark.mark.backgroundColor}`
+			cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`
 		});
 		quote.createDiv({
 			cls: "side-mark-card-quote-text",
@@ -432,9 +434,23 @@ export class SideMarkSidebarView extends ItemView {
 		const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
 		textSwatch.setAttr("aria-hidden", "true");
 		meta.createSpan({ text: this.t("sidebar.font") });
-		const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
+		const inheritedClass = background.inherited ? " is-inherited" : "";
+		const backgroundSwatch = meta.createSpan({
+			cls: `side-mark-marker-swatch is-background-${background.color}${inheritedClass}`
+		});
 		backgroundSwatch.setAttr("aria-hidden", "true");
+		if (background.inherited) {
+			backgroundSwatch.setAttr("title", this.t("sidebar.inheritedBackground"));
+		}
 		meta.createSpan({ text: this.t("sidebar.background") });
+		if (background.inherited) {
+			const inherited = meta.createSpan({
+				cls: "side-mark-marker-inherited-label",
+				text: this.t("sidebar.inherited")
+			});
+			inherited.setAttr("title", this.t("sidebar.inheritedBackground"));
+			inherited.setAttr("aria-label", this.t("sidebar.inheritedBackground"));
+		}
 	}
 
 	private renderMarkerNote(card: HTMLElement, mark: SideMark): void {

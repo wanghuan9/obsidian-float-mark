@@ -1,12 +1,13 @@
 # 实施任务清单
 
 > 由 spec.md 生成
-> 任务总数: 1
+> 任务总数: 2
 > 核心原则: 一次完成安全分片渲染、section 裁剪和生命周期控制，保持每个提交状态可编译可验证
 
 ## 依赖关系总览
 
 Task 1 (阅读模式渲染根因修复与完整验证)
+  → Task 2 (修复行内背景断点)
 
 ## 变更影响概览
 
@@ -19,6 +20,10 @@ Task 1 (阅读模式渲染根因修复与完整验证)
 | `test/test-reading-view-renderer.mjs` | 修改 | Task 1 | 增加 DOM、跨块、重叠和清理测试 |
 | `package.json` | 修改 | Task 1 | 增加 DOM 测试依赖并保持测试入口 |
 | `package-lock.json` | 修改 | Task 1 | 锁定测试依赖 |
+| `src/reading-view-renderer.ts` | 修改 | Task 2 | 纳入块内空白节点并提升完整代码元素 wrapper |
+| `styles.css` | 修改 | Task 2 | 让完整覆盖的行内代码背景由标注 wrapper 统一绘制 |
+| `test/test-reading-view-renderer.mjs` | 修改 | Task 2 | 增加连续背景与部分代码选区回归测试 |
+| `main.js` | 生成 | Task 2 | 更新插件构建产物 |
 
 ### 受影响接口
 
@@ -65,6 +70,24 @@ Task 1 (阅读模式渲染根因修复与完整验证)
   - [x] 1.4: 修复 Preview observer 根节点和异步代次控制
   - [x] 1.5: 补充自动化测试并完成实机回归
 
+### 任务 2: [x] 修复行内背景断点
+- 文件: `src/reading-view-renderer.ts`（修改）, `styles.css`（修改）, `test/test-reading-view-renderer.mjs`（修改）, `main.js`（生成）
+- 依赖: Task 1
+- spec 映射: 4.1, 4.4, 5
+- 说明: 保持块级 DOM 安全分片，同时覆盖块内空格和完整行内代码盒，消除整段背景白缝
+- 验收标准:
+  - [x] 同一块内空格节点位于背景 wrapper 内
+  - [x] 完整选中的 `code` 左右 padding 由连续背景覆盖
+  - [x] 部分代码选区不扩张到整个 `code`
+  - [x] 清理和重复渲染后原 DOM 完整恢复
+  - [x] Code Review PASS
+  - [x] `npm test`、`npm run build`、`git diff --check` 全部通过
+  - [x] 构建并安装到目标 Obsidian Vault
+- 子任务:
+  - [x] 2.1: 增加空格与完整代码盒复现测试
+  - [x] 2.2: 实现安全行内 wrapper 提升与清理
+  - [x] 2.3: 完成回归、构建和安装
+
 ## Spec 覆盖映射
 
 | Spec 章节 | 任务 | 说明 |
@@ -73,3 +96,6 @@ Task 1 (阅读模式渲染根因修复与完整验证)
 | 4.2 | Task 1 | 跨 section 局部 anchor |
 | 4.3 | Task 1 | observer 和渲染代次 |
 | 4.4 | Task 1 | 自动化与实机测试 |
+| 4.1 | Task 2 | 块内空格与完整行内代码连续背景 |
+| 4.4 | Task 2 | DOM 连续性和部分选区回归测试 |
+| 5 | Task 2 | 构建与安装验收 |

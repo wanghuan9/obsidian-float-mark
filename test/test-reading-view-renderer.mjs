@@ -149,6 +149,156 @@ const boundaryWrapper = boundaryRoot.querySelector("[data-side-mark-reading-id=\
 assert.equal(boundaryWrapper.parentElement.tagName, "STRONG");
 assert.equal(boundaryRoot.querySelector("p").childNodes[0].textContent, "first");
 
+const continuousInlineDom = new JSDOM(
+	'<div id="root"><p><span>所有</span> <code>代码</code> <span>引用</span></p></div>'
+);
+const continuousInlineRoot = continuousInlineDom.window.document.querySelector("#root");
+const continuousInlineOriginalHtml = continuousInlineRoot.innerHTML;
+const continuousInlineMark = createMark({
+	id: "continuous-inline",
+	selectedText: "所有 `代码` 引用",
+	startOffset: 0,
+	endOffset: 10,
+	backgroundColor: "red-light"
+});
+renderReadingMarks(continuousInlineRoot, "所有 `代码` 引用", [continuousInlineMark], () => undefined);
+const continuousInlineParagraph = continuousInlineRoot.querySelector("p");
+const continuousInlineSpaces = Array.from(continuousInlineParagraph.childNodes)
+	.filter((node) => node.nodeType === continuousInlineDom.window.Node.TEXT_NODE && node.textContent === " ");
+const continuousInlineCode = continuousInlineRoot.querySelector("code");
+assert.equal(continuousInlineSpaces.length, 0);
+assert.equal(continuousInlineCode.parentElement.dataset.sideMarkReadingId, "continuous-inline");
+assert.equal(continuousInlineCode.classList.contains("side-mark-reading-inline-content"), true);
+assert.equal(continuousInlineCode.querySelector(".side-mark-reading"), null);
+const continuousInlineFirstRenderHtml = continuousInlineRoot.innerHTML;
+renderReadingMarks(continuousInlineRoot, "所有 `代码` 引用", [continuousInlineMark], () => undefined);
+assert.equal(continuousInlineRoot.innerHTML, continuousInlineFirstRenderHtml);
+renderReadingMarks(continuousInlineRoot, "所有 `代码` 引用", [], () => undefined);
+assert.equal(continuousInlineRoot.innerHTML, continuousInlineOriginalHtml);
+
+const partialCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
+const partialCodeRoot = partialCodeDom.window.document.querySelector("#root");
+const partialCodeOriginalHtml = partialCodeRoot.innerHTML;
+const partialCodeMark = createMark({
+	id: "partial-code",
+	selectedText: "cd",
+	startOffset: 2,
+	endOffset: 4,
+	columnStart: 3,
+	backgroundColor: "red-light"
+});
+renderReadingMarks(partialCodeRoot, "abcdef", [partialCodeMark], () => undefined);
+const partialCode = partialCodeRoot.querySelector("code");
+assert.equal(partialCode.parentElement, partialCodeRoot.querySelector("p"));
+assert.equal(partialCode.classList.contains("side-mark-reading-inline-content"), false);
+assert.equal(partialCode.querySelector(".side-mark-reading").textContent, "cd");
+renderReadingMarks(partialCodeRoot, "abcdef", [], () => undefined);
+assert.equal(partialCodeRoot.innerHTML, partialCodeOriginalHtml);
+
+const overlappingCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
+const overlappingCodeRoot = overlappingCodeDom.window.document.querySelector("#root");
+const overlappingCodeOriginalHtml = overlappingCodeRoot.innerHTML;
+const overlappingCodeBackground = createMark({
+	id: "overlapping-code-background",
+	selectedText: "abcdef",
+	startOffset: 0,
+	endOffset: 6,
+	backgroundColor: "red-light"
+});
+const overlappingCodeText = createMark({
+	id: "overlapping-code-text",
+	selectedText: "cd",
+	startOffset: 2,
+	endOffset: 4,
+	columnStart: 3,
+	textColor: "blue",
+	backgroundColor: "none"
+});
+renderReadingMarks(
+	overlappingCodeRoot,
+	"abcdef",
+	[overlappingCodeBackground, overlappingCodeText],
+	() => undefined
+);
+const overlappingCode = overlappingCodeRoot.querySelector("code");
+assert.equal(overlappingCode.parentElement.dataset.sideMarkReadingId, "overlapping-code-background");
+assert.equal(
+	overlappingCode.querySelector('[data-side-mark-reading-id="overlapping-code-text"]').textContent,
+	"cd"
+);
+renderReadingMarks(overlappingCodeRoot, "abcdef", [], () => undefined);
+assert.equal(overlappingCodeRoot.innerHTML, overlappingCodeOriginalHtml);
+
+const textOnlyCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
+const textOnlyCodeRoot = textOnlyCodeDom.window.document.querySelector("#root");
+const textOnlyCodeMark = createMark({
+	id: "text-only-code",
+	selectedText: "abcdef",
+	startOffset: 0,
+	endOffset: 6,
+	textColor: "blue",
+	backgroundColor: "none"
+});
+renderReadingMarks(textOnlyCodeRoot, "abcdef", [textOnlyCodeMark], () => undefined);
+const textOnlyCode = textOnlyCodeRoot.querySelector("code");
+assert.equal(textOnlyCode.parentElement, textOnlyCodeRoot.querySelector("p"));
+assert.equal(textOnlyCode.classList.contains("side-mark-reading-inline-content"), false);
+
+const fullOverlapCodeDom = new JSDOM('<div id="root"><p><code>abcdef</code></p></div>');
+const fullOverlapCodeRoot = fullOverlapCodeDom.window.document.querySelector("#root");
+const fullOverlapTextMark = createMark({
+	id: "full-overlap-text",
+	selectedText: "abcdef",
+	startOffset: 0,
+	endOffset: 6,
+	textColor: "blue",
+	backgroundColor: "none"
+});
+const fullOverlapBackgroundMark = createMark({
+	id: "full-overlap-background",
+	selectedText: "abcdef",
+	startOffset: 0,
+	endOffset: 6,
+	backgroundColor: "red-light"
+});
+renderReadingMarks(
+	fullOverlapCodeRoot,
+	"abcdef",
+	[fullOverlapTextMark, fullOverlapBackgroundMark],
+	() => undefined
+);
+const fullOverlapCode = fullOverlapCodeRoot.querySelector("code");
+assert.equal(fullOverlapCode.parentElement.dataset.sideMarkReadingId, "full-overlap-background");
+assert.equal(fullOverlapCode.parentElement.parentElement.dataset.sideMarkReadingId, "full-overlap-text");
+
+const fencedCodeDom = new JSDOM('<div id="root"><pre><code>abcdef</code></pre></div>');
+const fencedCodeRoot = fencedCodeDom.window.document.querySelector("#root");
+const fencedCodeOriginalHtml = fencedCodeRoot.innerHTML;
+renderReadingMarks(fencedCodeRoot, "abcdef", [overlappingCodeBackground], () => undefined);
+const fencedCode = fencedCodeRoot.querySelector("code");
+assert.equal(fencedCode.parentElement, fencedCodeRoot.querySelector("pre"));
+assert.equal(fencedCode.classList.contains("side-mark-reading-inline-content"), false);
+renderReadingMarks(fencedCodeRoot, "abcdef", [], () => undefined);
+assert.equal(fencedCodeRoot.innerHTML, fencedCodeOriginalHtml);
+
+const formattedBlocksDom = new JSDOM('<div id="root"><blockquote><p>A</p>\n<p>B</p></blockquote></div>');
+const formattedBlocksRoot = formattedBlocksDom.window.document.querySelector("#root");
+const formattedBlocksOriginalHtml = formattedBlocksRoot.innerHTML;
+const formattedBlocksMark = createMark({
+	id: "formatted-blocks",
+	selectedText: "A\nB",
+	startOffset: 0,
+	endOffset: 3,
+	lineEnd: 2,
+	backgroundColor: "red-light"
+});
+renderReadingMarks(formattedBlocksRoot, "A\nB", [formattedBlocksMark], () => undefined);
+const formattedBlockquote = formattedBlocksRoot.querySelector("blockquote");
+assert.equal(formattedBlockquote.childNodes[1].nodeType, formattedBlocksDom.window.Node.TEXT_NODE);
+assert.equal(formattedBlockquote.childNodes[1].textContent, "\n");
+renderReadingMarks(formattedBlocksRoot, "A\nB", [], () => undefined);
+assert.equal(formattedBlocksRoot.innerHTML, formattedBlocksOriginalHtml);
+
 const repeatedDom = new JSDOM("<div id=\"root\"><p>same</p><p>same</p><p>same</p></div>");
 const repeatedRoot = repeatedDom.window.document.querySelector("#root");
 const repeatedMark = createMark({ id: "repeated", selectedText: "same", lineStart: 2 });
@@ -185,6 +335,110 @@ renderReadingMarks(overlapRoot, "abcdef", [outerMark, innerMark], () => undefine
 assert.equal(overlapRoot.innerHTML, firstRenderHtml);
 renderReadingMarks(overlapRoot, "abcdef", [], () => undefined);
 assert.equal(overlapRoot.innerHTML, "<p>abcdef</p>");
+
+const sameRangeDom = new JSDOM("<div id=\"root\"><p>abcdef</p></div>");
+const sameRangeRoot = sameRangeDom.window.document.querySelector("#root");
+const earlierSameRange = createMark({
+	id: "earlier-same-range",
+	selectedText: "cd",
+	startOffset: 2,
+	endOffset: 4,
+	backgroundColor: "blue-light"
+});
+const laterSameRange = createMark({
+	id: "later-same-range",
+	selectedText: "cd",
+	startOffset: 2,
+	endOffset: 4,
+	backgroundColor: "purple-light"
+});
+renderReadingMarks(sameRangeRoot, "abcdef", [earlierSameRange, laterSameRange], () => undefined);
+const laterSameRangeWrapper = sameRangeRoot.querySelector(
+	"[data-side-mark-reading-id=\"later-same-range\"]"
+);
+assert.equal(laterSameRangeWrapper.parentElement.dataset.sideMarkReadingId, "earlier-same-range");
+
+const markdownOverlapDom = new JSDOM("<div id=\"root\"><ol><li>abcde</li></ol></div>");
+const markdownOverlapRoot = markdownOverlapDom.window.document.querySelector("#root");
+const markdownOuterMark = createMark({
+	id: "markdown-outer",
+	selectedText: "123. abc",
+	startOffset: 0,
+	endOffset: 8,
+	backgroundColor: "red-light"
+});
+const markdownInnerMark = createMark({
+	id: "markdown-inner",
+	selectedText: "abcde",
+	startOffset: 5,
+	endOffset: 10,
+	columnStart: 6,
+	backgroundColor: "blue-light"
+});
+const markdownChildMark = createMark({
+	id: "markdown-child",
+	selectedText: "b",
+	startOffset: 6,
+	endOffset: 7,
+	columnStart: 7,
+	backgroundColor: "none"
+});
+renderReadingMarks(
+	markdownOverlapRoot,
+	"123. abcde",
+	[markdownOuterMark, markdownInnerMark, markdownChildMark],
+	() => undefined
+);
+const markdownChildWrapper = markdownOverlapRoot.querySelector(
+	"[data-side-mark-reading-id=\"markdown-child\"]"
+);
+assert.equal(markdownChildWrapper.parentElement.dataset.sideMarkReadingId, "markdown-inner");
+assert.equal(markdownChildWrapper.parentElement.parentElement.dataset.sideMarkReadingId, "markdown-outer");
+
+const clippedSource = "aaaa\nbbbbbbb\ncccc";
+const clippedDom = new JSDOM("<div id=\"root\"><p>bbbbbbb</p></div>");
+const clippedRoot = clippedDom.window.document.querySelector("#root");
+const earlierClippedMark = createMark({
+	id: "earlier-clipped",
+	selectedText: clippedSource.slice(0, 14),
+	startOffset: 0,
+	endOffset: 14,
+	lineStart: 1,
+	lineEnd: 3,
+	backgroundColor: "red-light"
+});
+const laterClippedMark = createMark({
+	id: "later-clipped",
+	selectedText: clippedSource.slice(2, 16),
+	startOffset: 2,
+	endOffset: 16,
+	lineStart: 1,
+	lineEnd: 3,
+	columnStart: 3,
+	backgroundColor: "blue-light"
+});
+const clippedChildMark = createMark({
+	id: "clipped-child",
+	selectedText: clippedSource.slice(7, 8),
+	startOffset: 7,
+	endOffset: 8,
+	lineStart: 2,
+	lineEnd: 2,
+	columnStart: 3,
+	backgroundColor: "none"
+});
+const clippedMarks = getReadingMarksForSection(
+	clippedSource,
+	[earlierClippedMark, laterClippedMark, clippedChildMark],
+	1,
+	1
+);
+renderReadingMarks(clippedRoot, clippedSource, clippedMarks, () => undefined);
+const clippedChildWrapper = clippedRoot.querySelector(
+	"[data-side-mark-reading-id=\"clipped-child\"]"
+);
+assert.equal(clippedChildWrapper.parentElement.dataset.sideMarkReadingId, "earlier-clipped");
+assert.equal(clippedChildWrapper.parentElement.parentElement.dataset.sideMarkReadingId, "later-clipped");
 
 const partialStyleSource = "不复用现有 `@CheckPermission`，避免污染现有权限语义";
 const partialStyleRenderedText = "不复用现有 @CheckPermission，避免污染现有权限语义";

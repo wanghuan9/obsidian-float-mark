@@ -1484,6 +1484,8 @@ var TRANSLATIONS = {
     "sidebar.more": "\u66F4\u591A",
     "sidebar.font": "\u5B57\u4F53",
     "sidebar.background": "\u80CC\u666F",
+    "sidebar.inherited": "\u7EE7\u627F",
+    "sidebar.inheritedBackground": "\u80CC\u666F\u7EE7\u627F\u81EA\u8986\u76D6\u5F53\u524D\u6587\u672C\u7684\u6807\u8BB0",
     "sidebar.editNoteTitle": "\u53CC\u51FB\u4FEE\u6539\u5907\u6CE8",
     "sidebar.deleteNote": "\u5220\u9664\u5907\u6CE8",
     "sidebar.notePlaceholder": "\u5199\u4E00\u6761\u5907\u6CE8",
@@ -1635,6 +1637,8 @@ var TRANSLATIONS = {
     "sidebar.more": "More",
     "sidebar.font": "Text",
     "sidebar.background": "Background",
+    "sidebar.inherited": "Inherited",
+    "sidebar.inheritedBackground": "Background inherited from a mark covering this text",
     "sidebar.editNoteTitle": "Double-click to edit note",
     "sidebar.deleteNote": "Delete note",
     "sidebar.notePlaceholder": "Write a note",
@@ -2019,6 +2023,41 @@ var FLOAT_MARK_ICON_SVG = `
 </g>
 `;
 
+// src/mark-appearance.ts
+function resolveMarkBackground(mark, marks) {
+  if (mark.mark.backgroundColor !== "none") {
+    return { color: mark.mark.backgroundColor, inherited: false };
+  }
+  if (mark.mark.kind !== "highlight" || mark.status !== "active") {
+    return { color: "none", inherited: false };
+  }
+  let inheritedMark = null;
+  let inheritedIndex = -1;
+  for (let index = 0; index < marks.length; index += 1) {
+    const candidate = marks[index];
+    if (!candidate) {
+      continue;
+    }
+    if (!isInheritedBackgroundCandidate(mark, candidate)) {
+      continue;
+    }
+    if (inheritedMark && compareMarkRangeSpecificity(candidate, inheritedMark, index, inheritedIndex) >= 0) {
+      continue;
+    }
+    inheritedMark = candidate;
+    inheritedIndex = index;
+  }
+  return inheritedMark ? { color: inheritedMark.mark.backgroundColor, inherited: true } : { color: "none", inherited: false };
+}
+function compareMarkRangeSpecificity(left, right, leftIndex, rightIndex) {
+  const leftLength = left.anchor.endOffset - left.anchor.startOffset;
+  const rightLength = right.anchor.endOffset - right.anchor.startOffset;
+  return leftLength - rightLength || left.anchor.startOffset - right.anchor.startOffset || rightIndex - leftIndex || left.id.localeCompare(right.id);
+}
+function isInheritedBackgroundCandidate(mark, candidate) {
+  return candidate.id !== mark.id && candidate.filePath === mark.filePath && candidate.mark.kind === "highlight" && candidate.status === "active" && candidate.mark.backgroundColor !== "none" && candidate.anchor.startOffset <= mark.anchor.startOffset && candidate.anchor.endOffset >= mark.anchor.endOffset;
+}
+
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 var MARK_COLORS = [
@@ -2100,7 +2139,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       if (this.activeTab === "comments") {
         this.renderCard(container, mark);
       } else {
-        this.renderMarkCard(container, mark);
+        this.renderMarkCard(container, mark, allMarks);
       }
     }
   }
@@ -2345,9 +2384,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     this.renderThread(card, mark);
     this.renderReplyComposer(card, mark);
   }
-  renderMarkCard(container, mark) {
+  renderMarkCard(container, mark, marks) {
+    const background = resolveMarkBackground(mark, marks);
     const card = container.createDiv({
-      cls: `side-mark-card side-mark-marker-card is-background-${mark.mark.backgroundColor}${mark.status === "resolved" ? " is-resolved" : ""}`
+      cls: `side-mark-card side-mark-marker-card is-background-${background.color}${mark.status === "resolved" ? " is-resolved" : ""}`
     });
     card.dataset.sideMarkCardId = mark.id;
     if (mark.id === this.focusedMarkId) {
@@ -2393,7 +2433,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     card.addEventListener("mouseleave", () => menu.hide());
     const quote = card.createDiv({
-      cls: `side-mark-card-quote side-mark-marker-preview side-mark--text-${mark.mark.textColor} side-mark--background-${mark.mark.backgroundColor}`
+      cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`
     });
     quote.createDiv({
       cls: "side-mark-card-quote-text",
@@ -2404,9 +2444,23 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const textSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-text-${mark.mark.textColor}` });
     textSwatch.setAttr("aria-hidden", "true");
     meta.createSpan({ text: this.t("sidebar.font") });
-    const backgroundSwatch = meta.createSpan({ cls: `side-mark-marker-swatch is-background-${mark.mark.backgroundColor}` });
+    const inheritedClass = background.inherited ? " is-inherited" : "";
+    const backgroundSwatch = meta.createSpan({
+      cls: `side-mark-marker-swatch is-background-${background.color}${inheritedClass}`
+    });
     backgroundSwatch.setAttr("aria-hidden", "true");
+    if (background.inherited) {
+      backgroundSwatch.setAttr("title", this.t("sidebar.inheritedBackground"));
+    }
     meta.createSpan({ text: this.t("sidebar.background") });
+    if (background.inherited) {
+      const inherited = meta.createSpan({
+        cls: "side-mark-marker-inherited-label",
+        text: this.t("sidebar.inherited")
+      });
+      inherited.setAttr("title", this.t("sidebar.inheritedBackground"));
+      inherited.setAttr("aria-label", this.t("sidebar.inheritedBackground"));
+    }
   }
   renderMarkerNote(card, mark) {
     const content = mark.note.content.trim();
@@ -3660,18 +3714,31 @@ function normalizeLarkCommentResult(plugin, result) {
 // src/reading-view-renderer.ts
 var READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
 var ANCHOR_CONTEXT_LENGTH = 40;
+var originalReadingMarks = /* @__PURE__ */ new WeakMap();
 function renderReadingMarks(container, source, marks, onClick) {
   clearReadingMarks(container);
-  const activeMarks = marks.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText).map((mark) => ({ mark }));
+  const activeMarks = marks.map((mark, sourceIndex) => ({
+    mark,
+    sourceIndex,
+    specificityMark: originalReadingMarks.get(mark) || mark
+  })).filter(({ mark }) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText);
   const ranges = collectTextNodes(container);
   const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
-  const plannedMarks = activeMarks.map(({ mark }) => {
+  const plannedMarks = activeMarks.map(({ mark, sourceIndex, specificityMark }) => {
     const match = findBestRenderedMatch(fullText, mark);
-    return match ? { mark, match } : null;
+    return match ? { mark, match, sourceIndex, specificityMark } : null;
   }).filter((item) => item !== null);
   applyReadingMarkFragments(ranges, plannedMarks, onClick);
+  promoteFullyMarkedInlineCodeElements(container);
 }
 function clearReadingMarks(container) {
+  const inlineElements = Array.from(container.querySelectorAll(".side-mark-reading-inline-content"));
+  for (const element of inlineElements) {
+    element.classList.remove("side-mark-reading-inline-content");
+    if (!element.className) {
+      element.removeAttribute("class");
+    }
+  }
   const wrappers = Array.from(container.querySelectorAll(".side-mark-reading"));
   for (const wrapper of wrappers.reverse()) {
     wrapper.replaceWith(...Array.from(wrapper.childNodes));
@@ -3686,6 +3753,67 @@ function applyReadingMarkFragments(ranges, plannedMarks, onClick) {
     }
     replaceTextNodeWithSegments(range.node, segments, onClick);
   }
+}
+function promoteFullyMarkedInlineCodeElements(container) {
+  const codeElements = Array.from(container.querySelectorAll("code")).filter((code) => !code.closest("pre"));
+  for (const code of codeElements) {
+    const commonWrappers = getCommonReadingMarkWrappers(code);
+    if (!commonWrappers.some(hasExplicitReadingBackground)) {
+      continue;
+    }
+    for (const wrapper of commonWrappers) {
+      const markId = wrapper.dataset.sideMarkReadingId;
+      const fragments = Array.from(code.querySelectorAll(".side-mark-reading")).filter((fragment) => fragment.dataset.sideMarkReadingId === markId);
+      for (const fragment of fragments.reverse()) {
+        fragment.replaceWith(...Array.from(fragment.childNodes));
+      }
+      code.replaceWith(wrapper);
+      wrapper.append(code);
+    }
+    code.classList.add("side-mark-reading-inline-content");
+  }
+}
+function getCommonReadingMarkWrappers(code) {
+  var _a;
+  const nodeFilter = (_a = code.ownerDocument.defaultView) == null ? void 0 : _a.NodeFilter;
+  if (!nodeFilter) {
+    return [];
+  }
+  const walker = code.ownerDocument.createTreeWalker(code, nodeFilter.SHOW_TEXT);
+  const wrapperPaths = [];
+  let node = walker.nextNode();
+  while (node) {
+    if (node.data.length > 0) {
+      const wrappers = [];
+      let element = node.parentElement;
+      while (element && element !== code) {
+        if (element.classList.contains("side-mark-reading")) {
+          wrappers.push(element);
+        }
+        element = element.parentElement;
+      }
+      wrapperPaths.push(wrappers);
+    }
+    node = walker.nextNode();
+  }
+  if (wrapperPaths.length === 0) {
+    return [];
+  }
+  const commonMarkIds = new Set(wrapperPaths[0].map((wrapper) => wrapper.dataset.sideMarkReadingId));
+  for (const wrappers of wrapperPaths.slice(1)) {
+    const markIds = new Set(wrappers.map((wrapper) => wrapper.dataset.sideMarkReadingId));
+    for (const markId of commonMarkIds) {
+      if (!markIds.has(markId)) {
+        commonMarkIds.delete(markId);
+      }
+    }
+  }
+  return wrapperPaths[0].filter((wrapper) => commonMarkIds.has(wrapper.dataset.sideMarkReadingId)).reverse();
+}
+function hasExplicitReadingBackground(wrapper) {
+  return wrapper.classList.contains("side-mark--highlight") && Array.from(wrapper.classList).some(
+    (className) => className.startsWith("side-mark--background-") && className !== "side-mark--background-none"
+  );
 }
 function planNodeSegments(range, plannedMarks) {
   const intersections = plannedMarks.map((item) => intersectMarkWithNode(range, item)).filter((intersection) => intersection !== null);
@@ -3717,9 +3845,12 @@ function intersectMarkWithNode(range, item) {
   };
 }
 function compareReadingMarkSpecificity(left, right) {
-  const leftLength = left.match.end - left.match.start;
-  const rightLength = right.match.end - right.match.start;
-  return leftLength - rightLength || left.match.start - right.match.start || left.mark.id.localeCompare(right.mark.id);
+  return compareMarkRangeSpecificity(
+    left.specificityMark,
+    right.specificityMark,
+    left.sourceIndex,
+    right.sourceIndex
+  );
 }
 function replaceTextNodeWithSegments(node, segments, onClick) {
   const document = node.ownerDocument;
@@ -3767,7 +3898,7 @@ function createReadingMarkWrapper(document, mark, onClick) {
   return wrapper;
 }
 function collectTextNodes(container) {
-  var _a, _b;
+  var _a, _b, _c;
   const nodes = [];
   const nodeFilter = (_a = container.ownerDocument.defaultView) == null ? void 0 : _a.NodeFilter;
   if (!nodeFilter) {
@@ -3783,16 +3914,42 @@ function collectTextNodes(container) {
       if (parent.closest("script, style")) {
         return nodeFilter.FILTER_REJECT;
       }
-      return ((_a2 = node2.textContent) == null ? void 0 : _a2.trim()) ? nodeFilter.FILTER_ACCEPT : nodeFilter.FILTER_SKIP;
+      if ((_a2 = node2.textContent) == null ? void 0 : _a2.trim()) {
+        return nodeFilter.FILTER_ACCEPT;
+      }
+      return node2.textContent && parent.closest(READING_BLOCK_SELECTOR) ? nodeFilter.FILTER_ACCEPT : nodeFilter.FILTER_SKIP;
     }
+  });
+  const textNodes = [];
+  let node = walker.nextNode();
+  while (node) {
+    textNodes.push(node);
+    node = walker.nextNode();
+  }
+  const nextContentBlocks = new Array(textNodes.length).fill(null);
+  let nextContentBlock = null;
+  for (let index = textNodes.length - 1; index >= 0; index -= 1) {
+    nextContentBlocks[index] = nextContentBlock;
+    const text = textNodes[index];
+    if (text == null ? void 0 : text.data.trim()) {
+      nextContentBlock = ((_b = text.parentElement) == null ? void 0 : _b.closest(READING_BLOCK_SELECTOR)) || null;
+    }
+  }
+  let previousContentBlock = null;
+  const acceptedNodes = textNodes.filter((text, index) => {
+    var _a2, _b2;
+    if (text.data.trim()) {
+      previousContentBlock = ((_a2 = text.parentElement) == null ? void 0 : _a2.closest(READING_BLOCK_SELECTOR)) || null;
+      return true;
+    }
+    const block = (_b2 = text.parentElement) == null ? void 0 : _b2.closest(READING_BLOCK_SELECTOR);
+    return Boolean(block && previousContentBlock === block && nextContentBlocks[index] === block);
   });
   let offset = 0;
   let previousBlock = null;
   let previousText = null;
-  let node = walker.nextNode();
-  while (node) {
-    const text = node;
-    const block = ((_b = text.parentElement) == null ? void 0 : _b.closest(READING_BLOCK_SELECTOR)) || text.parentElement;
+  for (const text of acceptedNodes) {
+    const block = ((_c = text.parentElement) == null ? void 0 : _c.closest(READING_BLOCK_SELECTOR)) || text.parentElement;
     const hasStructuralBreak = previousText ? hasLineBreakBetween(previousText, text) : false;
     const separatorBefore = nodes.length > 0 && (block !== previousBlock || hasStructuralBreak) ? "\n" : "";
     offset += separatorBefore.length;
@@ -3801,7 +3958,6 @@ function collectTextNodes(container) {
     offset += length;
     previousBlock = block;
     previousText = text;
-    node = walker.nextNode();
   }
   return nodes;
 }
@@ -3840,7 +3996,7 @@ function clipMarkToSection(source, lineStarts, mark, sectionStartOffset, section
   }
   const startPosition = offsetToLineColumn2(lineStarts, start);
   const endPosition = offsetToLineColumn2(lineStarts, end);
-  return {
+  const clippedMark = {
     ...mark,
     anchor: {
       startOffset: start,
@@ -3856,6 +4012,8 @@ function clipMarkToSection(source, lineStarts, mark, sectionStartOffset, section
       }
     }
   };
+  originalReadingMarks.set(clippedMark, originalReadingMarks.get(mark) || mark);
+  return clippedMark;
 }
 function getLineStartOffset(source, lineStarts, zeroBasedLine) {
   var _a;

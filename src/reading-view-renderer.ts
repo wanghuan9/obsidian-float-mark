@@ -1,8 +1,10 @@
 import type { SideMark } from "./types";
 import { hasNonEmptyDomSelection, shouldOpenMarkForSelection } from "./mark-click-guard";
+import { compareMarkRangeSpecificity } from "./mark-appearance";
 
 const READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
 const ANCHOR_CONTEXT_LENGTH = 40;
+const originalReadingMarks = new WeakMap<SideMark, SideMark>();
 
 interface TextNodeRange {
 	node: Text;
@@ -14,6 +16,8 @@ interface TextNodeRange {
 interface PlannedReadingMark {
 	mark: SideMark;
 	match: RenderedMatch;
+	sourceIndex: number;
+	specificityMark: SideMark;
 }
 
 interface NodeMarkIntersection {
@@ -36,20 +40,32 @@ export function renderReadingMarks(
 ): void {
 	clearReadingMarks(container);
 	const activeMarks = marks
-		.filter((mark) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText)
-		.map((mark) => ({ mark }));
+		.map((mark, sourceIndex) => ({
+			mark,
+			sourceIndex,
+			specificityMark: originalReadingMarks.get(mark) || mark
+		}))
+		.filter(({ mark }) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText);
 	const ranges = collectTextNodes(container);
 	const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
 	const plannedMarks = activeMarks
-		.map(({ mark }) => {
+		.map(({ mark, sourceIndex, specificityMark }) => {
 			const match = findBestRenderedMatch(fullText, mark);
-			return match ? { mark, match } : null;
+			return match ? { mark, match, sourceIndex, specificityMark } : null;
 		})
 		.filter((item): item is PlannedReadingMark => item !== null);
 	applyReadingMarkFragments(ranges, plannedMarks, onClick);
+	promoteFullyMarkedInlineCodeElements(container);
 }
 
 function clearReadingMarks(container: HTMLElement): void {
+	const inlineElements = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading-inline-content"));
+	for (const element of inlineElements) {
+		element.classList.remove("side-mark-reading-inline-content");
+		if (!element.className) {
+			element.removeAttribute("class");
+		}
+	}
 	const wrappers = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading"));
 	for (const wrapper of wrappers.reverse()) {
 		wrapper.replaceWith(...Array.from(wrapper.childNodes));
@@ -69,6 +85,74 @@ function applyReadingMarkFragments(
 		}
 		replaceTextNodeWithSegments(range.node, segments, onClick);
 	}
+}
+
+function promoteFullyMarkedInlineCodeElements(container: HTMLElement): void {
+	const codeElements = Array.from(container.querySelectorAll<HTMLElement>("code"))
+		.filter((code) => !code.closest("pre"));
+	for (const code of codeElements) {
+		const commonWrappers = getCommonReadingMarkWrappers(code);
+		if (!commonWrappers.some(hasExplicitReadingBackground)) {
+			continue;
+		}
+		for (const wrapper of commonWrappers) {
+			const markId = wrapper.dataset.sideMarkReadingId;
+			const fragments = Array.from(code.querySelectorAll<HTMLElement>(".side-mark-reading"))
+				.filter((fragment) => fragment.dataset.sideMarkReadingId === markId);
+			for (const fragment of fragments.reverse()) {
+				fragment.replaceWith(...Array.from(fragment.childNodes));
+			}
+			code.replaceWith(wrapper);
+			wrapper.append(code);
+		}
+		code.classList.add("side-mark-reading-inline-content");
+	}
+}
+
+function getCommonReadingMarkWrappers(code: HTMLElement): HTMLElement[] {
+	const nodeFilter = code.ownerDocument.defaultView?.NodeFilter;
+	if (!nodeFilter) {
+		return [];
+	}
+	const walker = code.ownerDocument.createTreeWalker(code, nodeFilter.SHOW_TEXT);
+	const wrapperPaths: HTMLElement[][] = [];
+	let node = walker.nextNode();
+	while (node) {
+		if ((node as Text).data.length > 0) {
+			const wrappers: HTMLElement[] = [];
+			let element = (node as Text).parentElement;
+			while (element && element !== code) {
+				if (element.classList.contains("side-mark-reading")) {
+					wrappers.push(element);
+				}
+				element = element.parentElement;
+			}
+			wrapperPaths.push(wrappers);
+		}
+		node = walker.nextNode();
+	}
+	if (wrapperPaths.length === 0) {
+		return [];
+	}
+	const commonMarkIds = new Set(wrapperPaths[0].map((wrapper) => wrapper.dataset.sideMarkReadingId));
+	for (const wrappers of wrapperPaths.slice(1)) {
+		const markIds = new Set(wrappers.map((wrapper) => wrapper.dataset.sideMarkReadingId));
+		for (const markId of commonMarkIds) {
+			if (!markIds.has(markId)) {
+				commonMarkIds.delete(markId);
+			}
+		}
+	}
+	return wrapperPaths[0]
+		.filter((wrapper) => commonMarkIds.has(wrapper.dataset.sideMarkReadingId))
+		.reverse();
+}
+
+function hasExplicitReadingBackground(wrapper: HTMLElement): boolean {
+	return wrapper.classList.contains("side-mark--highlight")
+		&& Array.from(wrapper.classList).some((className) =>
+			className.startsWith("side-mark--background-") && className !== "side-mark--background-none"
+		);
 }
 
 function planNodeSegments(range: TextNodeRange, plannedMarks: PlannedReadingMark[]): NodeMarkSegment[] {
@@ -107,9 +191,12 @@ function intersectMarkWithNode(range: TextNodeRange, item: PlannedReadingMark): 
 }
 
 function compareReadingMarkSpecificity(left: PlannedReadingMark, right: PlannedReadingMark): number {
-	const leftLength = left.match.end - left.match.start;
-	const rightLength = right.match.end - right.match.start;
-	return leftLength - rightLength || left.match.start - right.match.start || left.mark.id.localeCompare(right.mark.id);
+	return compareMarkRangeSpecificity(
+		left.specificityMark,
+		right.specificityMark,
+		left.sourceIndex,
+		right.sourceIndex
+	);
 }
 
 function replaceTextNodeWithSegments(
@@ -182,15 +269,42 @@ function collectTextNodes(container: HTMLElement): TextNodeRange[] {
 			if (parent.closest("script, style")) {
 				return nodeFilter.FILTER_REJECT;
 			}
-			return node.textContent?.trim() ? nodeFilter.FILTER_ACCEPT : nodeFilter.FILTER_SKIP;
+			if (node.textContent?.trim()) {
+				return nodeFilter.FILTER_ACCEPT;
+			}
+			return node.textContent && parent.closest(READING_BLOCK_SELECTOR)
+				? nodeFilter.FILTER_ACCEPT
+				: nodeFilter.FILTER_SKIP;
 		}
+	});
+	const textNodes: Text[] = [];
+	let node = walker.nextNode();
+	while (node) {
+		textNodes.push(node as Text);
+		node = walker.nextNode();
+	}
+	const nextContentBlocks: Array<Element | null> = new Array(textNodes.length).fill(null);
+	let nextContentBlock: Element | null = null;
+	for (let index = textNodes.length - 1; index >= 0; index -= 1) {
+		nextContentBlocks[index] = nextContentBlock;
+		const text = textNodes[index];
+		if (text?.data.trim()) {
+			nextContentBlock = text.parentElement?.closest(READING_BLOCK_SELECTOR) || null;
+		}
+	}
+	let previousContentBlock: Element | null = null;
+	const acceptedNodes = textNodes.filter((text, index) => {
+		if (text.data.trim()) {
+			previousContentBlock = text.parentElement?.closest(READING_BLOCK_SELECTOR) || null;
+			return true;
+		}
+		const block = text.parentElement?.closest(READING_BLOCK_SELECTOR);
+		return Boolean(block && previousContentBlock === block && nextContentBlocks[index] === block);
 	});
 	let offset = 0;
 	let previousBlock: Element | null = null;
 	let previousText: Text | null = null;
-	let node = walker.nextNode();
-	while (node) {
-		const text = node as Text;
+	for (const text of acceptedNodes) {
 		const block = text.parentElement?.closest(READING_BLOCK_SELECTOR) || text.parentElement;
 		const hasStructuralBreak = previousText ? hasLineBreakBetween(previousText, text) : false;
 		const separatorBefore = nodes.length > 0 && (block !== previousBlock || hasStructuralBreak) ? "\n" : "";
@@ -200,7 +314,6 @@ function collectTextNodes(container: HTMLElement): TextNodeRange[] {
 		offset += length;
 		previousBlock = block;
 		previousText = text;
-		node = walker.nextNode();
 	}
 	return nodes;
 }
@@ -257,7 +370,7 @@ function clipMarkToSection(
 	}
 	const startPosition = offsetToLineColumn(lineStarts, start);
 	const endPosition = offsetToLineColumn(lineStarts, end);
-	return {
+	const clippedMark: SideMark = {
 		...mark,
 		anchor: {
 			startOffset: start,
@@ -273,6 +386,8 @@ function clipMarkToSection(
 			}
 		}
 	};
+	originalReadingMarks.set(clippedMark, originalReadingMarks.get(mark) || mark);
+	return clippedMark;
 }
 
 function getLineStartOffset(source: string, lineStarts: number[], zeroBasedLine: number): number {

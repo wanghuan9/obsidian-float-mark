@@ -774,6 +774,10 @@
 	color: inherit;
 }
 
+.side-mark-reading .side-mark-reading-inline-content {
+	background: transparent;
+}
+
 .side-mark-reading-flash {
 	animation: side-mark-reading-flash 1.2s ease;
 }
@@ -1627,7 +1631,7 @@
 	background: #d7dadf;
 }
 
-.side-mark-marker-card.is-background-gray-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-gray-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(215, 218, 223, 0.2);
 }
 
@@ -1635,7 +1639,7 @@
 	background: #f45f5f;
 }
 
-.side-mark-marker-card.is-background-red-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-red-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(244, 95, 95, 0.1);
 }
 
@@ -1643,7 +1647,7 @@
 	background: #ff9f3a;
 }
 
-.side-mark-marker-card.is-background-orange-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-orange-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(255, 159, 58, 0.12);
 }
 
@@ -1651,7 +1655,7 @@
 	background: #d9b900;
 }
 
-.side-mark-marker-card.is-background-yellow-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-yellow-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(245, 190, 42, 0.08);
 }
 
@@ -1659,7 +1663,7 @@
 	background: #5fca50;
 }
 
-.side-mark-marker-card.is-background-green-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-green-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(95, 202, 80, 0.1);
 }
 
@@ -1667,7 +1671,7 @@
 	background: #91aaff;
 }
 
-.side-mark-marker-card.is-background-blue-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-blue-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(145, 170, 255, 0.12);
 }
 
@@ -1675,7 +1679,7 @@
 	background: #b695f0;
 }
 
-.side-mark-marker-card.is-background-purple-light .side-mark-card-quote {
+.side-mark-marker-card.is-background-purple-light .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(182, 149, 240, 0.12);
 }
 
@@ -1683,7 +1687,7 @@
 	background: #a7adb8;
 }
 
-.side-mark-marker-card.is-background-gray .side-mark-card-quote {
+.side-mark-marker-card.is-background-gray .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(167, 173, 184, 0.16);
 }
 
@@ -1691,7 +1695,7 @@
 	background: #f45f5f;
 }
 
-.side-mark-marker-card.is-background-red .side-mark-card-quote {
+.side-mark-marker-card.is-background-red .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(244, 95, 95, 0.16);
 }
 
@@ -1699,7 +1703,7 @@
 	background: #ff9f3a;
 }
 
-.side-mark-marker-card.is-background-orange .side-mark-card-quote {
+.side-mark-marker-card.is-background-orange .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(255, 159, 58, 0.18);
 }
 
@@ -1707,7 +1711,7 @@
 	background: #d9b900;
 }
 
-.side-mark-marker-card.is-background-yellow .side-mark-card-quote {
+.side-mark-marker-card.is-background-yellow .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(245, 190, 42, 0.16);
 }
 
@@ -1715,7 +1719,7 @@
 	background: #5fca50;
 }
 
-.side-mark-marker-card.is-background-green .side-mark-card-quote {
+.side-mark-marker-card.is-background-green .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(95, 202, 80, 0.16);
 }
 
@@ -1723,7 +1727,7 @@
 	background: #91aaff;
 }
 
-.side-mark-marker-card.is-background-blue .side-mark-card-quote {
+.side-mark-marker-card.is-background-blue .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(145, 170, 255, 0.18);
 }
 
@@ -1731,7 +1735,7 @@
 	background: #b695f0;
 }
 
-.side-mark-marker-card.is-background-purple .side-mark-card-quote {
+.side-mark-marker-card.is-background-purple .side-mark-card-quote:not(.side-mark-marker-preview) {
 	background: rgba(182, 149, 240, 0.18);
 }
 
@@ -1810,6 +1814,25 @@
 	height: 10px;
 	border-radius: 50%;
 	box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.side-mark-marker-swatch.is-inherited {
+	margin: 0 2px;
+	outline: 1px dashed var(--text-faint);
+	outline-offset: 2px;
+}
+
+.side-mark-marker-inherited-label {
+	display: inline-flex;
+	align-items: center;
+	min-height: 16px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--background-secondary-alt);
+	color: var(--text-muted);
+	font-size: 9px;
+	font-weight: 600;
+	line-height: 16px;
 }
 
 .side-mark-marker-swatch.is-text-default,
