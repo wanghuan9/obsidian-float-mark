@@ -76,4 +76,18 @@ assert.doesNotMatch(
 	/prefixClosingStarts\.values\(\)\.next\(\)\.value as number \| undefined/
 );
 
+const readmeSource = await readFile("README.md", "utf8");
+const chineseReadmeSource = await readFile("README.zh-CN.md", "utf8");
+assert.match(readmeSource, /FloatMark is an Obsidian plugin/);
+assert.match(readmeSource, /\[简体中文\]\(\.\/README\.zh-CN\.md\)/);
+assert.match(chineseReadmeSource, /FloatMark 是 Obsidian/);
+assert.match(chineseReadmeSource, /\[English\]\(\.\/README\.md\)/);
+
+const stylesSource = await readFile("styles.css", "utf8");
+const importantCount = stylesSource.match(/!important/g)?.length || 0;
+assert.equal(importantCount, 37);
+assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-color:/);
+assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-image:/);
+assert.doesNotMatch(stylesSource, /background: (#[0-9a-f]+) !important;\s*background-color: \1/i);
+
 console.log("review warning tests passed");

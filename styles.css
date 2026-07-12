@@ -219,8 +219,6 @@
 	border: 0 !important;
 	border-radius: 6px !important;
 	background: transparent !important;
-	background-color: transparent !important;
-	background-image: none !important;
 	box-shadow: none !important;
 	color: var(--text-normal);
 	text-align: left;
@@ -433,8 +431,6 @@
 	border: 0 !important;
 	border-radius: 6px !important;
 	background: transparent !important;
-	background-color: transparent !important;
-	background-image: none !important;
 	box-shadow: none !important;
 	color: var(--text-normal);
 	font-size: 13px;
@@ -1299,22 +1295,18 @@
 
 .side-mark-color-option.is-yellow {
 	background: #f5be2a !important;
-	background-color: #f5be2a !important;
 }
 
 .side-mark-color-option.is-blue {
 	background: #4b96ff !important;
-	background-color: #4b96ff !important;
 }
 
 .side-mark-color-option.is-green {
 	background: #44b87b !important;
-	background-color: #44b87b !important;
 }
 
 .side-mark-color-option.is-red {
 	background: #f25757 !important;
-	background-color: #f25757 !important;
 }
 
 .side-mark-color-menu {
