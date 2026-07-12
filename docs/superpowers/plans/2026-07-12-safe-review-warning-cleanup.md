@@ -147,7 +147,7 @@ Run: `rtk rg -n 'child_process|runRawLarkCliViaSyncPlugin' main.js src/lark-brid
 
 Expected: 无匹配。
 
-- [ ] **Step 6: 提交 Task 1**
+- [x] **Step 6: 提交 Task 1**
 
 ```bash
 rtk git add -- package.json src/lark-bridge.ts src/reading-view-renderer.ts test/test-review-warnings.mjs main.js
@@ -240,7 +240,7 @@ Run: `rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-s
 
 Expected: 本次变更行格式检查通过。
 
-- [ ] **Step 6: 提交 Task 2**
+- [x] **Step 6: 提交 Task 2**
 
 ```bash
 rtk git add -- README.md README.en.md README.zh-CN.md styles.css test/test-review-warnings.mjs
@@ -253,8 +253,8 @@ rtk git commit -m "chore:[review-warning-cleanup] 安全精简审核样式告警
 
 ## Final Verification
 
-- [ ] Run: `rtk npm test`，Expected: 全量测试 PASS。
-- [ ] Run: `rtk npm run build`，Expected: 生产构建成功。
-- [ ] Run: `rtk rg -o '!important' styles.css | rtk wc -l`，Expected: `37`。
-- [ ] Run: `rtk rg -n 'child_process|runRawLarkCliViaSyncPlugin' main.js src/lark-bridge.ts`，Expected: 无匹配。
-- [ ] Run: `rtk git status --short --branch`，Expected: 工作区干净，位于 `feature/safe-review-warning-cleanup`。
+- [x] Run: `rtk npm test`，Expected: 全量测试 PASS。
+- [x] Run: `rtk npm run build`，Expected: 生产构建成功。
+- [x] Run: `rtk rg -o '!important' styles.css | rtk wc -l`，Expected: `37`。
+- [x] Run: `rtk rg -n 'child_process|runRawLarkCliViaSyncPlugin' main.js src/lark-bridge.ts`，Expected: 无匹配。
+- [x] Run: `rtk git status --short --branch`，Expected: 工作区干净，位于 `feature/safe-review-warning-cleanup`。
