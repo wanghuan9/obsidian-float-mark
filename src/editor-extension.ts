@@ -3,6 +3,7 @@ import { RangeSet, type Extension, type Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type SideMarkPlugin from "./main";
 import { getActiveSelection, isHtmlElement } from "./dom-utils";
+import { shouldOpenMarkForSelection } from "./mark-click-guard";
 
 export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension {
 	return ViewPlugin.fromClass(
@@ -151,6 +152,10 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				const markEl = target?.closest<HTMLElement>("[data-side-mark-id]");
 				const markId = markEl?.dataset.sideMarkId;
 				if (!markId) {
+					return;
+				}
+				const hasTextSelection = !this.view.state.selection.main.empty;
+				if (!shouldOpenMarkForSelection(hasTextSelection)) {
 					return;
 				}
 				event.preventDefault();

@@ -48,6 +48,14 @@ function isInputEvent(event) {
   return event.instanceOf(InputEvent);
 }
 
+// src/mark-click-guard.ts
+function shouldOpenMarkForSelection(hasTextSelection) {
+  return !hasTextSelection;
+}
+function hasNonEmptyDomSelection(selection) {
+  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+}
+
 // src/editor-extension.ts
 function createSideMarkEditorExtension(plugin) {
   return import_view.ViewPlugin.fromClass(
@@ -184,6 +192,10 @@ function createSideMarkEditorExtension(plugin) {
         const markEl = target == null ? void 0 : target.closest("[data-side-mark-id]");
         const markId = markEl == null ? void 0 : markEl.dataset.sideMarkId;
         if (!markId) {
+          return;
+        }
+        const hasTextSelection = !this.view.state.selection.main.empty;
+        if (!shouldOpenMarkForSelection(hasTextSelection)) {
           return;
         }
         event.preventDefault();
@@ -3744,6 +3756,10 @@ function createReadingMarkWrapper(document, mark, onClick) {
   wrapper.dataset.sideMarkReadingId = mark.id;
   wrapper.title = mark.note.content || "FloatMark";
   wrapper.addEventListener("click", (event) => {
+    const hasTextSelection = hasNonEmptyDomSelection(wrapper.ownerDocument.getSelection());
+    if (!shouldOpenMarkForSelection(hasTextSelection)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     onClick(mark.id, wrapper.getBoundingClientRect());

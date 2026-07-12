@@ -1,4 +1,5 @@
 import type { SideMark } from "./types";
+import { hasNonEmptyDomSelection, shouldOpenMarkForSelection } from "./mark-click-guard";
 
 const READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
 const ANCHOR_CONTEXT_LENGTH = 40;
@@ -155,6 +156,10 @@ function createReadingMarkWrapper(
 	wrapper.dataset.sideMarkReadingId = mark.id;
 	wrapper.title = mark.note.content || "FloatMark";
 	wrapper.addEventListener("click", (event) => {
+		const hasTextSelection = hasNonEmptyDomSelection(wrapper.ownerDocument.getSelection());
+		if (!shouldOpenMarkForSelection(hasTextSelection)) {
+			return;
+		}
 		event.preventDefault();
 		event.stopPropagation();
 		onClick(mark.id, wrapper.getBoundingClientRect());

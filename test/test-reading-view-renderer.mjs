@@ -186,4 +186,56 @@ assert.equal(overlapRoot.innerHTML, firstRenderHtml);
 renderReadingMarks(overlapRoot, "abcdef", [], () => undefined);
 assert.equal(overlapRoot.innerHTML, "<p>abcdef</p>");
 
+const partialStyleSource = "不复用现有 `@CheckPermission`，避免污染现有权限语义";
+const partialStyleRenderedText = "不复用现有 @CheckPermission，避免污染现有权限语义";
+const partialStyleSelectedText = "，避免污";
+const partialStyleStart = partialStyleSource.indexOf(partialStyleSelectedText);
+const partialStyleDom = new JSDOM(
+	"<div id=\"root\"><p>不复用现有 <code>@CheckPermission</code>，避免污染现有权限语义</p></div>"
+);
+const partialStyleRoot = partialStyleDom.window.document.querySelector("#root");
+const partialStyleOuterMark = createMark({
+	id: "partial-style-outer",
+	selectedText: partialStyleSource,
+	startOffset: 0,
+	endOffset: partialStyleSource.length,
+	backgroundColor: "red-light"
+});
+const partialStyleInnerMark = createMark({
+	id: "partial-style-inner",
+	selectedText: partialStyleSelectedText,
+	startOffset: partialStyleStart,
+	endOffset: partialStyleStart + partialStyleSelectedText.length,
+	columnStart: partialStyleStart + 1,
+	textColor: "red",
+	backgroundColor: "none"
+});
+let partialStyleClickCount = 0;
+renderReadingMarks(partialStyleRoot, partialStyleSource, [partialStyleOuterMark, partialStyleInnerMark], () => {
+	partialStyleClickCount += 1;
+});
+assert.equal(partialStyleRoot.textContent, partialStyleRenderedText);
+const partialStyleOuterWrappers = Array.from(
+	partialStyleRoot.querySelectorAll("[data-side-mark-reading-id=\"partial-style-outer\"]")
+);
+const partialStyleInnerWrapper = partialStyleRoot.querySelector(
+	"[data-side-mark-reading-id=\"partial-style-inner\"]"
+);
+assert.equal(partialStyleOuterWrappers.map((wrapper) => wrapper.textContent).join(""), partialStyleRenderedText);
+assert.equal(partialStyleOuterWrappers.some((wrapper) => wrapper.classList.contains("side-mark--text-red")), false);
+assert.equal(partialStyleInnerWrapper.classList.contains("side-mark--text-red"), true);
+assert.equal(partialStyleInnerWrapper.classList.contains("side-mark--background-none"), true);
+assert.equal(partialStyleInnerWrapper.parentElement.dataset.sideMarkReadingId, "partial-style-outer");
+
+const partialStyleSelection = partialStyleDom.window.getSelection();
+const partialStyleRange = partialStyleDom.window.document.createRange();
+partialStyleRange.selectNodeContents(partialStyleInnerWrapper);
+partialStyleSelection.addRange(partialStyleRange);
+partialStyleInnerWrapper.dispatchEvent(new partialStyleDom.window.MouseEvent("click", { bubbles: true }));
+assert.equal(partialStyleClickCount, 0);
+
+partialStyleSelection.removeAllRanges();
+partialStyleInnerWrapper.dispatchEvent(new partialStyleDom.window.MouseEvent("click", { bubbles: true }));
+assert.equal(partialStyleClickCount, 1);
+
 console.log("reading view renderer tests passed");
