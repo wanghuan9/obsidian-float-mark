@@ -1,32 +1,175 @@
 import { getActiveDocument } from "./dom-utils";
 
+const READING_CONTEXT_LENGTH = 40;
+const MIN_CONTEXT_SCORE = 1.4;
+
+export interface ReadingSelectionScope {
+	sourceStartOffset: number;
+	sourceEndOffset: number;
+	renderedOffset: number;
+	prefix: string;
+	suffix: string;
+}
+
+export interface ReadingSelectionContext {
+	renderedOffset: number;
+	prefix: string;
+	suffix: string;
+}
+
+interface RenderedSourceIndex {
+	text: string;
+	offsets: number[];
+}
+
+interface SourceCandidate {
+	from: number;
+	to: number;
+	renderedDistance: number;
+	contextScore: number;
+}
+
 export function findSourceRangeForReadingSelection(
 	source: string,
 	selectedText: string,
-	preferredRenderedOffset = 0
+	scope: ReadingSelectionScope
 ): { from: number; to: number } | null {
-	const sourceIndex = buildRenderedSourceIndex(source);
-	const directIndex = findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset);
-	if (directIndex >= 0) {
-		return {
-			from: directIndex,
-			to: directIndex + selectedText.length
-		};
-	}
-	const renderedSelection = normalizeReadingSelection(selectedText);
-	const renderedIndex = findBestRenderedTextStart(sourceIndex.text, renderedSelection, preferredRenderedOffset);
-	if (renderedIndex < 0) {
-		return null;
-	}
-	const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedIndex]);
-	const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
-	if (from === undefined || to === undefined) {
-		return null;
-	}
+	const sectionSource = source.slice(scope.sourceStartOffset, scope.sourceEndOffset);
+	const sourceIndex = buildRenderedSourceIndex(sectionSource, scope.sourceStartOffset);
+	const candidates = findSourceCandidates(source, sectionSource, sourceIndex, selectedText, scope);
+	const candidate = chooseUniqueCandidate(candidates);
+	return candidate ? { from: candidate.from, to: candidate.to } : null;
+}
+
+export function getReadingSelectionContext(containers: HTMLElement[], range: Range): ReadingSelectionContext {
+	const first = containers[0];
+	const last = containers[containers.length - 1];
+	const document = range.startContainer.ownerDocument || getActiveDocument();
+	const prefixRange = document.createRange();
+	prefixRange.selectNodeContents(first);
+	prefixRange.setEnd(range.startContainer, range.startOffset);
+	const suffixRange = document.createRange();
+	suffixRange.selectNodeContents(last);
+	suffixRange.setStart(range.endContainer, range.endOffset);
+	const beforeText = prefixRange.toString();
+	const afterText = suffixRange.toString();
 	return {
-		from,
-		to: to + 1
+		renderedOffset: normalizeReadingSelection(beforeText).length,
+		prefix: normalizeReadingSelection(beforeText).slice(-READING_CONTEXT_LENGTH),
+		suffix: normalizeReadingSelection(afterText).slice(0, READING_CONTEXT_LENGTH)
 	};
+}
+
+function findSourceCandidates(
+	source: string,
+	sectionSource: string,
+	sourceIndex: RenderedSourceIndex,
+	selectedText: string,
+	scope: ReadingSelectionScope
+): SourceCandidate[] {
+	const renderedSelection = normalizeReadingSelection(selectedText);
+	if (!renderedSelection) {
+		return [];
+	}
+	const directRanges = findDirectSourceRanges(sectionSource, selectedText, scope.sourceStartOffset);
+	const ranges = directRanges.length > 0
+		? directRanges
+		: findRenderedSourceRanges(source, sourceIndex, renderedSelection);
+	return ranges.map((range) => {
+		const renderedOffset = renderedOffsetForSourceOffset(sourceIndex.offsets, range.from);
+		return {
+			...range,
+			renderedDistance: Math.abs(renderedOffset - scope.renderedOffset),
+			contextScore: getContextScore(sourceIndex.text, renderedSelection, renderedOffset, scope)
+		};
+	});
+}
+
+function findDirectSourceRanges(
+	sectionSource: string,
+	selectedText: string,
+	sourceStartOffset: number
+): Array<{ from: number; to: number }> {
+	return findTextStarts(sectionSource, selectedText).map((index) => ({
+		from: sourceStartOffset + index,
+		to: sourceStartOffset + index + selectedText.length
+	}));
+}
+
+function findRenderedSourceRanges(
+	source: string,
+	sourceIndex: RenderedSourceIndex,
+	renderedSelection: string
+): Array<{ from: number; to: number }> {
+	return findTextStarts(sourceIndex.text, renderedSelection).flatMap((renderedOffset) => {
+		const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedOffset]);
+		const lastOffset = sourceIndex.offsets[renderedOffset + renderedSelection.length - 1];
+		return from === undefined || lastOffset === undefined ? [] : [{ from, to: lastOffset + 1 }];
+	});
+}
+
+function chooseUniqueCandidate(candidates: SourceCandidate[]): SourceCandidate | null {
+	const accepted = candidates.filter((candidate) => candidate.contextScore >= MIN_CONTEXT_SCORE);
+	if (accepted.length === 1) {
+		return accepted[0] || null;
+	}
+	if (accepted.length === 0) {
+		return null;
+	}
+	accepted.sort((left, right) => {
+		const scoreDifference = right.contextScore - left.contextScore;
+		return scoreDifference || left.renderedDistance - right.renderedDistance;
+	});
+	const first = accepted[0];
+	const second = accepted[1];
+	return first && second && first.contextScore > second.contextScore ? first : null;
+}
+
+function getContextScore(
+	renderedSource: string,
+	renderedSelection: string,
+	renderedOffset: number,
+	scope: ReadingSelectionScope
+): number {
+	const prefix = normalizeReadingSelection(scope.prefix);
+	const suffix = normalizeReadingSelection(scope.suffix);
+	const sourcePrefix = renderedSource.slice(Math.max(0, renderedOffset - prefix.length), renderedOffset);
+	const suffixStart = renderedOffset + renderedSelection.length;
+	const sourceSuffix = renderedSource.slice(suffixStart, suffixStart + suffix.length);
+	return 1 + getCommonEdgeRatio(sourcePrefix, prefix, true) / 2 + getCommonEdgeRatio(sourceSuffix, suffix, false) / 2;
+}
+
+function getCommonEdgeRatio(sourceContext: string, selectionContext: string, fromEnd: boolean): number {
+	if (!selectionContext) {
+		return 1;
+	}
+	let matchingLength = 0;
+	while (matchingLength < selectionContext.length) {
+		const selectionIndex = fromEnd ? selectionContext.length - matchingLength - 1 : matchingLength;
+		const sourceIndex = fromEnd ? sourceContext.length - matchingLength - 1 : matchingLength;
+		if (selectionContext[selectionIndex] !== sourceContext[sourceIndex]) {
+			break;
+		}
+		matchingLength += 1;
+	}
+	return matchingLength / selectionContext.length;
+}
+
+function findTextStarts(text: string, selectedText: string): number[] {
+	if (!selectedText) {
+		return [];
+	}
+	const starts: number[] = [];
+	let searchFrom = 0;
+	while (searchFrom <= text.length) {
+		const index = text.indexOf(selectedText, searchFrom);
+		if (index < 0) {
+			break;
+		}
+		starts.push(index);
+		searchFrom = index + Math.max(1, selectedText.length);
+	}
+	return starts;
 }
 
 export function getReadingSelectionRenderedOffset(container: HTMLElement, range: Range): number {
@@ -58,7 +201,7 @@ function getBoundingRect(rects: DOMRect[]): DOMRect | null {
 	return new DOMRect(left, top, right - left, bottom - top);
 }
 
-function buildRenderedSourceIndex(source: string): { text: string; offsets: number[] } {
+function buildRenderedSourceIndex(source: string, sourceStartOffset = 0): RenderedSourceIndex {
 	let rendered = "";
 	const offsets: number[] = [];
 	let index = 0;
@@ -82,73 +225,15 @@ function buildRenderedSourceIndex(source: string): { text: string; offsets: numb
 			continue;
 		}
 		rendered += char;
-		offsets.push(index);
+		offsets.push(sourceStartOffset + index);
 		index += 1;
 	}
 	return { text: rendered, offsets };
 }
 
-function findBestSourceTextStart(
-	source: string,
-	sourceIndex: { text: string; offsets: number[] },
-	selectedText: string,
-	preferredRenderedOffset: number
-): number {
-	const candidates: number[] = [];
-	let searchFrom = 0;
-	while (searchFrom <= source.length) {
-		const index = source.indexOf(selectedText, searchFrom);
-		if (index < 0) {
-			break;
-		}
-		candidates.push(index);
-		searchFrom = index + Math.max(1, selectedText.length);
-	}
-	return chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset);
-}
-
-function chooseSourceCandidate(
-	candidates: number[],
-	sourceIndex: { offsets: number[] },
-	preferredRenderedOffset: number
-): number {
-	if (candidates.length === 0) {
-		return -1;
-	}
-	if (candidates.length === 1) {
-		return candidates[0] || 0;
-	}
-	return candidates.sort((left, right) =>
-		Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, left) - preferredRenderedOffset)
-			- Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, right) - preferredRenderedOffset)
-	)[0] || candidates[0] || 0;
-}
-
 function renderedOffsetForSourceOffset(offsets: number[], sourceOffset: number): number {
 	const index = offsets.findIndex((offset) => offset >= sourceOffset);
 	return index >= 0 ? index : offsets.length;
-}
-
-function findBestRenderedTextStart(renderedText: string, selectedText: string, preferredOffset: number): number {
-	const candidates: number[] = [];
-	let searchFrom = 0;
-	while (searchFrom <= renderedText.length) {
-		const index = renderedText.indexOf(selectedText, searchFrom);
-		if (index < 0) {
-			break;
-		}
-		candidates.push(index);
-		searchFrom = index + Math.max(1, selectedText.length);
-	}
-	if (candidates.length === 0) {
-		return -1;
-	}
-	if (candidates.length === 1) {
-		return candidates[0] || 0;
-	}
-	return candidates.sort((left, right) =>
-		Math.abs(left - preferredOffset) - Math.abs(right - preferredOffset)
-	)[0] || candidates[0] || 0;
 }
 
 function expandStartToOpeningMarker(source: string, offset: number | undefined): number | undefined {
