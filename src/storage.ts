@@ -290,7 +290,10 @@ export class SideMarkStore {
 			const document = await this.readDocument(normalizePath(filePath));
 			let changed = false;
 			const marks = document.marks.map((mark) => {
-				const anchor = relocateAnchor(source, mark.anchor);
+				const anchor = relocateAnchor(source, mark.anchor, {
+					trustStoredPosition: mark.status !== "orphaned",
+					allowUniqueTextFallback: false
+				});
 				if (!anchor) {
 					if (mark.status === "orphaned") {
 						return mark;

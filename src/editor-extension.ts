@@ -38,6 +38,12 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 
 			update(update: ViewUpdate): void {
+				if (update.docChanged) {
+					const filePath = this.getFilePath();
+					if (filePath) {
+						plugin.handleEditorDocumentChange(filePath, update.state.doc.toString(), update.changes);
+					}
+				}
 				if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
 					const layers = this.buildDecorationLayers();
 					this.decorations = layers.decorations;

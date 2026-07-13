@@ -1,7 +1,9 @@
 import { addIcon, type Command, Editor, getLanguage, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import type { MarkdownPostProcessorContext } from "obsidian";
+import type { ChangeDesc } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
+import { reconcileEditorMarks } from "./editor-anchor-tracker";
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
@@ -33,6 +35,7 @@ import { NavigationGuard } from "./navigation-guard";
 
 const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
+const EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 
 type CssHighlightRegistry = {
 	set(name: string, highlight: unknown): void;
@@ -86,6 +89,7 @@ export default class SideMarkPlugin extends Plugin {
 		range: Range;
 	} | null = null;
 	private readingSelectionTimer: number | null = null;
+	private editorDocumentSaveTimer: number | null = null;
 	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
 	private readonly previewObservers = new Map<MarkdownView, PreviewObserverState>();
@@ -144,6 +148,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.clearPreviewMarkObservers();
 		this.sourceLineStartsCache.clear();
 		this.clearReadingSelectionTimer();
+		this.clearEditorDocumentSaveTimer();
 		this.clearReadingSelectionHighlight();
 		this.toolbar?.destroy();
 		this.readingToolbar?.destroy();
@@ -314,12 +319,54 @@ export default class SideMarkPlugin extends Plugin {
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
 			this.currentDocument = null;
+			this.refreshEditorDecorations();
 			await this.refreshSidebar();
 			return;
 		}
 		const source = await this.app.vault.read(file);
 		this.currentDocument = await this.store.relocateDocument(file.path, source);
+		this.refreshEditorDecorations();
 		await this.refreshSidebar();
+	}
+
+	handleEditorDocumentChange(filePath: string, source: string, changes: ChangeDesc): void {
+		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+			return;
+		}
+		this.currentDocument = {
+			...this.currentDocument,
+			marks: reconcileEditorMarks(this.currentDocument.marks, source, changes)
+		};
+		this.scheduleEditorDocumentSave(filePath);
+	}
+
+	private scheduleEditorDocumentSave(filePath: string): void {
+		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+			return;
+		}
+		this.clearEditorDocumentSaveTimer();
+		const document = this.currentDocument;
+		this.editorDocumentSaveTimer = window.setTimeout(() => {
+			this.editorDocumentSaveTimer = null;
+			void this.saveEditorDocument(document);
+		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+	}
+
+	private clearEditorDocumentSaveTimer(): void {
+		if (this.editorDocumentSaveTimer !== null) {
+			window.clearTimeout(this.editorDocumentSaveTimer);
+			this.editorDocumentSaveTimer = null;
+		}
+	}
+
+	private async saveEditorDocument(document: SideMarkDocument): Promise<void> {
+		try {
+			await this.store.saveDocument(document);
+			await this.refreshSidebar();
+			await this.renderPreviewMarksForFile(document.filePath);
+		} catch (error) {
+			console.error(`FloatMark: failed to save editor anchors for ${document.filePath}`, error);
+		}
 	}
 
 	private async handleMarkdownRename(newFilePath: string, oldFilePath: string): Promise<void> {
