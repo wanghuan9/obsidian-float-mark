@@ -2374,6 +2374,19 @@ var FLOAT_MARK_ICON_SVG = `
 function toggleSidebarScope(scope) {
   return scope === "current" ? "vault" : "current";
 }
+function sortMarksByCreatedAt(marks) {
+  return [...marks].sort((left, right) => {
+    const leftTime = Date.parse(left.note.createdAt);
+    const rightTime = Date.parse(right.note.createdAt);
+    if (Number.isNaN(leftTime)) {
+      return Number.isNaN(rightTime) ? 0 : -1;
+    }
+    if (Number.isNaN(rightTime)) {
+      return 1;
+    }
+    return leftTime - rightTime;
+  });
+}
 function summarizeVaultDocuments(documents, options) {
   const query = options.query.trim().toLowerCase();
   const counts = { comments: 0, marks: 0 };
@@ -2394,7 +2407,7 @@ function summarizeVaultDocuments(documents, options) {
       }
     }
     if (marks.length > 0) {
-      groups.push({ filePath: document.filePath, marks });
+      groups.push({ filePath: document.filePath, marks: sortMarksByCreatedAt(marks) });
     }
   }
   groups.sort((left, right) => left.filePath.localeCompare(right.filePath));
@@ -2882,7 +2895,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   getFilteredMarks(marks, tab = this.activeTab) {
     const query = this.searchQuery.trim().toLowerCase();
-    return marks.filter((mark) => {
+    return sortMarksByCreatedAt(marks.filter((mark) => {
       if (this.filter === "active" && mark.status !== "active") {
         return false;
       }
@@ -2904,7 +2917,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
         ...(mark.replies || []).map((reply) => reply.content)
       ].join("\n").toLowerCase();
       return haystack.includes(query);
-    });
+    }));
   }
   getTabMarks(marks, tab = this.activeTab) {
     return marks.filter((mark) => tab === "comments" ? mark.mark.kind === "comment" : mark.mark.kind === "highlight");
@@ -5259,7 +5272,7 @@ function readNumber(value) {
 }
 
 // src/main.ts
-var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
+var READING_SELECTION_TOOLBAR_DELAY_MS = 100;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 var EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 var SideMarkPlugin = class extends import_obsidian10.Plugin {
@@ -5867,10 +5880,10 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.readingToolbar.hide();
     this.readingSelectionTimer = window.setTimeout(() => {
       this.readingSelectionTimer = null;
-      void this.updateReadingSelectionToolbar(requestId);
+      this.updateReadingSelectionToolbar(requestId);
     }, READING_SELECTION_TOOLBAR_DELAY_MS);
   }
-  async updateReadingSelectionToolbar(requestId) {
+  updateReadingSelectionToolbar(requestId) {
     var _a, _b, _c, _d;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
@@ -5898,10 +5911,10 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       this.readingToolbar.hide();
       return;
     }
-    const source = await this.app.vault.read(file);
     if (requestId !== this.readingSelectionRequestId) {
       return;
     }
+    const source = view.data;
     const sections = getSelectedPreviewSections(view, range);
     if (sections.length === 0) {
       this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());

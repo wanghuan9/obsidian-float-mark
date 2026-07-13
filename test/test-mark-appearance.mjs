@@ -156,10 +156,38 @@ assert.match(
 );
 const stylesSource = await readFile("styles.css", "utf8");
 assert.match(stylesSource, /\.side-mark--highlight\.side-mark--text-blue\s*\{\s*color: #245bff;/);
-assert.match(stylesSource, /\.side-mark--highlight\.side-mark--background-red-light\s*\{\s*background: #f8b8b8;/);
+const backgroundColors = [
+	"gray-light",
+	"red-light",
+	"orange-light",
+	"yellow-light",
+	"green-light",
+	"blue-light",
+	"purple-light",
+	"gray",
+	"red",
+	"orange",
+	"yellow",
+	"green",
+	"blue",
+	"purple"
+];
+for (const color of backgroundColors) {
+	assert.match(
+		stylesSource,
+		new RegExp(
+			`\\.side-mark--highlight\\.side-mark--background-${color}\\s*\\{[^}]*--side-mark-background-color:`
+		)
+	);
+}
 assert.match(
 	stylesSource,
-	/\.side-mark-marker-card\.is-background-red-light \.side-mark-card-quote:not\(\.side-mark-marker-preview\)/
+	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview\s*\{[^}]*color-mix\(in srgb, var\(--side-mark-marker-preview-accent\) 45%, var\(--background-primary\)\)/
 );
+assert.match(
+	stylesSource,
+	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview::before\s*\{[^}]*background: var\(--side-mark-marker-preview-accent\)/
+);
+assert.doesNotMatch(stylesSource, /\.side-mark-marker-card\.is-background-(?!none)[\w-]+/);
 
 console.log("mark appearance tests passed");

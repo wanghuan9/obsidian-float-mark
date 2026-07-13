@@ -25,10 +25,12 @@ assert.match(method, /currentFile !== file/);
 assert.match(method, /currentFile\.extension !== "md"/);
 assert.match(method, /this\.currentDocument\?\.filePath === file\.path/);
 
-const updateReadingSelectionMethod = readMethod("async updateReadingSelectionToolbar");
+const updateReadingSelectionMethod = readMethod("updateReadingSelectionToolbar");
 const readingToolbarActionMethod = readMethod("async handleReadingToolbarAction");
 const unresolvedReadingSelectionMethod = readMethod("showUnresolvedReadingSelection");
 assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
+assert.doesNotMatch(updateReadingSelectionMethod, /this\.app\.vault\.read/);
+assert.match(updateReadingSelectionMethod, /const source = view\.data/);
 assert.match(updateReadingSelectionMethod, /this\.showUnresolvedReadingSelection\(rect,/);
 assert.match(unresolvedReadingSelectionMethod, /this\.readingSelectionUnresolved = true/);
 assert.match(unresolvedReadingSelectionMethod, /this\.readingToolbar\.show\(rect, boundary\)/);

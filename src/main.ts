@@ -34,7 +34,7 @@ import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginL
 import { NavigationGuard } from "./navigation-guard";
 import { resolvePreviewSectionBounds, type PreviewSectionBounds } from "./preview-sections";
 
-const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
+const READING_SELECTION_TOOLBAR_DELAY_MS = 100;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 const EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 
@@ -726,11 +726,11 @@ export default class SideMarkPlugin extends Plugin {
 		this.readingToolbar.hide();
 		this.readingSelectionTimer = window.setTimeout(() => {
 			this.readingSelectionTimer = null;
-			void this.updateReadingSelectionToolbar(requestId);
+			this.updateReadingSelectionToolbar(requestId);
 		}, READING_SELECTION_TOOLBAR_DELAY_MS);
 	}
 
-	private async updateReadingSelectionToolbar(requestId: number): Promise<void> {
+	private updateReadingSelectionToolbar(requestId: number): void {
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
 			this.readingSelection = null;
@@ -757,10 +757,10 @@ export default class SideMarkPlugin extends Plugin {
 			this.readingToolbar.hide();
 			return;
 		}
-		const source = await this.app.vault.read(file);
 		if (requestId !== this.readingSelectionRequestId) {
 			return;
 		}
+		const source = view.data;
 		const sections = getSelectedPreviewSections(view, range);
 		if (sections.length === 0) {
 			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());

@@ -111,4 +111,45 @@ assert.deepEqual(getReadingSelectionContext([section], domRange), {
 	suffix: "后文"
 });
 
+const listSource = [
+	"## 目标 测试一下",
+	"",
+	"5. 前项",
+	"6. **并发安全**：物品操作按 product_no 加分布式锁（与 A 匹配引擎同一把锁）；剔除不物理删除；下游契约对齐"
+].join("\n");
+const listDom = new JSDOM([
+	'<div id="section">',
+	'<h2>目标 测试一下</h2>',
+	'<ol start="5">',
+	'<li>前项</li>',
+	'<li id="target"><strong>并发安全</strong>：物品操作按 product_no 加分布式锁（与 A 匹配引擎同一把锁）；剔除不物理删除；下游契约对齐</li>',
+	'</ol>',
+	'</div>'
+].join(""));
+const listSection = listDom.window.document.querySelector("#section");
+const targetItem = listDom.window.document.querySelector("#target");
+const strongText = targetItem.querySelector("strong").firstChild;
+const trailingText = targetItem.lastChild;
+const formattedRange = listDom.window.document.createRange();
+formattedRange.setStart(strongText, 0);
+formattedRange.setEnd(trailingText, trailingText.data.length);
+const formattedContext = getReadingSelectionContext([listSection], formattedRange);
+const expectedListStart = listSource.indexOf("**并发安全**");
+const expectedListRange = { from: expectedListStart, to: listSource.length };
+assert.deepEqual(findSourceRangeForReadingSelection(listSource, formattedRange.toString(), {
+	sourceStartOffset: 0,
+	sourceEndOffset: listSource.length,
+	...formattedContext
+}), expectedListRange);
+
+const itemBoundaryRange = listDom.window.document.createRange();
+itemBoundaryRange.setStart(targetItem, 0);
+itemBoundaryRange.setEnd(targetItem, targetItem.childNodes.length);
+const itemBoundaryContext = getReadingSelectionContext([listSection], itemBoundaryRange);
+assert.deepEqual(findSourceRangeForReadingSelection(listSource, itemBoundaryRange.toString(), {
+	sourceStartOffset: 0,
+	sourceEndOffset: listSource.length,
+	...itemBoundaryContext
+}), expectedListRange);
+
 console.log("reading selection tests passed");
