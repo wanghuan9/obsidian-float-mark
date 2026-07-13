@@ -23,6 +23,14 @@ export type MarkBackgroundColor =
 	| "purple";
 export type MarkStatus = "active" | "resolved" | "orphaned";
 export type RemoteSyncStatus = "pending" | "synced" | "failed";
+export type ScopeControlStyle = "tabs" | "dropdown" | "swap" | "switch";
+
+export function normalizeScopeControlStyle(value: unknown): ScopeControlStyle {
+	if (value === "tabs" || value === "dropdown" || value === "swap" || value === "switch") {
+		return value;
+	}
+	return "dropdown";
+}
 
 export interface TextAnchor {
 	startOffset: number;
@@ -93,6 +101,7 @@ export interface SideMarkSettings {
 	autoSyncToLark: boolean;
 	preferBodyBlockForLark: boolean;
 	commentAuthorName: string;
+	scopeControlStyle: ScopeControlStyle;
 }
 
 export const DEFAULT_SETTINGS: SideMarkSettings = {
@@ -101,5 +110,6 @@ export const DEFAULT_SETTINGS: SideMarkSettings = {
 	autoOpenSidebar: true,
 	autoSyncToLark: false,
 	preferBodyBlockForLark: false,
-	commentAuthorName: "我"
+	commentAuthorName: "我",
+	scopeControlStyle: "dropdown"
 };

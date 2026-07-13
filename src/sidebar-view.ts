@@ -1,17 +1,23 @@
-import { ItemView, Notice, setIcon, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type SideMarkPlugin from "./main";
-import type { CommentReply, MarkColor, SideMark } from "./types";
+import type { CommentReply, MarkColor, SideMark, SideMarkDocument } from "./types";
 import { FLOAT_MARK_ICON_ID } from "./icons";
 import { isHtmlElement, isInputEvent } from "./dom-utils";
 import type { I18nKey } from "./i18n";
 import { resolveMarkBackground } from "./mark-appearance";
+import {
+	bindVaultCardNavigation,
+	summarizeVaultDocuments,
+	toggleSidebarScope,
+	type SidebarScope,
+	type SidebarTab,
+	type SideMarkColorFilter,
+	type SideMarkFilter
+} from "./sidebar-logic";
 
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
-type SideMarkFilter = "active" | "resolved" | "orphaned" | "all";
 type SideMarkTagFilter = "all";
-type SideMarkColorFilter = MarkColor | "all";
-type SidebarTab = "comments" | "marks";
 const MARK_COLORS: Array<{ color: MarkColor; labelKey: I18nKey }> = [
 	{ color: "yellow", labelKey: "sidebar.yellow" },
 	{ color: "blue", labelKey: "sidebar.blue" },
@@ -21,6 +27,8 @@ const MARK_COLORS: Array<{ color: MarkColor; labelKey: I18nKey }> = [
 
 export class SideMarkSidebarView extends ItemView {
 	private focusedMarkId = "";
+	private viewScope: SidebarScope = "current";
+	private renderGeneration = 0;
 	private activeTab: SidebarTab = "comments";
 	private filter: SideMarkFilter = "active";
 	private tagFilter: SideMarkTagFilter = "all";
@@ -30,6 +38,7 @@ export class SideMarkSidebarView extends ItemView {
 	private searchSelectionStart: number | null = null;
 	private searchSelectionEnd: number | null = null;
 	private isSearchComposing = false;
+	private restoreScopeControlFocus = false;
 
 	constructor(leaf: WorkspaceLeaf, private readonly plugin: SideMarkPlugin) {
 		super(leaf);
@@ -66,12 +75,27 @@ export class SideMarkSidebarView extends ItemView {
 	}
 
 	async render(): Promise<void> {
+		const generation = ++this.renderGeneration;
 		const container = this.contentEl;
 		container.empty();
 		container.addClass("side-mark-sidebar");
 		const header = container.createDiv({ cls: "side-mark-sidebar-header" });
 		const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
 		titleRow.createEl("h3", { text: this.t("sidebar.title") });
+		this.renderScopeControl(titleRow);
+		this.restoreScopeFocus();
+		if (this.viewScope === "vault") {
+			const documents = await this.plugin.store.loadAllDocuments();
+			if (generation !== this.renderGeneration || this.viewScope !== "vault") {
+				return;
+			}
+			this.renderVault(container, header, documents);
+			return;
+		}
+		this.renderCurrentDocument(container, header);
+	}
+
+	private renderCurrentDocument(container: HTMLElement, header: HTMLElement): void {
 		const doc = this.plugin.currentDocument;
 		const allMarks = doc?.marks || [];
 		const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
@@ -107,10 +131,215 @@ export class SideMarkSidebarView extends ItemView {
 		}
 	}
 
-	private renderTabs(container: HTMLElement, marks: SideMark[]): void {
+	private renderScopeControl(container: HTMLElement): void {
+		switch (this.plugin.settings.scopeControlStyle) {
+			case "dropdown":
+				this.renderScopeDropdown(container);
+				return;
+			case "swap":
+				this.renderScopeSwap(container);
+				return;
+			case "switch":
+				this.renderScopeSwitch(container);
+				return;
+			default:
+				this.renderScopeTabs(container);
+		}
+	}
+
+	private renderScopeTabs(container: HTMLElement): void {
+		const control = container.createDiv({ cls: "side-mark-sidebar-scope is-tabs" });
+		this.renderScopeButton(control, "current", this.t("sidebar.scopeCurrent"));
+		this.renderScopeButton(control, "vault", this.t("sidebar.scopeVault"));
+	}
+
+	private renderScopeDropdown(container: HTMLElement): void {
+		const control = container.createDiv({ cls: "side-mark-sidebar-scope is-dropdown" });
+		const label = this.viewScope === "current" ? this.t("sidebar.scopeCurrent") : this.t("sidebar.scopeVault");
+		const button = control.createEl("button", {
+			cls: "side-mark-sidebar-scope-dropdown",
+			attr: {
+				type: "button",
+				"aria-haspopup": "menu",
+				"aria-label": label,
+				"data-side-mark-scope-control": ""
+			}
+		});
+		button.createSpan({ cls: "side-mark-sidebar-scope-dot" });
+		button.createSpan({ text: label });
+		const chevron = button.createSpan({ cls: "side-mark-sidebar-scope-chevron" });
+		setIcon(chevron, "chevron-down");
+		button.addEventListener("click", (event) => {
+			const menu = new Menu();
+			button.setAttr("aria-expanded", "true");
+			menu.onHide(() => button.setAttr("aria-expanded", "false"));
+			for (const option of [
+				{ scope: "current" as const, label: this.t("sidebar.scopeCurrent") },
+				{ scope: "vault" as const, label: this.t("sidebar.scopeVault") }
+			]) {
+				menu.addItem((item) => item
+					.setTitle(option.label)
+					.setChecked(this.viewScope === option.scope)
+					.onClick(() => this.setViewScope(option.scope)));
+			}
+			if (event.detail > 0) {
+				menu.showAtMouseEvent(event);
+				return;
+			}
+			const rect = button.getBoundingClientRect();
+			menu.showAtPosition({ x: rect.left, y: rect.bottom, width: rect.width }, button.ownerDocument);
+		});
+	}
+
+	private renderScopeSwap(container: HTMLElement): void {
+		const control = container.createDiv({ cls: "side-mark-sidebar-scope is-swap" });
+		const label = this.viewScope === "current" ? this.t("sidebar.scopeCurrent") : this.t("sidebar.scopeVault");
+		const nextLabel = this.viewScope === "current" ? this.t("sidebar.scopeVault") : this.t("sidebar.scopeCurrent");
+		control.createSpan({ cls: "side-mark-sidebar-scope-signal" });
+		control.createSpan({ cls: "side-mark-sidebar-scope-swap-label", text: label });
+		const button = control.createEl("button", {
+			cls: "side-mark-sidebar-scope-swap-button",
+			attr: {
+				type: "button",
+				"aria-label": this.t("sidebar.switchScope", { scope: nextLabel }),
+				"data-side-mark-scope-control": ""
+			}
+		});
+		setIcon(button, "arrow-left-right");
+		button.addEventListener("click", (event) => {
+			event.preventDefault();
+			this.toggleViewScope();
+		});
+	}
+
+	private renderScopeSwitch(container: HTMLElement): void {
+		const control = container.createDiv({ cls: "side-mark-sidebar-scope is-switch" });
+		const isVault = this.viewScope === "vault";
+		control.createSpan({
+			cls: `side-mark-sidebar-scope-switch-label${isVault ? "" : " is-active"}`,
+			text: this.t("sidebar.scopeCurrentShort")
+		});
+		const button = control.createEl("button", {
+			cls: "side-mark-sidebar-scope-switch",
+			attr: {
+				type: "button",
+				"role": "switch",
+				"aria-checked": String(isVault),
+				"aria-label": this.t("sidebar.scopeSwitchLabel"),
+				"data-side-mark-scope-control": ""
+			}
+		});
+		const track = button.createSpan({ cls: "side-mark-sidebar-scope-switch-track" });
+		track.createSpan({ cls: "side-mark-sidebar-scope-switch-knob" });
+		control.createSpan({
+			cls: `side-mark-sidebar-scope-switch-label${isVault ? " is-active" : ""}`,
+			text: this.t("sidebar.scopeVaultShort")
+		});
+		button.addEventListener("click", (event) => {
+			event.preventDefault();
+			this.toggleViewScope();
+		});
+	}
+
+	private renderScopeButton(container: HTMLElement, scope: SidebarScope, label: string): void {
+		const button = container.createEl("button", {
+			cls: `side-mark-sidebar-scope-button${this.viewScope === scope ? " is-active" : ""}`,
+			text: label,
+			attr: { type: "button", "aria-pressed": String(this.viewScope === scope) }
+		});
+		if (this.viewScope === scope) {
+			button.dataset.sideMarkScopeControl = "";
+		}
+		button.addEventListener("click", (event) => {
+			event.preventDefault();
+			this.setViewScope(scope);
+		});
+	}
+
+	private setViewScope(scope: SidebarScope): void {
+		if (this.viewScope === scope) {
+			return;
+		}
+		this.viewScope = scope;
+		this.searchQuery = "";
+		this.restoreScopeControlFocus = true;
+		void this.render();
+	}
+
+	private toggleViewScope(): void {
+		this.setViewScope(toggleSidebarScope(this.viewScope));
+	}
+
+	private restoreScopeFocus(): void {
+		if (!this.restoreScopeControlFocus) {
+			return;
+		}
+		this.restoreScopeControlFocus = false;
+		this.contentEl.querySelector<HTMLButtonElement>("[data-side-mark-scope-control]")?.focus();
+	}
+
+	private renderVault(container: HTMLElement, header: HTMLElement, documents: SideMarkDocument[]): void {
+		const allMarks = documents.flatMap((document) => document.marks);
+		const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
+		const result = summarizeVaultDocuments(documents, {
+			tab: this.activeTab,
+			status: this.filter,
+			color: this.colorFilter,
+			query: this.searchQuery
+		});
+		this.renderTabs(toolbarRow, allMarks, result.counts);
+		const controls = toolbarRow.createDiv({ cls: "side-mark-sidebar-controls" });
+		const tabMarks = this.getTabMarks(allMarks);
+		const groups = result.groups;
+		const filteredMarks = groups.flatMap((group) => group.marks);
+		this.renderFilters(header, controls, tabMarks, filteredMarks);
+		this.restoreSearchInputFocus();
+
+		if (groups.length === 0) {
+			container.createDiv({ text: this.t("sidebar.emptyVault"), cls: "setting-item-description" });
+			return;
+		}
+
+		for (const group of groups) {
+			const section = container.createDiv({ cls: "side-mark-vault-file-group" });
+			const groupHeader = section.createDiv({ cls: "side-mark-vault-file-header" });
+			groupHeader.createDiv({ cls: "side-mark-vault-file-name", text: getFileName(group.filePath) });
+			groupHeader.createDiv({ cls: "side-mark-vault-file-path", text: group.filePath });
+			for (const mark of group.marks) {
+				this.renderVaultCard(section, group.filePath, mark);
+			}
+		}
+	}
+
+	private renderVaultCard(container: HTMLElement, filePath: string, mark: SideMark): void {
+		const card = container.createDiv({
+			cls: `side-mark-card side-mark-vault-card is-color-${mark.mark.color}${mark.status === "resolved" ? " is-resolved" : ""}`
+		});
+		card.dataset.sideMarkCardId = mark.id;
+		const locate = () => void this.plugin.jumpToDocumentMark(filePath, mark.id);
+		const label = `${this.t("sidebar.locate")}: ${filePath} — ${mark.anchor.selectedText}`;
+		bindVaultCardNavigation(card, label, locate);
+		const quote = card.createDiv({ cls: "side-mark-card-quote" });
+		quote.createDiv({ cls: "side-mark-card-quote-text", text: mark.anchor.selectedText });
+		const summary = getVaultMarkSummary(mark);
+		if (summary) {
+			card.createDiv({ cls: "side-mark-vault-summary", text: summary });
+		}
+		card.createDiv({ cls: `side-mark-vault-status is-${mark.status}`, text: this.t(`sidebar.${mark.status}`) });
+	}
+
+	private renderTabs(
+		container: HTMLElement,
+		marks: SideMark[],
+		counts?: Record<SidebarTab, number>
+	): void {
 		const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
-		this.renderTab(tabs, "comments", this.t("sidebar.comments"), this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
-		this.renderTab(tabs, "marks", this.t("sidebar.marks"), this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
+		const commentCount = counts?.comments
+			?? this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length;
+		const markCount = counts?.marks
+			?? this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length;
+		this.renderTab(tabs, "comments", this.t("sidebar.comments"), commentCount);
+		this.renderTab(tabs, "marks", this.t("sidebar.marks"), markCount);
 	}
 
 	private renderTab(container: HTMLElement, tab: SidebarTab, label: string, count: number): void {
@@ -205,11 +434,11 @@ export class SideMarkSidebarView extends ItemView {
 		container.createDiv({
 			cls: "side-mark-sidebar-stats",
 			text: allMarks.length === filteredMarks.length
-				? this.t("sidebar.currentDocumentStats", {
+				? this.t(this.viewScope === "vault" ? "sidebar.vaultStats" : "sidebar.currentDocumentStats", {
 					count: allMarks.length,
 					kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
 				})
-				: this.t("sidebar.currentFilterStats", {
+				: this.t(this.viewScope === "vault" ? "sidebar.vaultFilterStats" : "sidebar.currentFilterStats", {
 					filtered: filteredMarks.length,
 					total: allMarks.length,
 					kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
@@ -985,6 +1214,18 @@ export class SideMarkSidebarView extends ItemView {
 	private async deleteMark(markId: string): Promise<void> {
 		await this.plugin.deleteMark(markId);
 	}
+}
+
+function getFileName(filePath: string): string {
+	return filePath.split("/").pop() || filePath;
+}
+
+function getVaultMarkSummary(mark: SideMark): string {
+	const replies = (mark.replies || []).map((reply) => reply.content.trim()).filter(Boolean);
+	if (replies.length > 0) {
+		return replies.join(" · ");
+	}
+	return mark.note.content.trim();
 }
 
 function formatReplyTime(value: string, t: (key: I18nKey, params?: Record<string, string | number>) => string): string {

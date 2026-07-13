@@ -1503,6 +1503,12 @@ var TRANSLATIONS = {
     "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
     "settings.language.en": "English",
     "settings.autoOpenSidebar.name": "\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F",
+    "settings.scopeControlStyle.name": "\u6587\u6863\u8303\u56F4\u5207\u6362\u6837\u5F0F",
+    "settings.scopeControlStyle.desc": "\u9009\u62E9\u4FA7\u680F\u9876\u90E8\u7684\u5F53\u524D\u6587\u6863\u4E0E\u5168\u90E8\u6587\u6863\u5207\u6362\u65B9\u5F0F\u3002",
+    "settings.scopeControlStyle.tabs": "A \xB7 \u6587\u5B57\u4E0B\u5212\u7EBF",
+    "settings.scopeControlStyle.dropdown": "B \xB7 \u5355\u5165\u53E3\u4E0B\u62C9",
+    "settings.scopeControlStyle.swap": "C \xB7 \u72B6\u6001\u4E00\u952E\u4EA4\u6362",
+    "settings.scopeControlStyle.switch": "F \xB7 \u53CC\u5411\u7269\u7406\u5F00\u5173",
     "settings.commentAuthorName.name": "\u8BC4\u8BBA\u663E\u793A\u540D\u79F0",
     "settings.commentAuthorName.desc": "\u7528\u4E8E\u4FA7\u8FB9\u680F\u8BC4\u8BBA\u7EBF\u7A0B\u91CC\u7684\u4F5C\u8005\u540D\u3002",
     "settings.larkSync.name": "\u6807\u6CE8\u540C\u6B65\u98DE\u4E66",
@@ -1566,7 +1572,14 @@ var TRANSLATIONS = {
     "style.background.blue": "\u84DD\u8272\u80CC\u666F",
     "style.background.purple": "\u7D2B\u8272\u80CC\u666F",
     "sidebar.title": "\u6B63\u6587\u6807\u6CE8",
+    "sidebar.scopeCurrent": "\u5F53\u524D\u6587\u6863",
+    "sidebar.scopeVault": "\u5168\u90E8\u6587\u6863",
+    "sidebar.scopeCurrentShort": "\u5F53\u524D",
+    "sidebar.scopeVaultShort": "\u5168\u90E8",
+    "sidebar.scopeSwitchLabel": "\u6587\u6863\u8303\u56F4",
+    "sidebar.switchScope": "\u5207\u6362\u5230{scope}",
     "sidebar.emptyDocument": "\u5F53\u524D\u6587\u6863\u8FD8\u6CA1\u6709\u6807\u6CE8\u3002",
+    "sidebar.emptyVault": "\u5168\u90E8\u6587\u6863\u4E2D\u6CA1\u6709\u7B26\u5408\u5F53\u524D\u7B5B\u9009\u7684\u6807\u6CE8\u3002",
     "sidebar.emptyComments": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8BC4\u8BBA\u3002",
     "sidebar.emptyMarks": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u6807\u8BB0\u3002",
     "sidebar.comments": "\u8BC4\u8BBA",
@@ -1586,6 +1599,8 @@ var TRANSLATIONS = {
     "sidebar.searchMarks": "\u641C\u7D22\u6807\u8BB0",
     "sidebar.currentDocumentStats": "\u5F53\u524D\u6587\u6863\uFF0C\u5171 {count} \u6761{kind}",
     "sidebar.currentFilterStats": "\u5F53\u524D\u7B5B\u9009\uFF0C\u5171 {filtered} / {total} \u6761{kind}",
+    "sidebar.vaultStats": "\u5168\u90E8\u6587\u6863\uFF0C\u5171 {count} \u6761{kind}",
+    "sidebar.vaultFilterStats": "\u5168\u90E8\u6587\u6863\u7B5B\u9009\uFF0C\u5171 {filtered} / {total} \u6761{kind}",
     "sidebar.locate": "\u5B9A\u4F4D",
     "sidebar.style": "\u6837\u5F0F",
     "sidebar.editNote": "\u7F16\u8F91\u5907\u6CE8",
@@ -1622,6 +1637,8 @@ var TRANSLATIONS = {
     "notice.noEditorSelection": "\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002",
     "notice.autoSyncLarkFailed": "\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A{message}",
     "notice.syncedToLark": "\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002",
+    "notice.markFileUnavailable": "\u6807\u6CE8\u6240\u5728\u7684 Markdown \u6587\u4EF6\u5DF2\u4E0D\u5B58\u5728\u6216\u4E0D\u53EF\u7528\u3002",
+    "notice.markUnavailable": "\u8BE5\u6807\u6CE8\u5DF2\u4E0D\u5B58\u5728\u3002",
     "error.emptyComment": "\u8BC4\u8BBA\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\u3002",
     "error.noLarkBinding": "\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002",
     "error.noLarkBlockMap": "\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002",
@@ -1656,6 +1673,12 @@ var TRANSLATIONS = {
     "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
     "settings.language.en": "English",
     "settings.autoOpenSidebar.name": "Open sidebar after creating a mark",
+    "settings.scopeControlStyle.name": "Document scope control",
+    "settings.scopeControlStyle.desc": "Choose how Current document and All documents are switched in the sidebar.",
+    "settings.scopeControlStyle.tabs": "A \xB7 Underline tabs",
+    "settings.scopeControlStyle.dropdown": "B \xB7 Single dropdown",
+    "settings.scopeControlStyle.swap": "C \xB7 Status + swap",
+    "settings.scopeControlStyle.switch": "F \xB7 Two-way switch",
     "settings.commentAuthorName.name": "Comment display name",
     "settings.commentAuthorName.desc": "Author name shown in sidebar comment threads.",
     "settings.larkSync.name": "Sync marks to Feishu",
@@ -1719,7 +1742,14 @@ var TRANSLATIONS = {
     "style.background.blue": "Blue background",
     "style.background.purple": "Purple background",
     "sidebar.title": "FloatMark",
+    "sidebar.scopeCurrent": "Current document",
+    "sidebar.scopeVault": "All documents",
+    "sidebar.scopeCurrentShort": "Current",
+    "sidebar.scopeVaultShort": "All",
+    "sidebar.scopeSwitchLabel": "Document scope",
+    "sidebar.switchScope": "Switch to {scope}",
     "sidebar.emptyDocument": "No marks in the current document yet.",
+    "sidebar.emptyVault": "No marks in all documents match the current filters.",
     "sidebar.emptyComments": "No comments match the current filters.",
     "sidebar.emptyMarks": "No marks match the current filters.",
     "sidebar.comments": "Comments",
@@ -1739,6 +1769,8 @@ var TRANSLATIONS = {
     "sidebar.searchMarks": "Search marks",
     "sidebar.currentDocumentStats": "Current document, {count} {kind}",
     "sidebar.currentFilterStats": "Current filter, {filtered} / {total} {kind}",
+    "sidebar.vaultStats": "All documents, {count} {kind}",
+    "sidebar.vaultFilterStats": "All documents filter, {filtered} / {total} {kind}",
     "sidebar.locate": "Locate",
     "sidebar.style": "Style",
     "sidebar.editNote": "Edit note",
@@ -1775,6 +1807,8 @@ var TRANSLATIONS = {
     "notice.noEditorSelection": "No editor selection is available.",
     "notice.autoSyncLarkFailed": "Auto sync to Feishu failed: {message}",
     "notice.syncedToLark": "Mark synced to a Feishu comment.",
+    "notice.markFileUnavailable": "The Markdown file for this mark no longer exists or is unavailable.",
+    "notice.markUnavailable": "This mark no longer exists.",
     "error.emptyComment": "Comment content cannot be empty.",
     "error.noLarkBinding": "The current note has no lark_doc_url or lark_doc_token. Sync this document with Feishu Lark CLI Sync first.",
     "error.noLarkBlockMap": "No Feishu block map was found. Sync the current document once with Feishu Lark CLI Sync first.",
@@ -1837,136 +1871,200 @@ function isChineseLanguage(language) {
 
 // src/types.ts
 var DATA_DIR = ".obsidian-float-marks";
+function normalizeScopeControlStyle(value) {
+  if (value === "tabs" || value === "dropdown" || value === "swap" || value === "switch") {
+    return value;
+  }
+  return "dropdown";
+}
 var DEFAULT_SETTINGS = {
   dataDir: DATA_DIR,
   language: void 0,
   autoOpenSidebar: true,
   autoSyncToLark: false,
   preferBodyBlockForLark: false,
-  commentAuthorName: "\u6211"
+  commentAuthorName: "\u6211",
+  scopeControlStyle: "dropdown"
 };
 
 // src/storage.ts
+var SIDECAR_READ_CONCURRENCY = 8;
 var SideMarkStore = class {
   constructor(app, settings) {
     this.app = app;
     this.settings = settings;
+    this.allDocumentsCache = null;
+    this.allDocumentsLoad = null;
+    this.allDocumentsRevision = 0;
+    this.mutationTail = Promise.resolve();
   }
   updateSettings(settings) {
     this.settings = settings;
+    this.invalidateAllDocumentsCache();
   }
   async loadDocument(filePath) {
-    const normalizedPath = (0, import_obsidian7.normalizePath)(filePath);
-    const sidecarPath = this.getSidecarPath(normalizedPath);
-    if (!await this.app.vault.adapter.exists(sidecarPath)) {
-      return this.createEmptyDocument(normalizedPath);
+    await this.mutationTail;
+    return this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+  }
+  async loadAllDocuments() {
+    await this.mutationTail;
+    if (this.allDocumentsCache) {
+      return this.allDocumentsCache;
     }
-    const raw = await this.app.vault.adapter.read(sidecarPath);
-    const parsed = JSON.parse(raw);
-    return {
-      schemaVersion: 1,
-      filePath: normalizedPath,
-      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : (/* @__PURE__ */ new Date()).toISOString(),
-      marks: Array.isArray(parsed.marks) ? parsed.marks.map((mark) => this.normalizeMark(mark)) : []
-    };
+    if (this.allDocumentsLoad) {
+      return this.allDocumentsLoad;
+    }
+    const revision = this.allDocumentsRevision;
+    const load = this.readAllDocuments().then((documents) => {
+      if (revision === this.allDocumentsRevision) {
+        this.allDocumentsCache = documents;
+      }
+      return documents;
+    }).finally(() => {
+      if (this.allDocumentsLoad === load) {
+        this.allDocumentsLoad = null;
+      }
+    });
+    this.allDocumentsLoad = load;
+    return load;
   }
   async saveDocument(document) {
+    return this.enqueueMutation(() => this.writeDocument(document));
+  }
+  async renameDocument(oldFilePath, newFilePath) {
+    return this.enqueueMutation(async () => {
+      const normalizedOldPath = (0, import_obsidian7.normalizePath)(oldFilePath);
+      const normalizedNewPath = (0, import_obsidian7.normalizePath)(newFilePath);
+      if (normalizedOldPath === normalizedNewPath) {
+        return;
+      }
+      const oldSidecarPath = this.getSidecarPath(normalizedOldPath);
+      if (!await this.app.vault.adapter.exists(oldSidecarPath)) {
+        return;
+      }
+      const oldDocument = await this.readDocument(normalizedOldPath);
+      await this.writeDocument({
+        ...oldDocument,
+        filePath: normalizedNewPath
+      });
+      await this.app.vault.adapter.remove(oldSidecarPath);
+      this.invalidateAllDocumentsCache();
+    });
+  }
+  async deleteDocument(filePath) {
+    return this.enqueueMutation(async () => {
+      const sidecarPath = this.getSidecarPath((0, import_obsidian7.normalizePath)(filePath));
+      if (!await this.app.vault.adapter.exists(sidecarPath)) {
+        return;
+      }
+      await this.app.vault.adapter.remove(sidecarPath);
+      this.invalidateAllDocumentsCache();
+    });
+  }
+  async createMark(input) {
+    return this.enqueueMutation(async () => {
+      var _a;
+      const anchor = createTextAnchor(input.source, input.startOffset, input.endOffset);
+      if (!anchor.selectedText) {
+        throw new Error("Cannot create a mark from an empty selection.");
+      }
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(input.filePath));
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const mark = {
+        id: crypto.randomUUID(),
+        filePath: (0, import_obsidian7.normalizePath)(input.filePath),
+        anchor,
+        mark: {
+          kind: input.kind,
+          color: input.color,
+          textColor: input.textColor || "default",
+          backgroundColor: input.backgroundColor || "none"
+        },
+        note: {
+          content: input.noteContent || "",
+          createdAt: now,
+          updatedAt: now
+        },
+        replies: input.kind === "comment" && ((_a = input.noteContent) == null ? void 0 : _a.trim()) ? [this.createReply(input.noteContent, now)] : [],
+        status: "active",
+        remote: {
+          status: "pending"
+        }
+      };
+      return this.writeDocument({
+        ...document,
+        marks: [...document.marks, mark]
+      });
+    });
+  }
+  async updateMark(filePath, markId, update) {
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      return this.writeDocument({
+        ...document,
+        marks: document.marks.map((mark) => {
+          var _a, _b, _c;
+          if (mark.id !== markId) {
+            return mark;
+          }
+          return {
+            ...mark,
+            status: (_a = update.status) != null ? _a : mark.status,
+            remote: (_b = update.remote) != null ? _b : mark.remote,
+            mark: (_c = update.mark) != null ? _c : mark.mark,
+            note: update.noteContent === void 0 ? mark.note : {
+              ...mark.note,
+              content: update.noteContent,
+              updatedAt: now
+            }
+          };
+        })
+      });
+    });
+  }
+  async writeDocument(document) {
     const normalizedPath = (0, import_obsidian7.normalizePath)(document.filePath);
     const next = {
       schemaVersion: 1,
       filePath: normalizedPath,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      marks: [...document.marks].sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
+      marks: document.marks.map((mark) => ({ ...mark, filePath: normalizedPath })).sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
     };
     const sidecarPath = this.getSidecarPath(normalizedPath);
     await this.app.vault.adapter.mkdir(this.getFilesDir());
     await this.app.vault.adapter.write(sidecarPath, JSON.stringify(next, null, 2));
+    this.invalidateAllDocumentsCache();
     return next;
-  }
-  async createMark(input) {
-    var _a;
-    const anchor = createTextAnchor(input.source, input.startOffset, input.endOffset);
-    if (!anchor.selectedText) {
-      throw new Error("Cannot create a mark from an empty selection.");
-    }
-    const document = await this.loadDocument(input.filePath);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const mark = {
-      id: crypto.randomUUID(),
-      filePath: (0, import_obsidian7.normalizePath)(input.filePath),
-      anchor,
-      mark: {
-        kind: input.kind,
-        color: input.color,
-        textColor: input.textColor || "default",
-        backgroundColor: input.backgroundColor || "none"
-      },
-      note: {
-        content: input.noteContent || "",
-        createdAt: now,
-        updatedAt: now
-      },
-      replies: input.kind === "comment" && ((_a = input.noteContent) == null ? void 0 : _a.trim()) ? [this.createReply(input.noteContent, now)] : [],
-      status: "active",
-      remote: {
-        status: "pending"
-      }
-    };
-    return this.saveDocument({
-      ...document,
-      marks: [...document.marks, mark]
-    });
-  }
-  async updateMark(filePath, markId, update) {
-    const document = await this.loadDocument(filePath);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    return this.saveDocument({
-      ...document,
-      marks: document.marks.map((mark) => {
-        var _a, _b, _c;
-        if (mark.id !== markId) {
-          return mark;
-        }
-        return {
-          ...mark,
-          status: (_a = update.status) != null ? _a : mark.status,
-          remote: (_b = update.remote) != null ? _b : mark.remote,
-          mark: (_c = update.mark) != null ? _c : mark.mark,
-          note: update.noteContent === void 0 ? mark.note : {
-            ...mark.note,
-            content: update.noteContent,
-            updatedAt: now
-          }
-        };
-      })
-    });
   }
   async addReply(filePath, markId, content) {
     const trimmed = content.trim();
     if (!trimmed) {
       throw new Error(translate(this.settings.language, "error.emptyComment"));
     }
-    const document = await this.loadDocument(filePath);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    return this.saveDocument({
-      ...document,
-      marks: document.marks.map((mark) => {
-        var _a;
-        if (mark.id !== markId) {
-          return mark;
-        }
-        const replies = this.getReplies(mark);
-        return {
-          ...mark,
-          replies: [...replies, this.createReply(trimmed, now)],
-          note: {
-            ...mark.note,
-            content: [...replies.map((reply) => reply.content), trimmed].join("\n\n"),
-            updatedAt: now
-          },
-          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
-        };
-      })
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      return this.writeDocument({
+        ...document,
+        marks: document.marks.map((mark) => {
+          var _a;
+          if (mark.id !== markId) {
+            return mark;
+          }
+          const replies = this.getReplies(mark);
+          return {
+            ...mark,
+            replies: [...replies, this.createReply(trimmed, now)],
+            note: {
+              ...mark.note,
+              content: [...replies.map((reply) => reply.content), trimmed].join("\n\n"),
+              updatedAt: now
+            },
+            remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+          };
+        })
+      });
     });
   }
   async updateReply(filePath, markId, replyId, content) {
@@ -1974,86 +2072,108 @@ var SideMarkStore = class {
     if (!trimmed) {
       throw new Error(translate(this.settings.language, "error.emptyComment"));
     }
-    const document = await this.loadDocument(filePath);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    return this.saveDocument({
-      ...document,
-      marks: document.marks.map((mark) => {
-        var _a;
-        if (mark.id !== markId) {
-          return mark;
-        }
-        const replies = this.getReplies(mark).map((reply) => reply.id === replyId ? { ...reply, content: trimmed, updatedAt: now } : reply);
-        return {
-          ...mark,
-          replies,
-          note: {
-            ...mark.note,
-            content: replies.map((reply) => reply.content).join("\n\n"),
-            updatedAt: now
-          },
-          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
-        };
-      })
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      return this.writeDocument({
+        ...document,
+        marks: document.marks.map((mark) => {
+          var _a;
+          if (mark.id !== markId) {
+            return mark;
+          }
+          const replies = this.getReplies(mark).map((reply) => reply.id === replyId ? { ...reply, content: trimmed, updatedAt: now } : reply);
+          return {
+            ...mark,
+            replies,
+            note: {
+              ...mark.note,
+              content: replies.map((reply) => reply.content).join("\n\n"),
+              updatedAt: now
+            },
+            remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+          };
+        })
+      });
     });
   }
   async deleteReply(filePath, markId, replyId) {
-    const document = await this.loadDocument(filePath);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    return this.saveDocument({
-      ...document,
-      marks: document.marks.map((mark) => {
-        var _a;
-        if (mark.id !== markId) {
-          return mark;
-        }
-        const replies = this.getReplies(mark).filter((reply) => reply.id !== replyId);
-        return {
-          ...mark,
-          replies,
-          note: {
-            ...mark.note,
-            content: replies.map((reply) => reply.content).join("\n\n"),
-            updatedAt: now
-          },
-          remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
-        };
-      })
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      return this.writeDocument({
+        ...document,
+        marks: document.marks.map((mark) => {
+          var _a;
+          if (mark.id !== markId) {
+            return mark;
+          }
+          const replies = this.getReplies(mark).filter((reply) => reply.id !== replyId);
+          return {
+            ...mark,
+            replies,
+            note: {
+              ...mark.note,
+              content: replies.map((reply) => reply.content).join("\n\n"),
+              updatedAt: now
+            },
+            remote: ((_a = mark.remote) == null ? void 0 : _a.status) === "synced" ? { ...mark.remote, status: "pending" } : mark.remote
+          };
+        })
+      });
     });
   }
   async deleteMark(filePath, markId) {
-    const document = await this.loadDocument(filePath);
-    return this.saveDocument({
-      ...document,
-      marks: document.marks.filter((mark) => mark.id !== markId)
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      return this.writeDocument({
+        ...document,
+        marks: document.marks.filter((mark) => mark.id !== markId)
+      });
     });
   }
   async relocateDocument(filePath, source) {
-    const document = await this.loadDocument(filePath);
-    let changed = false;
-    const marks = document.marks.map((mark) => {
-      const anchor = relocateAnchor(source, mark.anchor);
-      if (!anchor) {
-        if (mark.status === "orphaned") {
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      let changed = false;
+      const marks = document.marks.map((mark) => {
+        const anchor = relocateAnchor(source, mark.anchor);
+        if (!anchor) {
+          if (mark.status === "orphaned") {
+            return mark;
+          }
+          changed = true;
+          return { ...mark, status: "orphaned" };
+        }
+        if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
           return mark;
         }
         changed = true;
-        return { ...mark, status: "orphaned" };
+        return {
+          ...mark,
+          anchor,
+          status: mark.status === "orphaned" ? "active" : mark.status
+        };
+      });
+      if (!changed) {
+        return document;
       }
-      if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
-        return mark;
-      }
-      changed = true;
-      return {
-        ...mark,
-        anchor,
-        status: mark.status === "orphaned" ? "active" : mark.status
-      };
+      return this.writeDocument({ ...document, marks });
     });
-    if (!changed) {
-      return document;
+  }
+  enqueueMutation(mutation) {
+    const result = this.mutationTail.then(mutation, mutation);
+    this.mutationTail = result.then(() => void 0, () => void 0);
+    return result;
+  }
+  async readDocument(normalizedPath) {
+    const sidecarPath = this.getSidecarPath(normalizedPath);
+    if (!await this.app.vault.adapter.exists(sidecarPath)) {
+      return this.createEmptyDocument(normalizedPath);
     }
-    return this.saveDocument({ ...document, marks });
+    const raw = await this.app.vault.adapter.read(sidecarPath);
+    const document = this.parseDocument(raw, normalizedPath);
+    return document || this.createEmptyDocument(normalizedPath);
   }
   createEmptyDocument(filePath) {
     return {
@@ -2068,6 +2188,57 @@ var SideMarkStore = class {
   }
   getFilesDir() {
     return (0, import_obsidian7.normalizePath)(`${this.settings.dataDir || DEFAULT_SETTINGS.dataDir}/files`);
+  }
+  async readAllDocuments() {
+    const filesDir = this.getFilesDir();
+    if (!await this.app.vault.adapter.exists(filesDir)) {
+      return [];
+    }
+    const listed = await this.app.vault.adapter.list(filesDir);
+    const sidecarPaths = listed.files.filter((filePath) => filePath.endsWith(".json")).sort();
+    const documents = new Array(sidecarPaths.length).fill(null);
+    let nextIndex = 0;
+    const readNext = async () => {
+      while (nextIndex < sidecarPaths.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const sidecarPath = sidecarPaths[index];
+        try {
+          const raw = await this.app.vault.adapter.read(sidecarPath);
+          const document = this.parseDocument(raw);
+          if (!document) {
+            console.warn(`FloatMark: skipping sidecar without filePath: ${sidecarPath}`);
+          }
+          documents[index] = document;
+        } catch (error) {
+          console.warn(`FloatMark: failed to read sidecar: ${sidecarPath}`, error);
+        }
+      }
+    };
+    const workerCount = Math.min(SIDECAR_READ_CONCURRENCY, sidecarPaths.length);
+    await Promise.all(Array.from({ length: workerCount }, () => readNext()));
+    return documents.filter((document) => document !== null).sort((left, right) => left.filePath.localeCompare(right.filePath));
+  }
+  parseDocument(raw, fallbackFilePath) {
+    const parsed = JSON.parse(raw);
+    const storedFilePath = typeof parsed.filePath === "string" ? parsed.filePath.trim() : "";
+    const filePath = fallbackFilePath || storedFilePath;
+    if (!filePath) {
+      return null;
+    }
+    const normalizedPath = (0, import_obsidian7.normalizePath)(filePath);
+    const marks = Array.isArray(parsed.marks) ? parsed.marks.map((mark) => ({ ...this.normalizeMark(mark), filePath: normalizedPath })) : [];
+    return {
+      schemaVersion: 1,
+      filePath: normalizedPath,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : (/* @__PURE__ */ new Date()).toISOString(),
+      marks
+    };
+  }
+  invalidateAllDocumentsCache() {
+    this.allDocumentsRevision += 1;
+    this.allDocumentsCache = null;
+    this.allDocumentsLoad = null;
   }
   normalizeMark(mark) {
     var _a, _b, _c;
@@ -2132,6 +2303,68 @@ var FLOAT_MARK_ICON_SVG = `
 </g>
 `;
 
+// src/sidebar-logic.ts
+function toggleSidebarScope(scope) {
+  return scope === "current" ? "vault" : "current";
+}
+function summarizeVaultDocuments(documents, options) {
+  const query = options.query.trim().toLowerCase();
+  const counts = { comments: 0, marks: 0 };
+  const groups = [];
+  for (const document of documents) {
+    const marks = [];
+    for (const mark of document.marks) {
+      if (!matchesCommonFilters(mark, document.filePath, options, query)) {
+        continue;
+      }
+      const tab = mark.mark.kind === "comment" ? "comments" : mark.mark.kind === "highlight" ? "marks" : null;
+      if (!tab) {
+        continue;
+      }
+      counts[tab] += 1;
+      if (tab === options.tab) {
+        marks.push(mark);
+      }
+    }
+    if (marks.length > 0) {
+      groups.push({ filePath: document.filePath, marks });
+    }
+  }
+  groups.sort((left, right) => left.filePath.localeCompare(right.filePath));
+  return { groups, counts };
+}
+function bindVaultCardNavigation(card, label, navigate) {
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.setAttribute("aria-label", label);
+  card.addEventListener("click", navigate);
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    navigate();
+  });
+}
+function matchesCommonFilters(mark, filePath, options, query) {
+  if (options.status !== "all" && mark.status !== options.status) {
+    return false;
+  }
+  if (mark.mark.kind === "comment" && options.color !== "all" && mark.mark.color !== options.color) {
+    return false;
+  }
+  if (!query) {
+    return true;
+  }
+  const searchableText = [
+    filePath,
+    mark.anchor.selectedText,
+    mark.note.content,
+    ...(mark.replies || []).map((reply) => reply.content)
+  ].join("\n").toLowerCase();
+  return searchableText.includes(query);
+}
+
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 var MARK_COLORS = [
@@ -2145,6 +2378,8 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.focusedMarkId = "";
+    this.viewScope = "current";
+    this.renderGeneration = 0;
     this.activeTab = "comments";
     this.filter = "active";
     this.tagFilter = "all";
@@ -2154,6 +2389,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     this.searchSelectionStart = null;
     this.searchSelectionEnd = null;
     this.isSearchComposing = false;
+    this.restoreScopeControlFocus = false;
   }
   getViewType() {
     return SIDE_MARK_VIEW_TYPE;
@@ -2181,12 +2417,26 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
   }
   async render() {
+    const generation = ++this.renderGeneration;
     const container = this.contentEl;
     container.empty();
     container.addClass("side-mark-sidebar");
     const header = container.createDiv({ cls: "side-mark-sidebar-header" });
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
     titleRow.createEl("h3", { text: this.t("sidebar.title") });
+    this.renderScopeControl(titleRow);
+    this.restoreScopeFocus();
+    if (this.viewScope === "vault") {
+      const documents = await this.plugin.store.loadAllDocuments();
+      if (generation !== this.renderGeneration || this.viewScope !== "vault") {
+        return;
+      }
+      this.renderVault(container, header, documents);
+      return;
+    }
+    this.renderCurrentDocument(container, header);
+  }
+  renderCurrentDocument(container, header) {
     const doc = this.plugin.currentDocument;
     const allMarks = (doc == null ? void 0 : doc.marks) || [];
     const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
@@ -2217,10 +2467,195 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       }
     }
   }
-  renderTabs(container, marks) {
+  renderScopeControl(container) {
+    switch (this.plugin.settings.scopeControlStyle) {
+      case "dropdown":
+        this.renderScopeDropdown(container);
+        return;
+      case "swap":
+        this.renderScopeSwap(container);
+        return;
+      case "switch":
+        this.renderScopeSwitch(container);
+        return;
+      default:
+        this.renderScopeTabs(container);
+    }
+  }
+  renderScopeTabs(container) {
+    const control = container.createDiv({ cls: "side-mark-sidebar-scope is-tabs" });
+    this.renderScopeButton(control, "current", this.t("sidebar.scopeCurrent"));
+    this.renderScopeButton(control, "vault", this.t("sidebar.scopeVault"));
+  }
+  renderScopeDropdown(container) {
+    const control = container.createDiv({ cls: "side-mark-sidebar-scope is-dropdown" });
+    const label = this.viewScope === "current" ? this.t("sidebar.scopeCurrent") : this.t("sidebar.scopeVault");
+    const button = control.createEl("button", {
+      cls: "side-mark-sidebar-scope-dropdown",
+      attr: {
+        type: "button",
+        "aria-haspopup": "menu",
+        "aria-label": label,
+        "data-side-mark-scope-control": ""
+      }
+    });
+    button.createSpan({ cls: "side-mark-sidebar-scope-dot" });
+    button.createSpan({ text: label });
+    const chevron = button.createSpan({ cls: "side-mark-sidebar-scope-chevron" });
+    (0, import_obsidian8.setIcon)(chevron, "chevron-down");
+    button.addEventListener("click", (event) => {
+      const menu = new import_obsidian8.Menu();
+      button.setAttr("aria-expanded", "true");
+      menu.onHide(() => button.setAttr("aria-expanded", "false"));
+      for (const option of [
+        { scope: "current", label: this.t("sidebar.scopeCurrent") },
+        { scope: "vault", label: this.t("sidebar.scopeVault") }
+      ]) {
+        menu.addItem((item) => item.setTitle(option.label).setChecked(this.viewScope === option.scope).onClick(() => this.setViewScope(option.scope)));
+      }
+      if (event.detail > 0) {
+        menu.showAtMouseEvent(event);
+        return;
+      }
+      const rect = button.getBoundingClientRect();
+      menu.showAtPosition({ x: rect.left, y: rect.bottom, width: rect.width }, button.ownerDocument);
+    });
+  }
+  renderScopeSwap(container) {
+    const control = container.createDiv({ cls: "side-mark-sidebar-scope is-swap" });
+    const label = this.viewScope === "current" ? this.t("sidebar.scopeCurrent") : this.t("sidebar.scopeVault");
+    const nextLabel = this.viewScope === "current" ? this.t("sidebar.scopeVault") : this.t("sidebar.scopeCurrent");
+    control.createSpan({ cls: "side-mark-sidebar-scope-signal" });
+    control.createSpan({ cls: "side-mark-sidebar-scope-swap-label", text: label });
+    const button = control.createEl("button", {
+      cls: "side-mark-sidebar-scope-swap-button",
+      attr: {
+        type: "button",
+        "aria-label": this.t("sidebar.switchScope", { scope: nextLabel }),
+        "data-side-mark-scope-control": ""
+      }
+    });
+    (0, import_obsidian8.setIcon)(button, "arrow-left-right");
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleViewScope();
+    });
+  }
+  renderScopeSwitch(container) {
+    const control = container.createDiv({ cls: "side-mark-sidebar-scope is-switch" });
+    const isVault = this.viewScope === "vault";
+    control.createSpan({
+      cls: `side-mark-sidebar-scope-switch-label${isVault ? "" : " is-active"}`,
+      text: this.t("sidebar.scopeCurrentShort")
+    });
+    const button = control.createEl("button", {
+      cls: "side-mark-sidebar-scope-switch",
+      attr: {
+        type: "button",
+        "role": "switch",
+        "aria-checked": String(isVault),
+        "aria-label": this.t("sidebar.scopeSwitchLabel"),
+        "data-side-mark-scope-control": ""
+      }
+    });
+    const track = button.createSpan({ cls: "side-mark-sidebar-scope-switch-track" });
+    track.createSpan({ cls: "side-mark-sidebar-scope-switch-knob" });
+    control.createSpan({
+      cls: `side-mark-sidebar-scope-switch-label${isVault ? " is-active" : ""}`,
+      text: this.t("sidebar.scopeVaultShort")
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleViewScope();
+    });
+  }
+  renderScopeButton(container, scope, label) {
+    const button = container.createEl("button", {
+      cls: `side-mark-sidebar-scope-button${this.viewScope === scope ? " is-active" : ""}`,
+      text: label,
+      attr: { type: "button", "aria-pressed": String(this.viewScope === scope) }
+    });
+    if (this.viewScope === scope) {
+      button.dataset.sideMarkScopeControl = "";
+    }
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.setViewScope(scope);
+    });
+  }
+  setViewScope(scope) {
+    if (this.viewScope === scope) {
+      return;
+    }
+    this.viewScope = scope;
+    this.searchQuery = "";
+    this.restoreScopeControlFocus = true;
+    void this.render();
+  }
+  toggleViewScope() {
+    this.setViewScope(toggleSidebarScope(this.viewScope));
+  }
+  restoreScopeFocus() {
+    var _a;
+    if (!this.restoreScopeControlFocus) {
+      return;
+    }
+    this.restoreScopeControlFocus = false;
+    (_a = this.contentEl.querySelector("[data-side-mark-scope-control]")) == null ? void 0 : _a.focus();
+  }
+  renderVault(container, header, documents) {
+    const allMarks = documents.flatMap((document) => document.marks);
+    const toolbarRow = header.createDiv({ cls: "side-mark-sidebar-toolbar-row" });
+    const result = summarizeVaultDocuments(documents, {
+      tab: this.activeTab,
+      status: this.filter,
+      color: this.colorFilter,
+      query: this.searchQuery
+    });
+    this.renderTabs(toolbarRow, allMarks, result.counts);
+    const controls = toolbarRow.createDiv({ cls: "side-mark-sidebar-controls" });
+    const tabMarks = this.getTabMarks(allMarks);
+    const groups = result.groups;
+    const filteredMarks = groups.flatMap((group) => group.marks);
+    this.renderFilters(header, controls, tabMarks, filteredMarks);
+    this.restoreSearchInputFocus();
+    if (groups.length === 0) {
+      container.createDiv({ text: this.t("sidebar.emptyVault"), cls: "setting-item-description" });
+      return;
+    }
+    for (const group of groups) {
+      const section = container.createDiv({ cls: "side-mark-vault-file-group" });
+      const groupHeader = section.createDiv({ cls: "side-mark-vault-file-header" });
+      groupHeader.createDiv({ cls: "side-mark-vault-file-name", text: getFileName(group.filePath) });
+      groupHeader.createDiv({ cls: "side-mark-vault-file-path", text: group.filePath });
+      for (const mark of group.marks) {
+        this.renderVaultCard(section, group.filePath, mark);
+      }
+    }
+  }
+  renderVaultCard(container, filePath, mark) {
+    const card = container.createDiv({
+      cls: `side-mark-card side-mark-vault-card is-color-${mark.mark.color}${mark.status === "resolved" ? " is-resolved" : ""}`
+    });
+    card.dataset.sideMarkCardId = mark.id;
+    const locate = () => void this.plugin.jumpToDocumentMark(filePath, mark.id);
+    const label = `${this.t("sidebar.locate")}: ${filePath} \u2014 ${mark.anchor.selectedText}`;
+    bindVaultCardNavigation(card, label, locate);
+    const quote = card.createDiv({ cls: "side-mark-card-quote" });
+    quote.createDiv({ cls: "side-mark-card-quote-text", text: mark.anchor.selectedText });
+    const summary = getVaultMarkSummary(mark);
+    if (summary) {
+      card.createDiv({ cls: "side-mark-vault-summary", text: summary });
+    }
+    card.createDiv({ cls: `side-mark-vault-status is-${mark.status}`, text: this.t(`sidebar.${mark.status}`) });
+  }
+  renderTabs(container, marks, counts) {
+    var _a, _b;
     const tabs = container.createDiv({ cls: "side-mark-sidebar-tabs" });
-    this.renderTab(tabs, "comments", this.t("sidebar.comments"), this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length);
-    this.renderTab(tabs, "marks", this.t("sidebar.marks"), this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length);
+    const commentCount = (_a = counts == null ? void 0 : counts.comments) != null ? _a : this.getFilteredMarks(this.getTabMarks(marks, "comments"), "comments").length;
+    const markCount = (_b = counts == null ? void 0 : counts.marks) != null ? _b : this.getFilteredMarks(this.getTabMarks(marks, "marks"), "marks").length;
+    this.renderTab(tabs, "comments", this.t("sidebar.comments"), commentCount);
+    this.renderTab(tabs, "marks", this.t("sidebar.marks"), markCount);
   }
   renderTab(container, tab, label, count) {
     const button = container.createEl("button", {
@@ -2305,10 +2740,10 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     container.createDiv({
       cls: "side-mark-sidebar-stats",
-      text: allMarks.length === filteredMarks.length ? this.t("sidebar.currentDocumentStats", {
+      text: allMarks.length === filteredMarks.length ? this.t(this.viewScope === "vault" ? "sidebar.vaultStats" : "sidebar.currentDocumentStats", {
         count: allMarks.length,
         kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
-      }) : this.t("sidebar.currentFilterStats", {
+      }) : this.t(this.viewScope === "vault" ? "sidebar.vaultFilterStats" : "sidebar.currentFilterStats", {
         filtered: filteredMarks.length,
         total: allMarks.length,
         kind: this.activeTab === "comments" ? this.t("sidebar.comments") : this.t("sidebar.marks")
@@ -3041,6 +3476,16 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     await this.plugin.deleteMark(markId);
   }
 };
+function getFileName(filePath) {
+  return filePath.split("/").pop() || filePath;
+}
+function getVaultMarkSummary(mark) {
+  const replies = (mark.replies || []).map((reply) => reply.content.trim()).filter(Boolean);
+  if (replies.length > 0) {
+    return replies.join(" \xB7 ");
+  }
+  return mark.note.content.trim();
+}
 function formatReplyTime(value, t) {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
@@ -4682,6 +5127,19 @@ function isIgnoredSpacing(char) {
   return /\s/.test(char) || /[\u200B-\u200D\uFEFF]/.test(char);
 }
 
+// src/navigation-guard.ts
+var NavigationGuard = class {
+  constructor() {
+    this.generation = 0;
+  }
+  begin() {
+    return ++this.generation;
+  }
+  isCurrent(generation, filePath, expectedFile, vaultFile, viewFile, activeFile) {
+    return generation === this.generation && expectedFile.path === filePath && vaultFile === expectedFile && (viewFile === void 0 || viewFile === expectedFile) && (activeFile === void 0 || activeFile === expectedFile);
+  }
+};
+
 // src/main.ts
 var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -4702,6 +5160,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.previewRenderGenerations = /* @__PURE__ */ new Map();
     this.readingContainerGenerations = /* @__PURE__ */ new WeakMap();
     this.sourceLineStartsCache = /* @__PURE__ */ new Map();
+    this.documentMarkNavigation = new NavigationGuard();
+    this.scopeControlStyleSave = Promise.resolve();
   }
   async onload() {
     await this.loadSettings();
@@ -4727,6 +5187,20 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         void this.reloadCurrentDocument();
       }
     }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (file instanceof import_obsidian10.TFile && file.extension === "md") {
+        void this.handleMarkdownRename(file.path, oldPath).catch((error) => {
+          console.error(`FloatMark: failed to migrate sidecar from ${oldPath} to ${file.path}`, error);
+        });
+      }
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      if (file instanceof import_obsidian10.TFile && file.extension === "md") {
+        void this.handleMarkdownDelete(file.path).catch((error) => {
+          console.error(`FloatMark: failed to delete sidecar for ${file.path}`, error);
+        });
+      }
+    }));
     this.settingTab = new SideMarkSettingTab(this);
     this.addSettingTab(this.settingTab);
     await this.reloadCurrentDocument();
@@ -4749,11 +5223,13 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const hasSavedLanguage = (saved == null ? void 0 : saved.language) === "zh-CN" || (saved == null ? void 0 : saved.language) === "en";
     const language = hasSavedLanguage ? saved.language : getInitialPluginLanguage(this.app, (0, import_obsidian10.getLanguage)());
     const commentAuthorName = (saved == null ? void 0 : saved.commentAuthorName) || getDefaultCommentAuthorName(language);
+    const scopeControlStyle = normalizeScopeControlStyle(saved == null ? void 0 : saved.scopeControlStyle);
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...saved || {},
       language,
-      commentAuthorName
+      commentAuthorName,
+      scopeControlStyle
     };
     if (!hasSavedLanguage) {
       await this.saveData(this.settings);
@@ -4775,6 +5251,15 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.settings.language = nextLanguage;
     await this.saveSettings();
     await this.refreshLanguage();
+  }
+  async setScopeControlStyle(style) {
+    if (this.settings.scopeControlStyle === style) {
+      return;
+    }
+    this.settings.scopeControlStyle = style;
+    this.scopeControlStyleSave = this.scopeControlStyleSave.catch(() => void 0).then(() => this.saveSettings());
+    await this.scopeControlStyleSave;
+    await this.refreshSidebar();
   }
   async refreshLanguage() {
     var _a, _b, _c, _d, _e, _f;
@@ -4884,6 +5369,18 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.currentDocument = await this.store.relocateDocument(file.path, source);
     await this.refreshSidebar();
   }
+  async handleMarkdownRename(newFilePath, oldFilePath) {
+    await this.store.renameDocument(oldFilePath, newFilePath);
+    await this.reloadCurrentDocument();
+  }
+  async handleMarkdownDelete(filePath) {
+    var _a;
+    await this.store.deleteDocument(filePath);
+    if (((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath) {
+      this.currentDocument = null;
+    }
+    await this.refreshSidebar();
+  }
   async focusMark(markId) {
     await this.openSidebar();
     const view = this.getSidebarView();
@@ -4915,7 +5412,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (!file || !mark) return;
     this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
     await this.refreshMarkViews(file.path);
-    this.deleteRemoteCommentReplyInBackground(file.path, mark, replyId);
+    this.deleteRemoteCommentReplyInBackground(file, mark, replyId);
   }
   async toggleResolved(markId) {
     var _a;
@@ -4991,15 +5488,99 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   async jumpToMark(markId) {
     var _a;
+    const generation = this.documentMarkNavigation.begin();
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
-    if (!mark) return;
+    if (!mark) {
+      return;
+    }
+    const file = this.app.vault.getFileByPath(mark.filePath);
+    if (!(file instanceof import_obsidian10.TFile) || file.extension !== "md") {
+      return;
+    }
     const view = await this.ensureMarkdownViewForFile(mark.filePath);
-    if (!mark || !view) return;
+    if (!view || !this.isCurrentDocumentMarkNavigation(generation, mark.filePath, file, view)) {
+      return;
+    }
+    const isCurrent = () => this.isCurrentDocumentMarkNavigation(generation, mark.filePath, file, view);
+    await this.locateMarkInView(view, mark, isCurrent);
+    if (!isCurrent()) {
+      return;
+    }
+  }
+  async jumpToDocumentMark(filePath, markId) {
+    const generation = this.documentMarkNavigation.begin();
+    const file = this.app.vault.getFileByPath(filePath);
+    if (!(file instanceof import_obsidian10.TFile) || file.extension !== "md") {
+      new import_obsidian10.Notice(this.t("notice.markFileUnavailable"));
+      return;
+    }
+    let view;
+    try {
+      view = await this.ensureMarkdownViewForFile(filePath);
+    } catch (error) {
+      if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file)) {
+        return;
+      }
+      console.warn(`FloatMark: failed to open Markdown view ${filePath}`, error);
+      new import_obsidian10.Notice(this.t("notice.markFileUnavailable"));
+      return;
+    }
+    if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+      return;
+    }
+    if (!view) {
+      new import_obsidian10.Notice(this.t("notice.markFileUnavailable"));
+      return;
+    }
+    let document;
+    try {
+      const source = await this.app.vault.read(file);
+      if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+        return;
+      }
+      document = await this.store.relocateDocument(filePath, source);
+    } catch (error) {
+      if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+        return;
+      }
+      console.warn(`FloatMark: failed to open mark source ${filePath}`, error);
+      new import_obsidian10.Notice(this.t("notice.markFileUnavailable"));
+      return;
+    }
+    if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+      return;
+    }
+    this.currentDocument = document;
+    this.lastMarkdownFilePath = filePath;
+    const mark = document.marks.find((item) => item.id === markId);
+    if (!mark) {
+      new import_obsidian10.Notice(this.t("notice.markUnavailable"));
+      return;
+    }
+    const isCurrent = () => this.isCurrentDocumentMarkNavigation(generation, filePath, file, view);
+    await this.locateMarkInView(view, mark, isCurrent);
+    if (!isCurrent()) {
+      return;
+    }
+  }
+  isCurrentDocumentMarkNavigation(generation, filePath, file, view) {
+    var _a;
+    const vaultFile = this.app.vault.getFileByPath(filePath);
+    const activeFile = view ? (_a = this.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView)) == null ? void 0 : _a.file : void 0;
+    return this.documentMarkNavigation.isCurrent(generation, filePath, file, vaultFile, view == null ? void 0 : view.file, activeFile);
+  }
+  async locateMarkInView(view, mark, isCurrent = () => true) {
+    if (!isCurrent()) {
+      return;
+    }
     if (view.getMode() === "preview") {
-      if (this.jumpToReadingMark(markId)) {
+      if (this.jumpToReadingMark(mark.id)) {
         return;
       }
       await this.setMarkdownViewMode(view, "source");
+      if (!isCurrent()) {
+        return;
+      }
     }
     view.editor.setSelection(
       view.editor.offsetToPos(mark.anchor.startOffset),
@@ -5060,7 +5641,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       new import_obsidian10.Notice(this.t("notice.larkDeleteCommentFailed", { message }), 8e3);
     });
   }
-  deleteRemoteCommentReplyInBackground(filePath, mark, replyId) {
+  deleteRemoteCommentReplyInBackground(file, mark, replyId) {
     if (!shouldSyncRemoteComment(mark)) {
       return;
     }
@@ -5070,8 +5651,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       if (!remote) {
         return;
       }
-      const document = await this.store.updateMark(filePath, mark.id, { remote });
-      if (((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath) {
+      const currentFile = this.app.vault.getFileByPath(file.path);
+      if (!(currentFile instanceof import_obsidian10.TFile) || currentFile !== file || currentFile.extension !== "md") {
+        return;
+      }
+      const document = await this.store.updateMark(file.path, mark.id, { remote });
+      if (((_a = this.currentDocument) == null ? void 0 : _a.filePath) === file.path) {
         this.currentDocument = document;
         await this.refreshSidebar();
       }
@@ -5767,21 +6352,22 @@ ${stripped}
     return null;
   }
   async ensureMarkdownViewForFile(filePath) {
-    var _a;
+    var _a, _b, _c;
     for (const leaf2 of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf2.view;
       if (view instanceof import_obsidian10.MarkdownView && ((_a = view.file) == null ? void 0 : _a.path) === filePath) {
-        void this.app.workspace.revealLeaf(leaf2);
-        return view;
+        await this.app.workspace.revealLeaf(leaf2);
+        return leaf2.view instanceof import_obsidian10.MarkdownView && ((_b = leaf2.view.file) == null ? void 0 : _b.path) === filePath ? leaf2.view : null;
       }
     }
     const file = this.app.vault.getFileByPath(filePath);
-    if (!file) {
+    if (!(file instanceof import_obsidian10.TFile) || file.extension !== "md") {
       return null;
     }
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
-    return leaf.view instanceof import_obsidian10.MarkdownView ? leaf.view : null;
+    await this.app.workspace.revealLeaf(leaf);
+    return leaf.view instanceof import_obsidian10.MarkdownView && ((_c = leaf.view.file) == null ? void 0 : _c.path) === filePath ? leaf.view : null;
   }
   async setMarkdownViewMode(view, mode) {
     const state = view.leaf.getViewState();
@@ -5809,8 +6395,11 @@ ${stripped}
     return (_a = this.app.workspace.getLeavesOfType(SIDE_MARK_VIEW_TYPE)[0]) == null ? void 0 : _a.view;
   }
   async refreshSidebar() {
-    var _a;
-    await ((_a = this.getSidebarView()) == null ? void 0 : _a.render());
+    for (const leaf of this.app.workspace.getLeavesOfType(SIDE_MARK_VIEW_TYPE)) {
+      if (leaf.view instanceof SideMarkSidebarView) {
+        await leaf.view.render();
+      }
+    }
   }
 };
 function stripBlockPrefix(text) {
@@ -5952,6 +6541,11 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
         await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.scopeControlStyle.name")).setDesc(this.plugin.t("settings.scopeControlStyle.desc")).addDropdown((dropdown) => {
+      dropdown.addOption("tabs", this.plugin.t("settings.scopeControlStyle.tabs")).addOption("dropdown", this.plugin.t("settings.scopeControlStyle.dropdown")).addOption("swap", this.plugin.t("settings.scopeControlStyle.swap")).addOption("switch", this.plugin.t("settings.scopeControlStyle.switch")).setValue(this.plugin.settings.scopeControlStyle).onChange(async (value) => {
+        await this.plugin.setScopeControlStyle(value);
       });
     });
     this.renderLarkSyncSetting(containerEl);
