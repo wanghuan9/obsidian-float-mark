@@ -6,7 +6,9 @@ import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type Mar
 
 const SIDECAR_READ_CONCURRENCY = 8;
 
-export type MarkAnchorUpdate = Pick<SideMark, "id" | "anchor" | "status">;
+export interface MarkAnchorUpdate extends Pick<SideMark, "id" | "anchor" | "status"> {
+	expectedStatus: SideMark["status"];
+}
 
 export class SideMarkStore {
 	private allDocumentsCache: SideMarkDocument[] | null = null;
@@ -61,7 +63,7 @@ export class SideMarkStore {
 			const updatesById = new Map(updates.map((update) => [update.id, update]));
 			const marks = document.marks.map((mark) => {
 				const update = updatesById.get(mark.id);
-				return update
+				return update && mark.status === update.expectedStatus
 					? { ...mark, anchor: update.anchor, status: update.status }
 					: mark;
 			});

@@ -245,6 +245,7 @@ const staleAnchorUpdate = {
 await anchorMergeStore.updateMarkAnchors("merge.md", [{
 	id: "tracked",
 	anchor: staleAnchorUpdate,
+	expectedStatus: "active",
 	status: "orphaned"
 }]);
 const anchorMergedDocument = await anchorMergeStore.loadDocument("merge.md");
@@ -255,6 +256,19 @@ assert.equal(anchorMergedMark.status, "orphaned");
 assert.deepEqual(anchorMergedMark.mark, currentTrackedMark.mark);
 assert.deepEqual(anchorMergedMark.note, currentTrackedMark.note);
 assert.deepEqual(anchorMergedMark.remote, currentTrackedMark.remote);
+
+const resolvedTrackedMark = { ...currentTrackedMark, status: "resolved" };
+await anchorMergeStore.saveDocument(createDocument("merge.md", [resolvedTrackedMark, currentNewMark]));
+await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: staleAnchorUpdate,
+	expectedStatus: "active",
+	status: "orphaned"
+}]);
+const statusConflictDocument = await anchorMergeStore.loadDocument("merge.md");
+const statusConflictMark = statusConflictDocument.marks.find((mark) => mark.id === "tracked");
+assert.equal(statusConflictMark.status, "resolved");
+assert.deepEqual(statusConflictMark.anchor, currentTrackedMark.anchor);
 
 await store.saveDocument(createDocument("old.md", [createMark("renamed", "old.md")]));
 await store.renameDocument("old.md", "renamed/new.md");

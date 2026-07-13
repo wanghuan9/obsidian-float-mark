@@ -3,7 +3,7 @@ import type { MarkdownPostProcessorContext } from "obsidian";
 import type { ChangeDesc } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
-import { reconcileEditorMarks } from "./editor-anchor-tracker";
+import { mergePendingEditorAnchorUpdates, reconcileEditorMarks } from "./editor-anchor-tracker";
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
@@ -90,6 +90,7 @@ export default class SideMarkPlugin extends Plugin {
 	} | null = null;
 	private readingSelectionTimer: number | null = null;
 	private editorDocumentSaveTimer: number | null = null;
+	private pendingEditorAnchorUpdates = new Map<string, MarkAnchorUpdate>();
 	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
 	private readonly previewObservers = new Map<MarkdownView, PreviewObserverState>();
@@ -149,6 +150,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.sourceLineStartsCache.clear();
 		this.clearReadingSelectionTimer();
 		this.clearEditorDocumentSaveTimer();
+		this.pendingEditorAnchorUpdates.clear();
 		this.clearReadingSelectionHighlight();
 		this.toolbar?.destroy();
 		this.readingToolbar?.destroy();
@@ -333,26 +335,29 @@ export default class SideMarkPlugin extends Plugin {
 		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
 			return;
 		}
+		const previousMarks = this.currentDocument.marks;
+		const nextMarks = reconcileEditorMarks(previousMarks, source, changes);
 		this.currentDocument = {
 			...this.currentDocument,
-			marks: reconcileEditorMarks(this.currentDocument.marks, source, changes)
+			marks: nextMarks
 		};
-		this.scheduleEditorDocumentSave(filePath);
+		this.scheduleEditorDocumentSave(filePath, previousMarks, nextMarks);
 	}
 
-	private scheduleEditorDocumentSave(filePath: string): void {
+	private scheduleEditorDocumentSave(filePath: string, previousMarks: SideMark[], nextMarks: SideMark[]): void {
 		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
 			return;
 		}
+		mergePendingEditorAnchorUpdates(this.pendingEditorAnchorUpdates, previousMarks, nextMarks);
+		if (this.pendingEditorAnchorUpdates.size === 0) {
+			return;
+		}
 		this.clearEditorDocumentSaveTimer();
-		const updates: MarkAnchorUpdate[] = this.currentDocument.marks.map(({ id, anchor, status }) => ({
-			id,
-			anchor,
-			status
-		}));
 		this.editorDocumentSaveTimer = window.setTimeout(() => {
 			this.editorDocumentSaveTimer = null;
-			void this.saveEditorMarkAnchors(filePath, updates);
+			const pending = this.pendingEditorAnchorUpdates;
+			this.pendingEditorAnchorUpdates = new Map();
+			void this.saveEditorMarkAnchors(filePath, Array.from(pending.values())).finally(() => pending.clear());
 		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
 	}
 

@@ -12,7 +12,7 @@ await esbuild.build({
 	outfile: "test/.tmp/editor-anchor-tracker.mjs"
 });
 
-const { reconcileEditorMarks } = await import("./.tmp/editor-anchor-tracker.mjs");
+const { mergePendingEditorAnchorUpdates, reconcileEditorMarks } = await import("./.tmp/editor-anchor-tracker.mjs");
 
 function createTextAnchor(source, startOffset, endOffset) {
 	return {
@@ -75,5 +75,29 @@ assert.equal(restored[0].anchor.startOffset, restoredSource.indexOf("marked"));
 
 const resolved = { ...mark, status: "resolved" };
 assert.equal(reconcileEditorMarks([resolved], inserted.state.doc.toString(), inserted.changes)[0], resolved);
+
+const pendingUpdates = new Map();
+const firstOrphaned = {
+	...mark,
+	anchor: { ...mark.anchor, startOffset: mark.anchor.startOffset + 1, endOffset: mark.anchor.endOffset + 1 },
+	status: "orphaned"
+};
+mergePendingEditorAnchorUpdates(pendingUpdates, [mark], [firstOrphaned]);
+assert.equal(pendingUpdates.get(mark.id).expectedStatus, "active");
+assert.equal(pendingUpdates.get(mark.id).status, "orphaned");
+
+const finalActive = {
+	...firstOrphaned,
+	anchor: { ...firstOrphaned.anchor, startOffset: mark.anchor.startOffset + 2, endOffset: mark.anchor.endOffset + 2 },
+	status: "active"
+};
+mergePendingEditorAnchorUpdates(pendingUpdates, [firstOrphaned], [finalActive]);
+assert.equal(pendingUpdates.get(mark.id).expectedStatus, "active");
+assert.equal(pendingUpdates.get(mark.id).status, "active");
+assert.equal(pendingUpdates.get(mark.id).anchor, finalActive.anchor);
+
+const noChangeUpdates = new Map();
+mergePendingEditorAnchorUpdates(noChangeUpdates, [resolved], [resolved]);
+assert.equal(noChangeUpdates.size, 0);
 
 console.log("editor anchor tracker tests passed");
