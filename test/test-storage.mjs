@@ -214,6 +214,48 @@ await store.saveDocument(createDocument("new.md"));
 await store.loadAllDocuments();
 assert.equal(adapter.listCount, 2);
 
+const anchorMergeAdapter = new MemoryAdapter();
+const anchorMergeStore = createStore(anchorMergeAdapter);
+const currentTrackedMark = {
+	...createMark("tracked", "merge.md"),
+	mark: {
+		kind: "comment",
+		color: "blue",
+		textColor: "green",
+		backgroundColor: "blue-light"
+	},
+	note: {
+		content: "new note",
+		createdAt: "2026-07-12T00:00:00.000Z",
+		updatedAt: "2026-07-13T00:00:00.000Z"
+	},
+	remote: {
+		status: "synced",
+		larkCommentId: "comment-1"
+	}
+};
+const currentNewMark = createMark("new-mark", "merge.md");
+await anchorMergeStore.saveDocument(createDocument("merge.md", [currentTrackedMark, currentNewMark]));
+const staleAnchorUpdate = {
+	...currentTrackedMark.anchor,
+	startOffset: 12,
+	endOffset: 16,
+	position: { lineStart: 2, lineEnd: 2, columnStart: 3, columnEnd: 7 }
+};
+await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: staleAnchorUpdate,
+	status: "orphaned"
+}]);
+const anchorMergedDocument = await anchorMergeStore.loadDocument("merge.md");
+const anchorMergedMark = anchorMergedDocument.marks.find((mark) => mark.id === "tracked");
+assert.deepEqual(anchorMergedDocument.marks.map((mark) => mark.id), ["new-mark", "tracked"]);
+assert.deepEqual(anchorMergedMark.anchor, staleAnchorUpdate);
+assert.equal(anchorMergedMark.status, "orphaned");
+assert.deepEqual(anchorMergedMark.mark, currentTrackedMark.mark);
+assert.deepEqual(anchorMergedMark.note, currentTrackedMark.note);
+assert.deepEqual(anchorMergedMark.remote, currentTrackedMark.remote);
+
 await store.saveDocument(createDocument("old.md", [createMark("renamed", "old.md")]));
 await store.renameDocument("old.md", "renamed/new.md");
 const oldSidecarPath = `${filesDir}/${hashPath("old.md")}.json`;

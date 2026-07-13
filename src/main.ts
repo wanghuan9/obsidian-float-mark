@@ -9,7 +9,7 @@ import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from 
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
-import { SideMarkStore } from "./storage";
+import { type MarkAnchorUpdate, SideMarkStore } from "./storage";
 import { DEFAULT_SETTINGS, type MarkColor, normalizeScopeControlStyle, type RemoteSyncState, type ScopeControlStyle, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
 import {
@@ -345,10 +345,14 @@ export default class SideMarkPlugin extends Plugin {
 			return;
 		}
 		this.clearEditorDocumentSaveTimer();
-		const document = this.currentDocument;
+		const updates: MarkAnchorUpdate[] = this.currentDocument.marks.map(({ id, anchor, status }) => ({
+			id,
+			anchor,
+			status
+		}));
 		this.editorDocumentSaveTimer = window.setTimeout(() => {
 			this.editorDocumentSaveTimer = null;
-			void this.saveEditorDocument(document);
+			void this.saveEditorMarkAnchors(filePath, updates);
 		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
 	}
 
@@ -359,13 +363,13 @@ export default class SideMarkPlugin extends Plugin {
 		}
 	}
 
-	private async saveEditorDocument(document: SideMarkDocument): Promise<void> {
+	private async saveEditorMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<void> {
 		try {
-			await this.store.saveDocument(document);
+			await this.store.updateMarkAnchors(filePath, updates);
 			await this.refreshSidebar();
-			await this.renderPreviewMarksForFile(document.filePath);
+			await this.renderPreviewMarksForFile(filePath);
 		} catch (error) {
-			console.error(`FloatMark: failed to save editor anchors for ${document.filePath}`, error);
+			console.error(`FloatMark: failed to save editor anchors for ${filePath}`, error);
 		}
 	}
 

@@ -6,6 +6,8 @@ import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type Mar
 
 const SIDECAR_READ_CONCURRENCY = 8;
 
+export type MarkAnchorUpdate = Pick<SideMark, "id" | "anchor" | "status">;
+
 export class SideMarkStore {
 	private allDocumentsCache: SideMarkDocument[] | null = null;
 	private allDocumentsLoad: Promise<SideMarkDocument[]> | null = null;
@@ -51,6 +53,20 @@ export class SideMarkStore {
 
 	async saveDocument(document: SideMarkDocument): Promise<SideMarkDocument> {
 		return this.enqueueMutation(() => this.writeDocument(document));
+	}
+
+	async updateMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<SideMarkDocument> {
+		return this.enqueueMutation(async () => {
+			const document = await this.readDocument(normalizePath(filePath));
+			const updatesById = new Map(updates.map((update) => [update.id, update]));
+			const marks = document.marks.map((mark) => {
+				const update = updatesById.get(mark.id);
+				return update
+					? { ...mark, anchor: update.anchor, status: update.status }
+					: mark;
+			});
+			return this.writeDocument({ ...document, marks });
+		});
 	}
 
 	async renameDocument(oldFilePath: string, newFilePath: string): Promise<void> {
