@@ -61,6 +61,18 @@ interface SourceLineStartsCacheEntry {
 	lineStarts: number[];
 }
 
+interface ReadingRenderSnapshot {
+	source: string;
+	document: SideMarkDocument;
+	lineStarts: number[];
+}
+
+interface ReadingRenderSnapshotLoad {
+	sourceVersion: string;
+	storeRevision: number;
+	load: Promise<ReadingRenderSnapshot>;
+}
+
 export default class SideMarkPlugin extends Plugin {
 	settings!: SideMarkSettings;
 	store!: SideMarkStore;
@@ -97,6 +109,7 @@ export default class SideMarkPlugin extends Plugin {
 	private readonly previewRenderTimers = new Map<MarkdownView, number>();
 	private readonly previewRenderGenerations = new Map<MarkdownView, number>();
 	private readonly readingContainerGenerations = new WeakMap<HTMLElement, number>();
+	private readonly readingRenderSnapshots = new Map<string, ReadingRenderSnapshotLoad>();
 	private readonly sourceLineStartsCache = new Map<string, SourceLineStartsCacheEntry>();
 	private readonly documentMarkNavigation = new NavigationGuard();
 	private scopeControlStyleSave: Promise<void> = Promise.resolve();
@@ -121,12 +134,20 @@ export default class SideMarkPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncPreviewMarkObservers()));
 		this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
 		this.registerEvent(this.app.vault.on("modify", (file) => {
-			if (file instanceof TFile && file.extension === "md" && file.path === this.getActiveMarkdownFile()?.path) {
-				void this.reloadCurrentDocument();
+			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(file.path);
+				if (file.path === this.getActiveMarkdownFile()?.path) {
+					void this.reloadCurrentDocument();
+				}
 			}
 		}));
 		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
 			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(oldPath);
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(oldPath);
+				this.sourceLineStartsCache.delete(file.path);
 				void this.handleMarkdownRename(file.path, oldPath).catch((error) => {
 					console.error(`FloatMark: failed to migrate sidecar from ${oldPath} to ${file.path}`, error);
 				});
@@ -134,6 +155,8 @@ export default class SideMarkPlugin extends Plugin {
 		}));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
 			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(file.path);
 				void this.handleMarkdownDelete(file.path).catch((error) => {
 					console.error(`FloatMark: failed to delete sidecar for ${file.path}`, error);
 				});
@@ -147,6 +170,7 @@ export default class SideMarkPlugin extends Plugin {
 
 	override onunload(): void {
 		this.clearPreviewMarkObservers();
+		this.readingRenderSnapshots.clear();
 		this.sourceLineStartsCache.clear();
 		this.clearReadingSelectionTimer();
 		this.clearEditorDocumentSaveTimer();
@@ -371,6 +395,7 @@ export default class SideMarkPlugin extends Plugin {
 	private async saveEditorMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<void> {
 		try {
 			await this.store.updateMarkAnchors(filePath, updates);
+			this.invalidateReadingRenderSnapshot(filePath);
 			await this.refreshSidebar();
 			await this.renderPreviewMarksForFile(filePath);
 		} catch (error) {
@@ -1210,6 +1235,7 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	private async refreshMarkViews(filePath: string): Promise<void> {
+		this.invalidateReadingRenderSnapshot(filePath);
 		this.refreshEditorDecorations();
 		const document = this.currentDocument?.filePath === filePath ? this.currentDocument : undefined;
 		await Promise.all([
@@ -1251,20 +1277,52 @@ export default class SideMarkPlugin extends Plugin {
 		if (!file || file.extension !== "md") {
 			return;
 		}
-		const source = await this.app.vault.read(file);
-		if (this.readingContainerGenerations.get(container) !== generation) {
-			return;
-		}
-		const document = await this.store.relocateDocument(file.path, source);
+		const { source, document, lineStarts } = await this.getReadingRenderSnapshot(file);
 		if (this.readingContainerGenerations.get(container) !== generation) {
 			return;
 		}
 		const section = context?.getSectionInfo(container);
-		const lineStarts = this.getSourceLineStarts(file, source);
 		const marks = section
 			? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts)
 			: [];
 		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+	}
+
+	private getReadingRenderSnapshot(file: TFile): Promise<ReadingRenderSnapshot> {
+		const sourceVersion = `${file.stat.mtime}:${file.stat.size}`;
+		const storeRevision = this.store.getRevision();
+		const cached = this.readingRenderSnapshots.get(file.path);
+		if (cached?.sourceVersion === sourceVersion && cached.storeRevision === storeRevision) {
+			return cached.load;
+		}
+
+		const load = this.loadReadingRenderSnapshot(file);
+		const entry = { sourceVersion, storeRevision, load };
+		this.readingRenderSnapshots.set(file.path, entry);
+		void load.then(
+			() => {
+				if (this.readingRenderSnapshots.get(file.path) === entry) {
+					entry.storeRevision = this.store.getRevision();
+				}
+			},
+			() => {
+				if (this.readingRenderSnapshots.get(file.path) === entry) {
+					this.readingRenderSnapshots.delete(file.path);
+				}
+			}
+		);
+		return load;
+	}
+
+	private async loadReadingRenderSnapshot(file: TFile): Promise<ReadingRenderSnapshot> {
+		const source = await this.app.vault.read(file);
+		const document = await this.store.relocateDocument(file.path, source);
+		const lineStarts = this.getSourceLineStarts(file, source);
+		return { source, document, lineStarts };
+	}
+
+	private invalidateReadingRenderSnapshot(filePath: string): void {
+		this.readingRenderSnapshots.delete(filePath);
 	}
 
 	private syncPreviewMarkObservers(): void {

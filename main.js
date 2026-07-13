@@ -1955,6 +1955,9 @@ var SideMarkStore = class {
     this.settings = settings;
     this.invalidateAllDocumentsCache();
   }
+  getRevision() {
+    return this.allDocumentsRevision;
+  }
   async loadDocument(filePath) {
     await this.mutationTail;
     return this.readDocument((0, import_obsidian7.normalizePath)(filePath));
@@ -2208,41 +2211,58 @@ var SideMarkStore = class {
     });
   }
   async relocateDocument(filePath, source) {
+    const normalizedPath = (0, import_obsidian7.normalizePath)(filePath);
+    const document = await this.readStableDocument(normalizedPath);
+    const relocated = this.relocateMarks(document, source);
+    if (!relocated.changed) {
+      return document;
+    }
     return this.enqueueMutation(async () => {
-      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
-      let changed = false;
-      const marks = document.marks.map((mark) => {
-        const anchor = relocateAnchor(source, mark.anchor, {
-          trustStoredPosition: mark.status !== "orphaned",
-          allowUniqueTextFallback: false
-        });
-        if (!anchor) {
-          if (mark.status === "orphaned") {
-            return mark;
-          }
-          changed = true;
-          return { ...mark, status: "orphaned" };
-        }
-        if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
+      const latestDocument = await this.readDocument(normalizedPath);
+      const latestRelocated = this.relocateMarks(latestDocument, source);
+      return latestRelocated.changed ? this.writeDocument({ ...latestDocument, marks: latestRelocated.marks }) : latestDocument;
+    });
+  }
+  relocateMarks(document, source) {
+    let changed = false;
+    const marks = document.marks.map((mark) => {
+      const anchor = relocateAnchor(source, mark.anchor, {
+        trustStoredPosition: mark.status !== "orphaned",
+        allowUniqueTextFallback: false
+      });
+      if (!anchor) {
+        if (mark.status === "orphaned") {
           return mark;
         }
         changed = true;
-        return {
-          ...mark,
-          anchor,
-          status: mark.status === "orphaned" ? "active" : mark.status
-        };
-      });
-      if (!changed) {
-        return document;
+        return { ...mark, status: "orphaned" };
       }
-      return this.writeDocument({ ...document, marks });
+      if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
+        return mark;
+      }
+      changed = true;
+      return {
+        ...mark,
+        anchor,
+        status: mark.status === "orphaned" ? "active" : mark.status
+      };
     });
+    return { marks, changed };
   }
   enqueueMutation(mutation) {
     const result = this.mutationTail.then(mutation, mutation);
     this.mutationTail = result.then(() => void 0, () => void 0);
     return result;
+  }
+  async readStableDocument(normalizedPath) {
+    while (true) {
+      const mutationTail = this.mutationTail;
+      await mutationTail;
+      const document = await this.readDocument(normalizedPath);
+      if (this.mutationTail === mutationTail) {
+        return document;
+      }
+    }
   }
   async readDocument(normalizedPath) {
     const sidecarPath = this.getSidecarPath(normalizedPath);
@@ -5305,6 +5325,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.previewRenderTimers = /* @__PURE__ */ new Map();
     this.previewRenderGenerations = /* @__PURE__ */ new Map();
     this.readingContainerGenerations = /* @__PURE__ */ new WeakMap();
+    this.readingRenderSnapshots = /* @__PURE__ */ new Map();
     this.sourceLineStartsCache = /* @__PURE__ */ new Map();
     this.documentMarkNavigation = new NavigationGuard();
     this.scopeControlStyleSave = Promise.resolve();
@@ -5329,12 +5350,20 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
     this.registerEvent(this.app.vault.on("modify", (file) => {
       var _a;
-      if (file instanceof import_obsidian10.TFile && file.extension === "md" && file.path === ((_a = this.getActiveMarkdownFile()) == null ? void 0 : _a.path)) {
-        void this.reloadCurrentDocument();
+      if (file instanceof import_obsidian10.TFile && file.extension === "md") {
+        this.invalidateReadingRenderSnapshot(file.path);
+        this.sourceLineStartsCache.delete(file.path);
+        if (file.path === ((_a = this.getActiveMarkdownFile()) == null ? void 0 : _a.path)) {
+          void this.reloadCurrentDocument();
+        }
       }
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (file instanceof import_obsidian10.TFile && file.extension === "md") {
+        this.invalidateReadingRenderSnapshot(oldPath);
+        this.invalidateReadingRenderSnapshot(file.path);
+        this.sourceLineStartsCache.delete(oldPath);
+        this.sourceLineStartsCache.delete(file.path);
         void this.handleMarkdownRename(file.path, oldPath).catch((error) => {
           console.error(`FloatMark: failed to migrate sidecar from ${oldPath} to ${file.path}`, error);
         });
@@ -5342,6 +5371,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       if (file instanceof import_obsidian10.TFile && file.extension === "md") {
+        this.invalidateReadingRenderSnapshot(file.path);
+        this.sourceLineStartsCache.delete(file.path);
         void this.handleMarkdownDelete(file.path).catch((error) => {
           console.error(`FloatMark: failed to delete sidecar for ${file.path}`, error);
         });
@@ -5355,6 +5386,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   onunload() {
     var _a, _b, _c, _d, _e;
     this.clearPreviewMarkObservers();
+    this.readingRenderSnapshots.clear();
     this.sourceLineStartsCache.clear();
     this.clearReadingSelectionTimer();
     this.clearEditorDocumentSaveTimer();
@@ -5556,6 +5588,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   async saveEditorMarkAnchors(filePath, updates) {
     try {
       await this.store.updateMarkAnchors(filePath, updates);
+      this.invalidateReadingRenderSnapshot(filePath);
       await this.refreshSidebar();
       await this.renderPreviewMarksForFile(filePath);
     } catch (error) {
@@ -6337,6 +6370,7 @@ ${stripped}
   }
   async refreshMarkViews(filePath) {
     var _a;
+    this.invalidateReadingRenderSnapshot(filePath);
     this.refreshEditorDecorations();
     const document = ((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath ? this.currentDocument : void 0;
     await Promise.all([
@@ -6375,18 +6409,46 @@ ${stripped}
     if (!file || file.extension !== "md") {
       return;
     }
-    const source = await this.app.vault.read(file);
-    if (this.readingContainerGenerations.get(container) !== generation) {
-      return;
-    }
-    const document = await this.store.relocateDocument(file.path, source);
+    const { source, document, lineStarts } = await this.getReadingRenderSnapshot(file);
     if (this.readingContainerGenerations.get(container) !== generation) {
       return;
     }
     const section = context == null ? void 0 : context.getSectionInfo(container);
-    const lineStarts = this.getSourceLineStarts(file, source);
     const marks = section ? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts) : [];
     renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+  }
+  getReadingRenderSnapshot(file) {
+    const sourceVersion = `${file.stat.mtime}:${file.stat.size}`;
+    const storeRevision = this.store.getRevision();
+    const cached = this.readingRenderSnapshots.get(file.path);
+    if ((cached == null ? void 0 : cached.sourceVersion) === sourceVersion && cached.storeRevision === storeRevision) {
+      return cached.load;
+    }
+    const load = this.loadReadingRenderSnapshot(file);
+    const entry = { sourceVersion, storeRevision, load };
+    this.readingRenderSnapshots.set(file.path, entry);
+    void load.then(
+      () => {
+        if (this.readingRenderSnapshots.get(file.path) === entry) {
+          entry.storeRevision = this.store.getRevision();
+        }
+      },
+      () => {
+        if (this.readingRenderSnapshots.get(file.path) === entry) {
+          this.readingRenderSnapshots.delete(file.path);
+        }
+      }
+    );
+    return load;
+  }
+  async loadReadingRenderSnapshot(file) {
+    const source = await this.app.vault.read(file);
+    const document = await this.store.relocateDocument(file.path, source);
+    const lineStarts = this.getSourceLineStarts(file, source);
+    return { source, document, lineStarts };
+  }
+  invalidateReadingRenderSnapshot(filePath) {
+    this.readingRenderSnapshots.delete(filePath);
   }
   syncPreviewMarkObservers() {
     var _a;

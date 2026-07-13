@@ -34,6 +34,10 @@ const newMarkStylePopoverMethod = readMethod("showMarkStylePopoverForNewMark");
 const createReadingMarkMethod = readMethod("async createReadingMark");
 const createMarkFromOffsetsMethod = readMethod("async createMarkFromOffsets");
 const refreshMarkViewsMethod = readMethod("async refreshMarkViews");
+const renderReadingModeMarksMethod = readMethod("async renderReadingModeMarks");
+const getReadingRenderSnapshotMethod = readMethod("getReadingRenderSnapshot");
+const loadReadingRenderSnapshotMethod = readMethod("async loadReadingRenderSnapshot");
+const invalidateReadingRenderSnapshotMethod = readMethod("invalidateReadingRenderSnapshot");
 const renderPreviewMarksForFileMethod = readMethod("async renderPreviewMarksForFile");
 const renderPreviewMarksForViewMethod = readMethod("async renderPreviewMarksForView");
 assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
@@ -52,6 +56,35 @@ assert.match(newMarkStylePopoverMethod, /if \(resetRequested\) \{\s*await this\.
 assert.match(newMarkStylePopoverMethod, /isSameHighlightAppearance\(createdChoice, latestChoice\)/);
 assert.match(createReadingMarkMethod, /await this\.refreshMarkViews\(selection\.file\.path\)/);
 assert.match(createMarkFromOffsetsMethod, /await this\.refreshMarkViews\(file\.path\)/);
+assert.match(source, /interface ReadingRenderSnapshot \{/);
+assert.match(source, /interface ReadingRenderSnapshotLoad \{/);
+assert.match(source, /readingRenderSnapshots = new Map<string, ReadingRenderSnapshotLoad>\(\)/);
+assert.match(
+	renderReadingModeMarksMethod,
+	/const \{ source, document, lineStarts \} = await this\.getReadingRenderSnapshot\(file\)/
+);
+assert.doesNotMatch(renderReadingModeMarksMethod, /this\.app\.vault\.read/);
+assert.doesNotMatch(renderReadingModeMarksMethod, /this\.store\.relocateDocument/);
+assert.doesNotMatch(renderReadingModeMarksMethod, /this\.getSourceLineStarts/);
+assert.match(getReadingRenderSnapshotMethod, /const sourceVersion = `\$\{file\.stat\.mtime\}:\$\{file\.stat\.size\}`/);
+assert.match(getReadingRenderSnapshotMethod, /const storeRevision = this\.store\.getRevision\(\)/);
+assert.match(
+	getReadingRenderSnapshotMethod,
+	/cached\?\.sourceVersion === sourceVersion\s*&& cached\.storeRevision === storeRevision/
+);
+assert.match(getReadingRenderSnapshotMethod, /return cached\.load/);
+assert.match(getReadingRenderSnapshotMethod, /entry\.storeRevision = this\.store\.getRevision\(\)/);
+assert.match(getReadingRenderSnapshotMethod, /this\.readingRenderSnapshots\.delete\(file\.path\)/);
+assert.match(loadReadingRenderSnapshotMethod, /const source = await this\.app\.vault\.read\(file\)/);
+assert.match(loadReadingRenderSnapshotMethod, /const document = await this\.store\.relocateDocument\(file\.path, source\)/);
+assert.match(loadReadingRenderSnapshotMethod, /const lineStarts = this\.getSourceLineStarts\(file, source\)/);
+assert.match(loadReadingRenderSnapshotMethod, /return \{ source, document, lineStarts \}/);
+assert.match(invalidateReadingRenderSnapshotMethod, /this\.readingRenderSnapshots\.delete\(filePath\)/);
+assert.match(source, /vault\.on\("modify", \(file\) => \{\s*if \(file instanceof TFile && file\.extension === "md"\) \{\s*this\.invalidateReadingRenderSnapshot\(file\.path\)/);
+assert.match(source, /vault\.on\("rename", \(file, oldPath\) => \{\s*if \(file instanceof TFile && file\.extension === "md"\) \{\s*this\.invalidateReadingRenderSnapshot\(oldPath\);\s*this\.invalidateReadingRenderSnapshot\(file\.path\)/);
+assert.match(source, /vault\.on\("delete", \(file\) => \{\s*if \(file instanceof TFile && file\.extension === "md"\) \{\s*this\.invalidateReadingRenderSnapshot\(file\.path\)/);
+assert.match(source, /onunload\(\): void \{\s*this\.clearPreviewMarkObservers\(\);\s*this\.readingRenderSnapshots\.clear\(\)/);
+assert.match(refreshMarkViewsMethod, /this\.invalidateReadingRenderSnapshot\(filePath\)/);
 assert.match(refreshMarkViewsMethod, /await Promise\.all\(\[\s*this\.refreshSidebar\(\),\s*this\.renderPreviewMarksForFile\(filePath, document\)\s*\]\)/);
 assert.match(renderPreviewMarksForFileMethod, /await Promise\.all\(renders\)/);
 assert.match(

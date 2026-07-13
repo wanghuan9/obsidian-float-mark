@@ -10,6 +10,11 @@ export interface MarkAnchorUpdate extends Pick<SideMark, "id" | "anchor" | "stat
 	expectedStatus: SideMark["status"];
 }
 
+interface RelocatedMarks {
+	marks: SideMark[];
+	changed: boolean;
+}
+
 export class SideMarkStore {
 	private allDocumentsCache: SideMarkDocument[] | null = null;
 	private allDocumentsLoad: Promise<SideMarkDocument[]> | null = null;
@@ -22,6 +27,10 @@ export class SideMarkStore {
 	updateSettings(settings: SideMarkSettings): void {
 		this.settings = settings;
 		this.invalidateAllDocumentsCache();
+	}
+
+	getRevision(): number {
+		return this.allDocumentsRevision;
 	}
 
 	async loadDocument(filePath: string): Promise<SideMarkDocument> {
@@ -316,43 +325,65 @@ export class SideMarkStore {
 	}
 
 	async relocateDocument(filePath: string, source: string): Promise<SideMarkDocument> {
+		const normalizedPath = normalizePath(filePath);
+		const document = await this.readStableDocument(normalizedPath);
+		const relocated = this.relocateMarks(document, source);
+		if (!relocated.changed) {
+			return document;
+		}
+
 		return this.enqueueMutation(async () => {
-			const document = await this.readDocument(normalizePath(filePath));
-			let changed = false;
-			const marks = document.marks.map((mark) => {
-				const anchor = relocateAnchor(source, mark.anchor, {
-					trustStoredPosition: mark.status !== "orphaned",
-					allowUniqueTextFallback: false
-				});
-				if (!anchor) {
-					if (mark.status === "orphaned") {
-						return mark;
-					}
-					changed = true;
-					return { ...mark, status: "orphaned" as const };
-				}
-				if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
+			const latestDocument = await this.readDocument(normalizedPath);
+			const latestRelocated = this.relocateMarks(latestDocument, source);
+			return latestRelocated.changed
+				? this.writeDocument({ ...latestDocument, marks: latestRelocated.marks })
+				: latestDocument;
+		});
+	}
+
+	private relocateMarks(document: SideMarkDocument, source: string): RelocatedMarks {
+		let changed = false;
+		const marks = document.marks.map((mark) => {
+			const anchor = relocateAnchor(source, mark.anchor, {
+				trustStoredPosition: mark.status !== "orphaned",
+				allowUniqueTextFallback: false
+			});
+			if (!anchor) {
+				if (mark.status === "orphaned") {
 					return mark;
 				}
 				changed = true;
-				return {
-					...mark,
-					anchor,
-					status: mark.status === "orphaned" ? "active" as const : mark.status
-				};
-			});
-
-			if (!changed) {
-				return document;
+				return { ...mark, status: "orphaned" as const };
 			}
-			return this.writeDocument({ ...document, marks });
+			if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset
+				&& mark.status !== "orphaned") {
+				return mark;
+			}
+			changed = true;
+			return {
+				...mark,
+				anchor,
+				status: mark.status === "orphaned" ? "active" as const : mark.status
+			};
 		});
+		return { marks, changed };
 	}
 
 	private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
 		const result = this.mutationTail.then(mutation, mutation);
 		this.mutationTail = result.then(() => undefined, () => undefined);
 		return result;
+	}
+
+	private async readStableDocument(normalizedPath: string): Promise<SideMarkDocument> {
+		while (true) {
+			const mutationTail = this.mutationTail;
+			await mutationTail;
+			const document = await this.readDocument(normalizedPath);
+			if (this.mutationTail === mutationTail) {
+				return document;
+			}
+		}
 	}
 
 	private async readDocument(normalizedPath: string): Promise<SideMarkDocument> {
