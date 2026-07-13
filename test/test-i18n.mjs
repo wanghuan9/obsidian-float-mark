@@ -33,6 +33,11 @@ assert.equal(getDefaultCommentAuthorName("zh-CN"), "我");
 assert.equal(getDefaultCommentAuthorName("en"), "Me");
 assert.equal(translate("en", "notice.autoSyncLarkFailed", { message: "boom" }), "Auto sync to Feishu failed: boom");
 assert.equal(translate("zh-CN", "notice.autoSyncLarkFailed", { message: "boom" }), "自动同步飞书失败：boom");
+assert.equal(translate("zh-CN", "notice.readingSelectionUnresolved"), "无法精确定位所选内容，未创建标注。");
+assert.equal(
+	translate("en", "notice.readingSelectionUnresolved"),
+	"The selected text could not be located precisely. No mark was created."
+);
 assert.equal(translate("zh-CN", "sidebar.inherited"), "继承");
 assert.equal(translate("en", "sidebar.inherited"), "Inherited");
 assert.equal(translate("zh-CN", "sidebar.inheritedBackground"), "背景继承自覆盖当前文本的标记");

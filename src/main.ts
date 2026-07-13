@@ -21,7 +21,11 @@ import {
 	syncMarkToLark as syncMarkToLarkBridge
 } from "./lark-bridge";
 import { buildSourceLineStarts, getReadingMarksForSection, renderReadingMarks } from "./reading-view-renderer";
-import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
+import {
+	findSourceRangeForReadingSelection,
+	getReadingSelectionContext,
+	getReadingSelectionRect
+} from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
 import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginLanguage, translate, type I18nKey, type PluginLanguage } from "./i18n";
@@ -41,6 +45,12 @@ interface PreviewObserverState {
 	root: HTMLElement;
 	observer: MutationObserver;
 	isObserving: boolean;
+}
+
+interface PreviewSection {
+	el: HTMLElement;
+	lineStart: number;
+	lineEnd: number;
 }
 
 interface SourceLineStartsCacheEntry {
@@ -688,9 +698,24 @@ export default class SideMarkPlugin extends Plugin {
 		if (requestId !== this.readingSelectionRequestId) {
 			return;
 		}
-		const renderedOffset = getReadingSelectionRenderedOffset(view.contentEl, range);
-		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, renderedOffset);
+		const sections = getSelectedPreviewSections(view, range);
+		if (sections.length === 0) {
+			new Notice(this.t("notice.readingSelectionUnresolved"));
+			this.readingSelection = null;
+			this.readingToolbar.hide();
+			return;
+		}
+		const lineStarts = this.getSourceLineStarts(file, source);
+		const firstSection = sections[0];
+		const lastSection = sections[sections.length - 1];
+		const context = getReadingSelectionContext(sections.map((section) => section.el), range);
+		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
+			sourceStartOffset: lineStarts[firstSection.lineStart] ?? source.length,
+			sourceEndOffset: lineStarts[lastSection.lineEnd + 1] ?? source.length,
+			...context
+		});
 		if (!sourceRange) {
+			new Notice(this.t("notice.readingSelectionUnresolved"));
 			this.readingSelection = null;
 			this.readingToolbar.hide();
 			return;
@@ -1172,7 +1197,7 @@ export default class SideMarkPlugin extends Plugin {
 		const lineStarts = this.getSourceLineStarts(file, source);
 		const marks = section
 			? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts)
-			: document.marks;
+			: [];
 		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
 	}
 
@@ -1321,7 +1346,7 @@ export default class SideMarkPlugin extends Plugin {
 				return;
 			}
 			const previewRoot = getPreviewSectionsContainer(view);
-			renderReadingMarks(previewRoot, source, document.marks, onClick);
+			renderReadingMarks(previewRoot, source, [], onClick);
 		} finally {
 			if (this.isCurrentPreviewRender(view, filePath, generation)) {
 				this.ensurePreviewObserver(view);
@@ -1537,7 +1562,7 @@ function getPreviewSectionsContainer(view: MarkdownView): HTMLElement {
 		|| view.contentEl;
 }
 
-function getPreviewSections(view: MarkdownView): { el: HTMLElement; lineStart: number; lineEnd: number }[] {
+function getPreviewSections(view: MarkdownView): PreviewSection[] {
 	const preview = view.previewMode as unknown as {
 		renderer?: { sections?: Array<{ el?: unknown; lineStart?: unknown; lineEnd?: unknown }> };
 	} | undefined;
@@ -1545,13 +1570,26 @@ function getPreviewSections(view: MarkdownView): { el: HTMLElement; lineStart: n
 	if (!Array.isArray(sections)) {
 		return [];
 	}
-	const result: { el: HTMLElement; lineStart: number; lineEnd: number }[] = [];
+	const result: PreviewSection[] = [];
 	for (const section of sections) {
 		if (section?.el instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
 			result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
 		}
 	}
 	return result;
+}
+
+function getSelectedPreviewSections(view: MarkdownView, range: Range): PreviewSection[] {
+	const sections = getPreviewSections(view);
+	const first = sections.findIndex((section) => section.el.contains(range.startContainer));
+	const last = sections.findIndex((section) => section.el.contains(range.endContainer));
+	if (first < 0 || last < first) {
+		return [];
+	}
+	const selected = sections.slice(first, last + 1);
+	return selected.every((section, index) => index === 0 || section.lineStart <= selected[index - 1].lineEnd + 1)
+		? selected
+		: [];
 }
 
 function getCssHighlights(): CssHighlightRegistry | null {

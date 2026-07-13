@@ -116,6 +116,20 @@ assert.equal(listSectionMarks.length, 1);
 assert.equal(listSectionMarks[0].anchor.selectedText, "- `PERM_CONTACT` 依赖 `VIEW_PHONE`\n- 前端不参与最终校验");
 assert.equal(listSectionMarks[0].anchor.position.lineStart, 1);
 
+const duplicateSource = "- 第一个 Task 6\n\n| 第二个 Task 6 |";
+const tableStart = duplicateSource.indexOf("| 第二个");
+const tableTask = duplicateSource.lastIndexOf("Task 6");
+const duplicateMark = createMark({
+	id: "table-task-6",
+	selectedText: "Task 6",
+	startOffset: tableTask,
+	endOffset: tableTask + 6,
+	lineStart: 3
+});
+assert.equal(getReadingMarksForSection(duplicateSource, [duplicateMark], 0, 0).length, 0);
+assert.equal(getReadingMarksForSection(duplicateSource, [duplicateMark], 2, 2).length, 1);
+assert.ok(tableStart < tableTask);
+
 const crossBlockSource = [
 	"**依赖关系**：",
 	"- `PERM_CONTACT` 依赖 `VIEW_PHONE`",
