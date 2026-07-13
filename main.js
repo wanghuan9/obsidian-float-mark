@@ -5242,6 +5242,22 @@ var NavigationGuard = class {
   }
 };
 
+// src/preview-sections.ts
+function resolvePreviewSectionBounds(section) {
+  var _a, _b, _c, _d, _e, _f;
+  const lineStart = (_b = readNumber(section.lineStart)) != null ? _b : readNumber((_a = section.start) == null ? void 0 : _a.line);
+  const lineEnd = (_d = readNumber(section.lineEnd)) != null ? _d : readNumber((_c = section.end) == null ? void 0 : _c.line);
+  if (lineStart === null || lineEnd === null) {
+    return null;
+  }
+  const sourceStartOffset = readNumber((_e = section.start) == null ? void 0 : _e.offset);
+  const sourceEndOffset = readNumber((_f = section.end) == null ? void 0 : _f.offset);
+  return sourceStartOffset === null || sourceEndOffset === null ? { lineStart, lineEnd } : { lineStart, lineEnd, sourceStartOffset, sourceEndOffset };
+}
+function readNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 // src/main.ts
 var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -5256,6 +5272,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.pendingCommentSelection = null;
     this.readingSelection = null;
     this.readingSelectionTimer = null;
+    this.readingSelectionUnresolved = false;
     this.editorDocumentSaveTimer = null;
     this.pendingEditorAnchorUpdates = /* @__PURE__ */ new Map();
     this.readingSelectionRequestId = 0;
@@ -5840,6 +5857,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   handleReadingSelectionChange() {
     this.clearReadingSelectionTimer();
     const requestId = ++this.readingSelectionRequestId;
+    this.readingSelectionUnresolved = false;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       this.readingSelection = null;
@@ -5853,7 +5871,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     }, READING_SELECTION_TOOLBAR_DELAY_MS);
   }
   async updateReadingSelectionToolbar(requestId) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       this.readingSelection = null;
@@ -5874,15 +5892,19 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       return;
     }
     const selectedText = selection.toString().trim();
+    const rect = getReadingSelectionRect(range);
+    if (!rect) {
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
     const source = await this.app.vault.read(file);
     if (requestId !== this.readingSelectionRequestId) {
       return;
     }
     const sections = getSelectedPreviewSections(view, range);
     if (sections.length === 0) {
-      new import_obsidian10.Notice(this.t("notice.readingSelectionUnresolved"));
-      this.readingSelection = null;
-      this.readingToolbar.hide();
+      this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
       return;
     }
     const lineStarts = this.getSourceLineStarts(file, source);
@@ -5890,22 +5912,15 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const lastSection = sections[sections.length - 1];
     const context = getReadingSelectionContext(sections.map((section) => section.el), range);
     const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
-      sourceStartOffset: (_a = lineStarts[firstSection.lineStart]) != null ? _a : source.length,
-      sourceEndOffset: (_b = lineStarts[lastSection.lineEnd + 1]) != null ? _b : source.length,
+      sourceStartOffset: (_b = (_a = firstSection.sourceStartOffset) != null ? _a : lineStarts[firstSection.lineStart]) != null ? _b : source.length,
+      sourceEndOffset: (_d = (_c = lastSection.sourceEndOffset) != null ? _c : lineStarts[lastSection.lineEnd + 1]) != null ? _d : source.length,
       ...context
     });
     if (!sourceRange) {
-      new import_obsidian10.Notice(this.t("notice.readingSelectionUnresolved"));
-      this.readingSelection = null;
-      this.readingToolbar.hide();
+      this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
       return;
     }
-    const rect = getReadingSelectionRect(range);
-    if (!rect) {
-      this.readingSelection = null;
-      this.readingToolbar.hide();
-      return;
-    }
+    this.readingSelectionUnresolved = false;
     this.readingSelection = {
       file,
       source,
@@ -5953,6 +5968,11 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   async handleReadingToolbarAction(action) {
     const selection = this.readingSelection;
     if (!selection) {
+      if (this.readingSelectionUnresolved) {
+        this.readingSelectionUnresolved = false;
+        this.readingToolbar.hide();
+        new import_obsidian10.Notice(this.t("notice.readingSelectionUnresolved"));
+      }
       return;
     }
     if (action === "highlight") {
@@ -6276,7 +6296,13 @@ ${stripped}
   clearReadingSelection() {
     var _a;
     this.readingSelection = null;
+    this.readingSelectionUnresolved = false;
     (_a = window.getSelection()) == null ? void 0 : _a.removeAllRanges();
+  }
+  showUnresolvedReadingSelection(rect, boundary) {
+    this.readingSelection = null;
+    this.readingSelectionUnresolved = true;
+    this.readingToolbar.show(rect, boundary);
   }
   showReadingSelectionHighlight(selection) {
     const highlights = getCssHighlights();
@@ -6675,8 +6701,9 @@ function getPreviewSections(view) {
   }
   const result = [];
   for (const section of sections) {
-    if ((section == null ? void 0 : section.el) instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
-      result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
+    const bounds = resolvePreviewSectionBounds(section);
+    if ((section == null ? void 0 : section.el) instanceof HTMLElement && bounds) {
+      result.push({ el: section.el, ...bounds });
     }
   }
   return result;

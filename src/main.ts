@@ -32,6 +32,7 @@ import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
 import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginLanguage, translate, type I18nKey, type PluginLanguage } from "./i18n";
 import { NavigationGuard } from "./navigation-guard";
+import { resolvePreviewSectionBounds, type PreviewSectionBounds } from "./preview-sections";
 
 const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -50,10 +51,8 @@ interface PreviewObserverState {
 	isObserving: boolean;
 }
 
-interface PreviewSection {
+interface PreviewSection extends PreviewSectionBounds {
 	el: HTMLElement;
-	lineStart: number;
-	lineEnd: number;
 }
 
 interface SourceLineStartsCacheEntry {
@@ -89,6 +88,7 @@ export default class SideMarkPlugin extends Plugin {
 		range: Range;
 	} | null = null;
 	private readingSelectionTimer: number | null = null;
+	private readingSelectionUnresolved = false;
 	private editorDocumentSaveTimer: number | null = null;
 	private pendingEditorAnchorUpdates = new Map<string, MarkAnchorUpdate>();
 	private readingSelectionRequestId = 0;
@@ -716,6 +716,7 @@ export default class SideMarkPlugin extends Plugin {
 	private handleReadingSelectionChange(): void {
 		this.clearReadingSelectionTimer();
 		const requestId = ++this.readingSelectionRequestId;
+		this.readingSelectionUnresolved = false;
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
 			this.readingSelection = null;
@@ -750,15 +751,19 @@ export default class SideMarkPlugin extends Plugin {
 			return;
 		}
 		const selectedText = selection.toString().trim();
+		const rect = getReadingSelectionRect(range);
+		if (!rect) {
+			this.readingSelection = null;
+			this.readingToolbar.hide();
+			return;
+		}
 		const source = await this.app.vault.read(file);
 		if (requestId !== this.readingSelectionRequestId) {
 			return;
 		}
 		const sections = getSelectedPreviewSections(view, range);
 		if (sections.length === 0) {
-			new Notice(this.t("notice.readingSelectionUnresolved"));
-			this.readingSelection = null;
-			this.readingToolbar.hide();
+			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
 			return;
 		}
 		const lineStarts = this.getSourceLineStarts(file, source);
@@ -766,22 +771,15 @@ export default class SideMarkPlugin extends Plugin {
 		const lastSection = sections[sections.length - 1];
 		const context = getReadingSelectionContext(sections.map((section) => section.el), range);
 		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
-			sourceStartOffset: lineStarts[firstSection.lineStart] ?? source.length,
-			sourceEndOffset: lineStarts[lastSection.lineEnd + 1] ?? source.length,
+			sourceStartOffset: firstSection.sourceStartOffset ?? lineStarts[firstSection.lineStart] ?? source.length,
+			sourceEndOffset: lastSection.sourceEndOffset ?? lineStarts[lastSection.lineEnd + 1] ?? source.length,
 			...context
 		});
 		if (!sourceRange) {
-			new Notice(this.t("notice.readingSelectionUnresolved"));
-			this.readingSelection = null;
-			this.readingToolbar.hide();
+			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
 			return;
 		}
-		const rect = getReadingSelectionRect(range);
-		if (!rect) {
-			this.readingSelection = null;
-			this.readingToolbar.hide();
-			return;
-		}
+		this.readingSelectionUnresolved = false;
 		this.readingSelection = {
 			file,
 			source,
@@ -839,6 +837,11 @@ export default class SideMarkPlugin extends Plugin {
 	private async handleReadingToolbarAction(action: "highlight" | "comment"): Promise<void> {
 		const selection = this.readingSelection;
 		if (!selection) {
+			if (this.readingSelectionUnresolved) {
+				this.readingSelectionUnresolved = false;
+				this.readingToolbar.hide();
+				new Notice(this.t("notice.readingSelectionUnresolved"));
+			}
 			return;
 		}
 		if (action === "highlight") {
@@ -1184,7 +1187,14 @@ export default class SideMarkPlugin extends Plugin {
 
 	private clearReadingSelection(): void {
 		this.readingSelection = null;
+		this.readingSelectionUnresolved = false;
 		window.getSelection()?.removeAllRanges();
+	}
+
+	private showUnresolvedReadingSelection(rect: DOMRect, boundary: DOMRect): void {
+		this.readingSelection = null;
+		this.readingSelectionUnresolved = true;
+		this.readingToolbar.show(rect, boundary);
 	}
 
 	private showReadingSelectionHighlight(selection: NonNullable<SideMarkPlugin["readingSelection"]>): boolean {
@@ -1620,7 +1630,13 @@ function getPreviewSectionsContainer(view: MarkdownView): HTMLElement {
 
 function getPreviewSections(view: MarkdownView): PreviewSection[] {
 	const preview = view.previewMode as unknown as {
-		renderer?: { sections?: Array<{ el?: unknown; lineStart?: unknown; lineEnd?: unknown }> };
+		renderer?: { sections?: Array<{
+			el?: unknown;
+			lineStart?: unknown;
+			lineEnd?: unknown;
+			start?: { line?: unknown; offset?: unknown };
+			end?: { line?: unknown; offset?: unknown };
+		}> };
 	} | undefined;
 	const sections = preview?.renderer?.sections;
 	if (!Array.isArray(sections)) {
@@ -1628,8 +1644,9 @@ function getPreviewSections(view: MarkdownView): PreviewSection[] {
 	}
 	const result: PreviewSection[] = [];
 	for (const section of sections) {
-		if (section?.el instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
-			result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
+		const bounds = resolvePreviewSectionBounds(section);
+		if (section?.el instanceof HTMLElement && bounds) {
+			result.push({ el: section.el, ...bounds });
 		}
 	}
 	return result;

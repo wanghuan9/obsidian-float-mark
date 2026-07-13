@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile("src/main.ts", "utf8");
+
+function readMethod(methodName) {
+	const start = source.indexOf(`private ${methodName}`);
+	const end = source.indexOf("\n\tprivate ", start + 1);
+	return source.slice(start, end);
+}
+
 const methodStart = source.indexOf("private deleteRemoteCommentReplyInBackground");
 const methodEnd = source.indexOf("\n\tprivate ", methodStart + 1);
 const method = source.slice(methodStart, methodEnd);
@@ -17,6 +24,15 @@ assert.match(method, /currentFile instanceof TFile/);
 assert.match(method, /currentFile !== file/);
 assert.match(method, /currentFile\.extension !== "md"/);
 assert.match(method, /this\.currentDocument\?\.filePath === file\.path/);
+
+const updateReadingSelectionMethod = readMethod("async updateReadingSelectionToolbar");
+const readingToolbarActionMethod = readMethod("async handleReadingToolbarAction");
+const unresolvedReadingSelectionMethod = readMethod("showUnresolvedReadingSelection");
+assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
+assert.match(updateReadingSelectionMethod, /this\.showUnresolvedReadingSelection\(rect,/);
+assert.match(unresolvedReadingSelectionMethod, /this\.readingSelectionUnresolved = true/);
+assert.match(unresolvedReadingSelectionMethod, /this\.readingToolbar\.show\(rect, boundary\)/);
+assert.match(readingToolbarActionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
 
 async function writeAfterRemote(file, vaultFiles, remote, writtenPaths) {
 	await remote;
