@@ -1927,7 +1927,7 @@
 
 .side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview {
 	--side-mark-marker-preview-accent: var(--side-mark-marker-accent-color, var(--side-mark-background-color));
-	background: color-mix(in srgb, var(--side-mark-marker-preview-accent) 45%, var(--background-primary));
+	background: color-mix(in srgb, var(--side-mark-marker-preview-accent) 8%, var(--background-primary));
 }
 
 .side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview::before {

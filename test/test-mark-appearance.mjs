@@ -182,7 +182,7 @@ for (const color of backgroundColors) {
 }
 assert.match(
 	stylesSource,
-	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview\s*\{[^}]*color-mix\(in srgb, var\(--side-mark-marker-preview-accent\) 45%, var\(--background-primary\)\)/
+	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview\s*\{[^}]*color-mix\(in srgb, var\(--side-mark-marker-preview-accent\) 8%, var\(--background-primary\)\)/
 );
 assert.match(
 	stylesSource,
