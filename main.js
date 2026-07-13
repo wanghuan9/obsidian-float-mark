@@ -187,6 +187,12 @@ function createSideMarkEditorExtension(plugin) {
         view.dom.addEventListener("scroll", this.scrollHandler, true);
       }
       update(update) {
+        if (update.docChanged) {
+          const filePath = this.getFilePath();
+          if (filePath) {
+            plugin.handleEditorDocumentChange(filePath, update.state.doc.toString(), update.changes);
+          }
+        }
         if (update.docChanged || update.viewportChanged || update.transactions.length > 0) {
           const layers = this.buildDecorationLayers();
           this.decorations = layers.decorations;
@@ -390,6 +396,152 @@ function getDomSelectionRect(editorDom) {
     return null;
   }
   return new DOMRect(first.left, first.top, first.width, first.height);
+}
+
+// src/anchors.ts
+var CONTEXT_LENGTH = 40;
+function createTextAnchor(source, startOffset, endOffset) {
+  const start = Math.max(0, Math.min(startOffset, endOffset, source.length));
+  const end = Math.max(start, Math.min(Math.max(startOffset, endOffset), source.length));
+  const startPosition = offsetToLineColumn(source, start);
+  const endPosition = offsetToLineColumn(source, end);
+  return {
+    startOffset: start,
+    endOffset: end,
+    selectedText: source.slice(start, end),
+    prefix: source.slice(Math.max(0, start - CONTEXT_LENGTH), start),
+    suffix: source.slice(end, end + CONTEXT_LENGTH),
+    position: {
+      lineStart: startPosition.line,
+      lineEnd: endPosition.line,
+      columnStart: startPosition.column,
+      columnEnd: endPosition.column
+    }
+  };
+}
+function relocateAnchor(source, anchor, options = {}) {
+  var _a, _b;
+  const trustStoredPosition = (_a = options.trustStoredPosition) != null ? _a : true;
+  const allowUniqueTextFallback = (_b = options.allowUniqueTextFallback) != null ? _b : true;
+  if (!anchor.selectedText) {
+    return null;
+  }
+  if (trustStoredPosition && source.slice(anchor.startOffset, anchor.endOffset) === anchor.selectedText) {
+    return createTextAnchor(source, anchor.startOffset, anchor.endOffset);
+  }
+  const contextual = findByContext(source, anchor);
+  if (contextual !== null) {
+    return createTextAnchor(source, contextual, contextual + anchor.selectedText.length);
+  }
+  if (!allowUniqueTextFallback) {
+    return null;
+  }
+  const matches = findExactMatches(source, anchor.selectedText);
+  if (matches.length === 1) {
+    return createTextAnchor(source, matches[0], matches[0] + anchor.selectedText.length);
+  }
+  return null;
+}
+function findByContext(source, anchor) {
+  let searchFrom = 0;
+  let best = null;
+  let ambiguous = false;
+  while (searchFrom <= source.length) {
+    const index = source.indexOf(anchor.selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    const end = index + anchor.selectedText.length;
+    const prefix = source.slice(Math.max(0, index - anchor.prefix.length), index);
+    const suffix = source.slice(end, end + anchor.suffix.length);
+    const score = similarity(prefix, anchor.prefix) + similarity(suffix, anchor.suffix);
+    if (!best || score > best.score) {
+      best = { index, score };
+      ambiguous = false;
+    } else if (score === best.score) {
+      ambiguous = true;
+    }
+    searchFrom = end;
+  }
+  return best && best.score >= 1.4 && !ambiguous ? best.index : null;
+}
+function findExactMatches(source, selectedText) {
+  const matches = [];
+  let searchFrom = 0;
+  while (searchFrom <= source.length) {
+    const index = source.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    matches.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  return matches;
+}
+function similarity(left, right) {
+  const maxLength = Math.max(left.length, right.length);
+  if (maxLength === 0) {
+    return 1;
+  }
+  let same = 0;
+  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+    if (left[index] === right[index]) {
+      same += 1;
+    }
+  }
+  return same / maxLength;
+}
+function offsetToLineColumn(source, offset) {
+  let line = 1;
+  let column = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (source[index] === "\n") {
+      line += 1;
+      column = 1;
+    } else {
+      column += 1;
+    }
+  }
+  return { line, column };
+}
+
+// src/editor-anchor-tracker.ts
+function mergePendingEditorAnchorUpdates(pending, previousMarks, nextMarks) {
+  var _a;
+  const previousById = new Map(previousMarks.map((mark) => [mark.id, mark]));
+  for (const nextMark of nextMarks) {
+    const previousMark = previousById.get(nextMark.id);
+    if (!previousMark || hasSameAnchorState(previousMark, nextMark)) {
+      continue;
+    }
+    const existing = pending.get(nextMark.id);
+    pending.set(nextMark.id, {
+      id: nextMark.id,
+      anchor: nextMark.anchor,
+      status: nextMark.status,
+      expectedStatus: (_a = existing == null ? void 0 : existing.expectedStatus) != null ? _a : previousMark.status
+    });
+  }
+}
+function reconcileEditorMarks(marks, source, changes) {
+  return marks.map((mark) => {
+    if (mark.status === "resolved") {
+      return mark;
+    }
+    const from = changes.mapPos(mark.anchor.startOffset, 1);
+    const to = Math.max(from, changes.mapPos(mark.anchor.endOffset, -1));
+    if (mark.status === "active" && source.slice(from, to) === mark.anchor.selectedText) {
+      return { ...mark, anchor: createTextAnchor(source, from, to) };
+    }
+    const anchor = relocateAnchor(source, { ...mark.anchor, startOffset: from, endOffset: to }, {
+      trustStoredPosition: false,
+      allowUniqueTextFallback: false
+    });
+    return anchor ? { ...mark, anchor, status: "active" } : { ...mark, status: "orphaned" };
+  });
+}
+function hasSameAnchorState(left, right) {
+  return left.status === right.status && left.anchor.startOffset === right.anchor.startOffset && left.anchor.endOffset === right.anchor.endOffset && left.anchor.selectedText === right.anchor.selectedText && left.anchor.prefix === right.anchor.prefix && left.anchor.suffix === right.anchor.suffix && left.anchor.position.lineStart === right.anchor.position.lineStart && left.anchor.position.lineEnd === right.anchor.position.lineEnd && left.anchor.position.columnStart === right.anchor.position.columnStart && left.anchor.position.columnEnd === right.anchor.position.columnEnd;
 }
 
 // src/comment-popover.ts
@@ -1392,107 +1544,6 @@ function isSelectionFormatAction(action) {
 var import_obsidian7 = require("obsidian");
 var import_crypto = require("crypto");
 
-// src/anchors.ts
-var CONTEXT_LENGTH = 40;
-function createTextAnchor(source, startOffset, endOffset) {
-  const start = Math.max(0, Math.min(startOffset, endOffset, source.length));
-  const end = Math.max(start, Math.min(Math.max(startOffset, endOffset), source.length));
-  const startPosition = offsetToLineColumn(source, start);
-  const endPosition = offsetToLineColumn(source, end);
-  return {
-    startOffset: start,
-    endOffset: end,
-    selectedText: source.slice(start, end),
-    prefix: source.slice(Math.max(0, start - CONTEXT_LENGTH), start),
-    suffix: source.slice(end, end + CONTEXT_LENGTH),
-    position: {
-      lineStart: startPosition.line,
-      lineEnd: endPosition.line,
-      columnStart: startPosition.column,
-      columnEnd: endPosition.column
-    }
-  };
-}
-function relocateAnchor(source, anchor) {
-  if (!anchor.selectedText) {
-    return null;
-  }
-  if (source.slice(anchor.startOffset, anchor.endOffset) === anchor.selectedText) {
-    return anchor;
-  }
-  const contextual = findByContext(source, anchor);
-  if (contextual) {
-    return createTextAnchor(source, contextual, contextual + anchor.selectedText.length);
-  }
-  const matches = findExactMatches(source, anchor.selectedText);
-  if (matches.length === 1) {
-    return createTextAnchor(source, matches[0] || 0, (matches[0] || 0) + anchor.selectedText.length);
-  }
-  return null;
-}
-function findByContext(source, anchor) {
-  let searchFrom = 0;
-  let best = null;
-  let ambiguous = false;
-  while (searchFrom <= source.length) {
-    const index = source.indexOf(anchor.selectedText, searchFrom);
-    if (index < 0) {
-      break;
-    }
-    const end = index + anchor.selectedText.length;
-    const prefix = source.slice(Math.max(0, index - anchor.prefix.length), index);
-    const suffix = source.slice(end, end + anchor.suffix.length);
-    const score = similarity(prefix, anchor.prefix) + similarity(suffix, anchor.suffix);
-    if (!best || score > best.score) {
-      best = { index, score };
-      ambiguous = false;
-    } else if (score === best.score) {
-      ambiguous = true;
-    }
-    searchFrom = end;
-  }
-  return best && best.score >= 1.4 && !ambiguous ? best.index : null;
-}
-function findExactMatches(source, selectedText) {
-  const matches = [];
-  let searchFrom = 0;
-  while (searchFrom <= source.length) {
-    const index = source.indexOf(selectedText, searchFrom);
-    if (index < 0) {
-      break;
-    }
-    matches.push(index);
-    searchFrom = index + Math.max(1, selectedText.length);
-  }
-  return matches;
-}
-function similarity(left, right) {
-  const maxLength = Math.max(left.length, right.length);
-  if (maxLength === 0) {
-    return 1;
-  }
-  let same = 0;
-  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
-    if (left[index] === right[index]) {
-      same += 1;
-    }
-  }
-  return same / maxLength;
-}
-function offsetToLineColumn(source, offset) {
-  let line = 1;
-  let column = 1;
-  for (let index = 0; index < offset; index += 1) {
-    if (source[index] === "\n") {
-      line += 1;
-      column = 1;
-    } else {
-      column += 1;
-    }
-  }
-  return { line, column };
-}
-
 // src/i18n.ts
 var TRANSLATIONS = {
   "zh-CN": {
@@ -1635,6 +1686,7 @@ var TRANSLATIONS = {
     "notice.larkDeleteReplyFailed": "\u5220\u9664\u98DE\u4E66\u8BC4\u8BBA\u56DE\u590D\u5931\u8D25\uFF1A{message}",
     "notice.blockCopied": "\u5DF2\u590D\u5236\u5F53\u524D\u5757\u3002",
     "notice.noEditorSelection": "\u6CA1\u6709\u53EF\u7528\u7684\u7F16\u8F91\u5668\u9009\u533A\u3002",
+    "notice.readingSelectionUnresolved": "\u65E0\u6CD5\u7CBE\u786E\u5B9A\u4F4D\u6240\u9009\u5185\u5BB9\uFF0C\u672A\u521B\u5EFA\u6807\u6CE8\u3002",
     "notice.autoSyncLarkFailed": "\u81EA\u52A8\u540C\u6B65\u98DE\u4E66\u5931\u8D25\uFF1A{message}",
     "notice.syncedToLark": "\u5DF2\u540C\u6B65\u6807\u6CE8\u5230\u98DE\u4E66\u8BC4\u8BBA\u3002",
     "notice.markFileUnavailable": "\u6807\u6CE8\u6240\u5728\u7684 Markdown \u6587\u4EF6\u5DF2\u4E0D\u5B58\u5728\u6216\u4E0D\u53EF\u7528\u3002",
@@ -1805,6 +1857,7 @@ var TRANSLATIONS = {
     "notice.larkDeleteReplyFailed": "Failed to delete Feishu comment reply: {message}",
     "notice.blockCopied": "Current block copied.",
     "notice.noEditorSelection": "No editor selection is available.",
+    "notice.readingSelectionUnresolved": "The selected text could not be located precisely. No mark was created.",
     "notice.autoSyncLarkFailed": "Auto sync to Feishu failed: {message}",
     "notice.syncedToLark": "Mark synced to a Feishu comment.",
     "notice.markFileUnavailable": "The Markdown file for this mark no longer exists or is unavailable.",
@@ -1930,6 +1983,17 @@ var SideMarkStore = class {
   }
   async saveDocument(document) {
     return this.enqueueMutation(() => this.writeDocument(document));
+  }
+  async updateMarkAnchors(filePath, updates) {
+    return this.enqueueMutation(async () => {
+      const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
+      const updatesById = new Map(updates.map((update) => [update.id, update]));
+      const marks = document.marks.map((mark) => {
+        const update = updatesById.get(mark.id);
+        return update && mark.status === update.expectedStatus ? { ...mark, anchor: update.anchor, status: update.status } : mark;
+      });
+      return this.writeDocument({ ...document, marks });
+    });
   }
   async renameDocument(oldFilePath, newFilePath) {
     return this.enqueueMutation(async () => {
@@ -2137,7 +2201,10 @@ var SideMarkStore = class {
       const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
       let changed = false;
       const marks = document.marks.map((mark) => {
-        const anchor = relocateAnchor(source, mark.anchor);
+        const anchor = relocateAnchor(source, mark.anchor, {
+          trustStoredPosition: mark.status !== "orphaned",
+          allowUniqueTextFallback: false
+        });
         if (!anchor) {
           if (mark.status === "orphaned") {
             return mark;
@@ -4958,36 +5025,116 @@ function estimateRenderedPositionOffset(renderedText, lineNumber, columnNumber) 
 }
 
 // src/reading-selection.ts
-function findSourceRangeForReadingSelection(source, selectedText, preferredRenderedOffset = 0) {
-  const sourceIndex = buildRenderedSourceIndex(source);
-  const directIndex = findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset);
-  if (directIndex >= 0) {
-    return {
-      from: directIndex,
-      to: directIndex + selectedText.length
-    };
-  }
-  const renderedSelection = normalizeReadingSelection(selectedText);
-  const renderedIndex = findBestRenderedTextStart2(sourceIndex.text, renderedSelection, preferredRenderedOffset);
-  if (renderedIndex < 0) {
-    return null;
-  }
-  const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedIndex]);
-  const to = sourceIndex.offsets[renderedIndex + renderedSelection.length - 1];
-  if (from === void 0 || to === void 0) {
-    return null;
-  }
+var READING_CONTEXT_LENGTH = 40;
+var MIN_CONTEXT_SCORE = 1.4;
+function findSourceRangeForReadingSelection(source, selectedText, scope) {
+  const sectionSource = source.slice(scope.sourceStartOffset, scope.sourceEndOffset);
+  const sourceIndex = buildRenderedSourceIndex(sectionSource, scope.sourceStartOffset);
+  const candidates = findSourceCandidates(source, sectionSource, sourceIndex, selectedText, scope);
+  const candidate = chooseUniqueCandidate(candidates);
+  return candidate ? { from: candidate.from, to: candidate.to } : null;
+}
+function getReadingSelectionContext(containers, range) {
+  const first = containers[0];
+  const last = containers[containers.length - 1];
+  const document = range.startContainer.ownerDocument || getActiveDocument();
+  const prefixRange = document.createRange();
+  prefixRange.selectNodeContents(first);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const suffixRange = document.createRange();
+  suffixRange.selectNodeContents(last);
+  suffixRange.setStart(range.endContainer, range.endOffset);
+  const beforeText = prefixRange.toString();
+  const afterText = suffixRange.toString();
   return {
-    from,
-    to: to + 1
+    renderedOffset: normalizeReadingSelection(beforeText).length,
+    prefix: normalizeReadingSelection(beforeText).slice(-READING_CONTEXT_LENGTH),
+    suffix: normalizeReadingSelection(afterText).slice(0, READING_CONTEXT_LENGTH)
   };
 }
-function getReadingSelectionRenderedOffset(container, range) {
-  const prefixRange = getActiveDocument().createRange();
-  prefixRange.selectNodeContents(container);
-  prefixRange.setEnd(range.startContainer, range.startOffset);
-  const offset = normalizeReadingSelection(prefixRange.toString()).length;
-  return offset;
+function findSourceCandidates(source, sectionSource, sourceIndex, selectedText, scope) {
+  const renderedSelection = normalizeReadingSelection(selectedText);
+  if (!renderedSelection) {
+    return [];
+  }
+  const directRanges = findDirectSourceRanges(sectionSource, selectedText, scope.sourceStartOffset);
+  const ranges = directRanges.length > 0 ? directRanges : findRenderedSourceRanges(source, sourceIndex, renderedSelection);
+  return ranges.map((range) => {
+    const renderedOffset = renderedOffsetForSourceOffset(sourceIndex.offsets, range.from);
+    return {
+      ...range,
+      renderedDistance: Math.abs(renderedOffset - scope.renderedOffset),
+      contextScore: getContextScore(sourceIndex.text, renderedSelection, renderedOffset, scope)
+    };
+  });
+}
+function findDirectSourceRanges(sectionSource, selectedText, sourceStartOffset) {
+  return findTextStarts(sectionSource, selectedText).map((index) => ({
+    from: sourceStartOffset + index,
+    to: sourceStartOffset + index + selectedText.length
+  }));
+}
+function findRenderedSourceRanges(source, sourceIndex, renderedSelection) {
+  return findTextStarts(sourceIndex.text, renderedSelection).flatMap((renderedOffset) => {
+    const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedOffset]);
+    const lastOffset = sourceIndex.offsets[renderedOffset + renderedSelection.length - 1];
+    return from === void 0 || lastOffset === void 0 ? [] : [{ from, to: lastOffset + 1 }];
+  });
+}
+function chooseUniqueCandidate(candidates) {
+  const accepted = candidates.filter((candidate) => candidate.contextScore >= MIN_CONTEXT_SCORE);
+  if (accepted.length === 1) {
+    return accepted[0] || null;
+  }
+  if (accepted.length === 0) {
+    return null;
+  }
+  accepted.sort((left, right) => {
+    const scoreDifference = right.contextScore - left.contextScore;
+    return scoreDifference || left.renderedDistance - right.renderedDistance;
+  });
+  const first = accepted[0];
+  const second = accepted[1];
+  return first && second && first.contextScore > second.contextScore ? first : null;
+}
+function getContextScore(renderedSource, renderedSelection, renderedOffset, scope) {
+  const prefix = normalizeReadingSelection(scope.prefix);
+  const suffix = normalizeReadingSelection(scope.suffix);
+  const sourcePrefix = renderedSource.slice(Math.max(0, renderedOffset - prefix.length), renderedOffset);
+  const suffixStart = renderedOffset + renderedSelection.length;
+  const sourceSuffix = renderedSource.slice(suffixStart, suffixStart + suffix.length);
+  return 1 + getCommonEdgeRatio(sourcePrefix, prefix, true) / 2 + getCommonEdgeRatio(sourceSuffix, suffix, false) / 2;
+}
+function getCommonEdgeRatio(sourceContext, selectionContext, fromEnd) {
+  if (!selectionContext) {
+    return 1;
+  }
+  let matchingLength = 0;
+  while (matchingLength < selectionContext.length) {
+    const selectionIndex = fromEnd ? selectionContext.length - matchingLength - 1 : matchingLength;
+    const sourceIndex = fromEnd ? sourceContext.length - matchingLength - 1 : matchingLength;
+    if (selectionContext[selectionIndex] !== sourceContext[sourceIndex]) {
+      break;
+    }
+    matchingLength += 1;
+  }
+  return matchingLength / selectionContext.length;
+}
+function findTextStarts(text, selectedText) {
+  if (!selectedText) {
+    return [];
+  }
+  const starts = [];
+  let searchFrom = 0;
+  while (searchFrom <= text.length) {
+    const index = text.indexOf(selectedText, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    starts.push(index);
+    searchFrom = index + Math.max(1, selectedText.length);
+  }
+  return starts;
 }
 function getReadingSelectionRect(range) {
   const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
@@ -5008,7 +5155,7 @@ function getBoundingRect(rects) {
   const bottom = Math.max(...rects.map((rect) => rect.bottom));
   return new DOMRect(left, top, right - left, bottom - top);
 }
-function buildRenderedSourceIndex(source) {
+function buildRenderedSourceIndex(source, sourceStartOffset = 0) {
   let rendered = "";
   const offsets = [];
   let index = 0;
@@ -5032,59 +5179,14 @@ function buildRenderedSourceIndex(source) {
       continue;
     }
     rendered += char;
-    offsets.push(index);
+    offsets.push(sourceStartOffset + index);
     index += 1;
   }
   return { text: rendered, offsets };
 }
-function findBestSourceTextStart(source, sourceIndex, selectedText, preferredRenderedOffset) {
-  const candidates = [];
-  let searchFrom = 0;
-  while (searchFrom <= source.length) {
-    const index = source.indexOf(selectedText, searchFrom);
-    if (index < 0) {
-      break;
-    }
-    candidates.push(index);
-    searchFrom = index + Math.max(1, selectedText.length);
-  }
-  return chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset);
-}
-function chooseSourceCandidate(candidates, sourceIndex, preferredRenderedOffset) {
-  if (candidates.length === 0) {
-    return -1;
-  }
-  if (candidates.length === 1) {
-    return candidates[0] || 0;
-  }
-  return candidates.sort(
-    (left, right) => Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, left) - preferredRenderedOffset) - Math.abs(renderedOffsetForSourceOffset(sourceIndex.offsets, right) - preferredRenderedOffset)
-  )[0] || candidates[0] || 0;
-}
 function renderedOffsetForSourceOffset(offsets, sourceOffset) {
   const index = offsets.findIndex((offset) => offset >= sourceOffset);
   return index >= 0 ? index : offsets.length;
-}
-function findBestRenderedTextStart2(renderedText, selectedText, preferredOffset) {
-  const candidates = [];
-  let searchFrom = 0;
-  while (searchFrom <= renderedText.length) {
-    const index = renderedText.indexOf(selectedText, searchFrom);
-    if (index < 0) {
-      break;
-    }
-    candidates.push(index);
-    searchFrom = index + Math.max(1, selectedText.length);
-  }
-  if (candidates.length === 0) {
-    return -1;
-  }
-  if (candidates.length === 1) {
-    return candidates[0] || 0;
-  }
-  return candidates.sort(
-    (left, right) => Math.abs(left - preferredOffset) - Math.abs(right - preferredOffset)
-  )[0] || candidates[0] || 0;
 }
 function expandStartToOpeningMarker(source, offset) {
   if (offset === void 0) {
@@ -5143,6 +5245,7 @@ var NavigationGuard = class {
 // src/main.ts
 var READING_SELECTION_TOOLBAR_DELAY_MS = 300;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
+var EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 var SideMarkPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
@@ -5153,6 +5256,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.pendingCommentSelection = null;
     this.readingSelection = null;
     this.readingSelectionTimer = null;
+    this.editorDocumentSaveTimer = null;
+    this.pendingEditorAnchorUpdates = /* @__PURE__ */ new Map();
     this.readingSelectionRequestId = 0;
     this.lastMarkdownFilePath = "";
     this.previewObservers = /* @__PURE__ */ new Map();
@@ -5211,6 +5316,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.clearPreviewMarkObservers();
     this.sourceLineStartsCache.clear();
     this.clearReadingSelectionTimer();
+    this.clearEditorDocumentSaveTimer();
+    this.pendingEditorAnchorUpdates.clear();
     this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
     (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
@@ -5362,12 +5469,57 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const file = this.getActiveMarkdownFile();
     if (!file) {
       this.currentDocument = null;
+      this.refreshEditorDecorations();
       await this.refreshSidebar();
       return;
     }
     const source = await this.app.vault.read(file);
     this.currentDocument = await this.store.relocateDocument(file.path, source);
+    this.refreshEditorDecorations();
     await this.refreshSidebar();
+  }
+  handleEditorDocumentChange(filePath, source, changes) {
+    if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+      return;
+    }
+    const previousMarks = this.currentDocument.marks;
+    const nextMarks = reconcileEditorMarks(previousMarks, source, changes);
+    this.currentDocument = {
+      ...this.currentDocument,
+      marks: nextMarks
+    };
+    this.scheduleEditorDocumentSave(filePath, previousMarks, nextMarks);
+  }
+  scheduleEditorDocumentSave(filePath, previousMarks, nextMarks) {
+    if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+      return;
+    }
+    mergePendingEditorAnchorUpdates(this.pendingEditorAnchorUpdates, previousMarks, nextMarks);
+    if (this.pendingEditorAnchorUpdates.size === 0) {
+      return;
+    }
+    this.clearEditorDocumentSaveTimer();
+    this.editorDocumentSaveTimer = window.setTimeout(() => {
+      this.editorDocumentSaveTimer = null;
+      const pending = this.pendingEditorAnchorUpdates;
+      this.pendingEditorAnchorUpdates = /* @__PURE__ */ new Map();
+      void this.saveEditorMarkAnchors(filePath, Array.from(pending.values())).finally(() => pending.clear());
+    }, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+  }
+  clearEditorDocumentSaveTimer() {
+    if (this.editorDocumentSaveTimer !== null) {
+      window.clearTimeout(this.editorDocumentSaveTimer);
+      this.editorDocumentSaveTimer = null;
+    }
+  }
+  async saveEditorMarkAnchors(filePath, updates) {
+    try {
+      await this.store.updateMarkAnchors(filePath, updates);
+      await this.refreshSidebar();
+      await this.renderPreviewMarksForFile(filePath);
+    } catch (error) {
+      console.error(`FloatMark: failed to save editor anchors for ${filePath}`, error);
+    }
   }
   async handleMarkdownRename(newFilePath, oldFilePath) {
     await this.store.renameDocument(oldFilePath, newFilePath);
@@ -5701,6 +5853,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     }, READING_SELECTION_TOOLBAR_DELAY_MS);
   }
   async updateReadingSelectionToolbar(requestId) {
+    var _a, _b;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       this.readingSelection = null;
@@ -5725,9 +5878,24 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (requestId !== this.readingSelectionRequestId) {
       return;
     }
-    const renderedOffset = getReadingSelectionRenderedOffset(view.contentEl, range);
-    const sourceRange = findSourceRangeForReadingSelection(source, selectedText, renderedOffset);
+    const sections = getSelectedPreviewSections(view, range);
+    if (sections.length === 0) {
+      new import_obsidian10.Notice(this.t("notice.readingSelectionUnresolved"));
+      this.readingSelection = null;
+      this.readingToolbar.hide();
+      return;
+    }
+    const lineStarts = this.getSourceLineStarts(file, source);
+    const firstSection = sections[0];
+    const lastSection = sections[sections.length - 1];
+    const context = getReadingSelectionContext(sections.map((section) => section.el), range);
+    const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
+      sourceStartOffset: (_a = lineStarts[firstSection.lineStart]) != null ? _a : source.length,
+      sourceEndOffset: (_b = lineStarts[lastSection.lineEnd + 1]) != null ? _b : source.length,
+      ...context
+    });
     if (!sourceRange) {
+      new import_obsidian10.Notice(this.t("notice.readingSelectionUnresolved"));
       this.readingSelection = null;
       this.readingToolbar.hide();
       return;
@@ -6170,7 +6338,7 @@ ${stripped}
     }
     const section = context == null ? void 0 : context.getSectionInfo(container);
     const lineStarts = this.getSourceLineStarts(file, source);
-    const marks = section ? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts) : document.marks;
+    const marks = section ? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts) : [];
     renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
   }
   syncPreviewMarkObservers() {
@@ -6310,7 +6478,7 @@ ${stripped}
         return;
       }
       const previewRoot = getPreviewSectionsContainer(view);
-      renderReadingMarks(previewRoot, source, document.marks, onClick);
+      renderReadingMarks(previewRoot, source, [], onClick);
     } finally {
       if (this.isCurrentPreviewRender(view, filePath, generation)) {
         this.ensurePreviewObserver(view);
@@ -6512,6 +6680,16 @@ function getPreviewSections(view) {
     }
   }
   return result;
+}
+function getSelectedPreviewSections(view, range) {
+  const sections = getPreviewSections(view);
+  const first = sections.findIndex((section) => section.el.contains(range.startContainer));
+  const last = sections.findIndex((section) => section.el.contains(range.endContainer));
+  if (first < 0 || last < first) {
+    return [];
+  }
+  const selected = sections.slice(first, last + 1);
+  return selected.every((section, index) => index === 0 || section.lineStart <= selected[index - 1].lineEnd + 1) ? selected : [];
 }
 function getCssHighlights() {
   if (typeof CSS === "undefined") {
