@@ -211,8 +211,10 @@ assert.equal(adapter.listCount, 1);
 assert.equal(adapter.readCount, 4);
 
 await store.saveDocument(createDocument("new.md"));
-await store.loadAllDocuments();
-assert.equal(adapter.listCount, 2);
+const documentsAfterSave = await store.loadAllDocuments();
+assert.equal(adapter.listCount, 1);
+assert.equal(adapter.readCount, 4);
+assert.deepEqual(documentsAfterSave.map((document) => document.filePath), ["a.md", "folder/b.md", "new.md"]);
 
 const anchorMergeAdapter = new MemoryAdapter();
 const anchorMergeStore = createStore(anchorMergeAdapter);

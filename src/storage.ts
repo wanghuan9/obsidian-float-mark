@@ -195,8 +195,20 @@ export class SideMarkStore {
 		const sidecarPath = this.getSidecarPath(normalizedPath);
 		await this.app.vault.adapter.mkdir(this.getFilesDir());
 		await this.app.vault.adapter.write(sidecarPath, JSON.stringify(next, null, 2));
-		this.invalidateAllDocumentsCache();
+		this.updateAllDocumentsCache(next);
 		return next;
+	}
+
+	private updateAllDocumentsCache(document: SideMarkDocument): void {
+		this.allDocumentsRevision += 1;
+		this.allDocumentsLoad = null;
+		if (!this.allDocumentsCache) {
+			return;
+		}
+		this.allDocumentsCache = [
+			...this.allDocumentsCache.filter((item) => item.filePath !== document.filePath),
+			document
+		].sort((left, right) => left.filePath.localeCompare(right.filePath));
 	}
 
 	async addReply(filePath: string, markId: string, content: string): Promise<SideMarkDocument> {

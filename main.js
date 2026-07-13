@@ -2098,8 +2098,19 @@ var SideMarkStore = class {
     const sidecarPath = this.getSidecarPath(normalizedPath);
     await this.app.vault.adapter.mkdir(this.getFilesDir());
     await this.app.vault.adapter.write(sidecarPath, JSON.stringify(next, null, 2));
-    this.invalidateAllDocumentsCache();
+    this.updateAllDocumentsCache(next);
     return next;
+  }
+  updateAllDocumentsCache(document) {
+    this.allDocumentsRevision += 1;
+    this.allDocumentsLoad = null;
+    if (!this.allDocumentsCache) {
+      return;
+    }
+    this.allDocumentsCache = [
+      ...this.allDocumentsCache.filter((item) => item.filePath !== document.filePath),
+      document
+    ].sort((left, right) => left.filePath.localeCompare(right.filePath));
   }
   async addReply(filePath, markId, content) {
     const trimmed = content.trim();
@@ -6161,62 +6172,58 @@ ${stripped}
     const rect = view.coordsAtPos(selection.to);
     if (!rect || selection.empty) return;
     const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-    let markId = "";
-    let createPromise = null;
-    this.markStylePopover.show(popoverRect, defaultHighlightAppearance(), (choice) => {
-      void (async () => {
-        if (!markId) {
-          if (!createPromise) {
-            createPromise = this.createMarkFromOffsets(
-              view,
-              selection.from,
-              selection.to,
-              "highlight",
-              "",
-              choice,
-              false
-            );
-          }
-          const createdMark = await createPromise;
-          markId = (createdMark == null ? void 0 : createdMark.id) || "";
-          if (markId) {
-            await this.updateMarkAppearance(markId, choice);
-          }
-          return;
-        }
-        await this.updateMarkAppearance(markId, choice);
-      })();
-    }, () => {
-      if (markId) {
-        void this.deleteMark(markId);
-      }
-    });
+    this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createMarkFromOffsets(
+      view,
+      selection.from,
+      selection.to,
+      "highlight",
+      "",
+      choice,
+      false
+    ));
   }
   showMarkStylePopoverForReadingSelection(selection) {
+    this.showMarkStylePopoverForNewMark(selection.rect, (choice) => this.createReadingMark(
+      selection,
+      "highlight",
+      "",
+      choice,
+      false
+    ));
+  }
+  showMarkStylePopoverForNewMark(rect, createMark) {
     let markId = "";
     let createPromise = null;
-    this.markStylePopover.show(selection.rect, defaultHighlightAppearance(), (choice) => {
+    let latestChoice = defaultHighlightAppearance();
+    let resetRequested = false;
+    this.markStylePopover.show(rect, latestChoice, (choice) => {
+      latestChoice = choice;
+      if (markId) {
+        void this.updateMarkAppearance(markId, choice);
+        return;
+      }
+      if (createPromise) {
+        return;
+      }
+      const createdChoice = choice;
+      const pendingCreate = createMark(choice);
+      createPromise = pendingCreate;
       void (async () => {
+        const createdMark = await pendingCreate;
+        markId = (createdMark == null ? void 0 : createdMark.id) || "";
         if (!markId) {
-          if (!createPromise) {
-            createPromise = this.createReadingMark(
-              selection,
-              "highlight",
-              "",
-              choice,
-              false
-            );
-          }
-          const createdMark = await createPromise;
-          markId = (createdMark == null ? void 0 : createdMark.id) || "";
-          if (markId) {
-            await this.updateMarkAppearance(markId, choice);
-          }
           return;
         }
-        await this.updateMarkAppearance(markId, choice);
+        if (resetRequested) {
+          await this.deleteMark(markId);
+          return;
+        }
+        if (!isSameHighlightAppearance(createdChoice, latestChoice)) {
+          await this.updateMarkAppearance(markId, latestChoice);
+        }
       })();
     }, () => {
+      resetRequested = true;
       if (markId) {
         void this.deleteMark(markId);
       }
@@ -6253,8 +6260,7 @@ ${stripped}
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-    await this.refreshSidebar();
-    await this.renderPreviewMarksForFile(selection.file.path);
+    await this.refreshMarkViews(selection.file.path);
     this.readingSelection = null;
     (_b = window.getSelection()) == null ? void 0 : _b.removeAllRanges();
     if (autoOpenSidebar && this.settings.autoOpenSidebar) {
@@ -6284,9 +6290,7 @@ ${stripped}
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-    await this.refreshSidebar();
-    this.refreshEditorDecorations();
-    await this.renderPreviewMarksForFile(file.path);
+    await this.refreshMarkViews(file.path);
     if (autoOpenSidebar && this.settings.autoOpenSidebar) {
       await this.openSidebar();
     }
@@ -6332,9 +6336,13 @@ ${stripped}
     (_a = getCssHighlights()) == null ? void 0 : _a.delete(READING_SELECTION_HIGHLIGHT_NAME);
   }
   async refreshMarkViews(filePath) {
+    var _a;
     this.refreshEditorDecorations();
-    await this.refreshSidebar();
-    await this.renderPreviewMarksForFile(filePath);
+    const document = ((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath ? this.currentDocument : void 0;
+    await Promise.all([
+      this.refreshSidebar(),
+      this.renderPreviewMarksForFile(filePath, document)
+    ]);
   }
   syncMarkToLarkInBackground(markId) {
     if (!this.settings.autoSyncToLark || getLarkSyncPluginStatus(this) !== "enabled") {
@@ -6471,8 +6479,9 @@ ${stripped}
     this.previewRenderTimers.clear();
     this.previewRenderGenerations.clear();
   }
-  async renderPreviewMarksForFile(filePath) {
+  async renderPreviewMarksForFile(filePath, document) {
     var _a;
+    const renders = [];
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
       if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
@@ -6480,20 +6489,21 @@ ${stripped}
       }
       this.clearPreviewRenderTimer(view);
       const generation = this.nextPreviewRenderGeneration(view);
-      await this.renderPreviewMarksForView(view, generation);
+      renders.push(this.renderPreviewMarksForView(view, generation, document));
     }
+    await Promise.all(renders);
   }
-  async renderPreviewMarksForView(view, generation) {
+  async renderPreviewMarksForView(view, generation, document) {
     const file = view.file;
     if (!file || file.extension !== "md" || view.getMode() !== "preview") {
       return;
     }
     const filePath = file.path;
-    const source = await this.app.vault.read(file);
+    const source = (document == null ? void 0 : document.filePath) === filePath ? view.data : await this.app.vault.read(file);
     if (!this.isCurrentPreviewRender(view, filePath, generation)) {
       return;
     }
-    const document = await this.store.relocateDocument(file.path, source);
+    const resolvedDocument = (document == null ? void 0 : document.filePath) === filePath ? document : await this.store.relocateDocument(filePath, source);
     if (!this.isCurrentPreviewRender(view, filePath, generation)) {
       return;
     }
@@ -6507,7 +6517,7 @@ ${stripped}
         for (const section of sections) {
           const marks = getReadingMarksForSection(
             source,
-            document.marks,
+            resolvedDocument.marks,
             section.lineStart,
             section.lineEnd,
             lineStarts
@@ -6700,6 +6710,9 @@ function defaultHighlightAppearance() {
 }
 function isDefaultHighlightAppearance(choice) {
   return choice.textColor === "default" && choice.backgroundColor === "none";
+}
+function isSameHighlightAppearance(left, right) {
+  return left.textColor === right.textColor && left.backgroundColor === right.backgroundColor;
 }
 function getPreviewSectionsContainer(view) {
   var _a;

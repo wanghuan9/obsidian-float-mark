@@ -29,7 +29,8 @@ This removes the unconditional duplicate write while preserving the last user ch
 
 Appearance, status, note, reply, creation, and deletion changes already return a fresh `SideMarkDocument`. Pass that document into preview rendering instead of rereading and relocating the same sidecar.
 
-- Use `MarkdownView.data` as the current preview source.
+- Use `MarkdownView.data` when a matching fresh document is supplied by a completed mark mutation.
+- Keep the existing Vault source read for observer-driven or general preview renders.
 - Skip anchor relocation only when a matching fresh document is explicitly provided.
 - Keep the existing relocate path for observer-driven or general preview renders.
 - Refresh the sidebar and reading preview concurrently from the same persisted snapshot.

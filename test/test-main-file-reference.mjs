@@ -28,6 +28,14 @@ assert.match(method, /this\.currentDocument\?\.filePath === file\.path/);
 const updateReadingSelectionMethod = readMethod("updateReadingSelectionToolbar");
 const readingToolbarActionMethod = readMethod("async handleReadingToolbarAction");
 const unresolvedReadingSelectionMethod = readMethod("showUnresolvedReadingSelection");
+const editorStylePopoverMethod = readMethod("showMarkStylePopoverForView");
+const readingStylePopoverMethod = readMethod("showMarkStylePopoverForReadingSelection");
+const newMarkStylePopoverMethod = readMethod("showMarkStylePopoverForNewMark");
+const createReadingMarkMethod = readMethod("async createReadingMark");
+const createMarkFromOffsetsMethod = readMethod("async createMarkFromOffsets");
+const refreshMarkViewsMethod = readMethod("async refreshMarkViews");
+const renderPreviewMarksForFileMethod = readMethod("async renderPreviewMarksForFile");
+const renderPreviewMarksForViewMethod = readMethod("async renderPreviewMarksForView");
 assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
 assert.doesNotMatch(updateReadingSelectionMethod, /this\.app\.vault\.read/);
 assert.match(updateReadingSelectionMethod, /const source = view\.data/);
@@ -35,6 +43,25 @@ assert.match(updateReadingSelectionMethod, /this\.showUnresolvedReadingSelection
 assert.match(unresolvedReadingSelectionMethod, /this\.readingSelectionUnresolved = true/);
 assert.match(unresolvedReadingSelectionMethod, /this\.readingToolbar\.show\(rect, boundary\)/);
 assert.match(readingToolbarActionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
+assert.match(editorStylePopoverMethod, /this\.showMarkStylePopoverForNewMark\(popoverRect,/);
+assert.match(readingStylePopoverMethod, /this\.showMarkStylePopoverForNewMark\(selection\.rect,/);
+assert.match(newMarkStylePopoverMethod, /let latestChoice = defaultHighlightAppearance\(\)/);
+assert.match(newMarkStylePopoverMethod, /if \(createPromise\) \{\s*return;/);
+assert.match(newMarkStylePopoverMethod, /resetRequested = true/);
+assert.match(newMarkStylePopoverMethod, /if \(resetRequested\) \{\s*await this\.deleteMark\(markId\)/);
+assert.match(newMarkStylePopoverMethod, /isSameHighlightAppearance\(createdChoice, latestChoice\)/);
+assert.match(createReadingMarkMethod, /await this\.refreshMarkViews\(selection\.file\.path\)/);
+assert.match(createMarkFromOffsetsMethod, /await this\.refreshMarkViews\(file\.path\)/);
+assert.match(refreshMarkViewsMethod, /await Promise\.all\(\[\s*this\.refreshSidebar\(\),\s*this\.renderPreviewMarksForFile\(filePath, document\)\s*\]\)/);
+assert.match(renderPreviewMarksForFileMethod, /await Promise\.all\(renders\)/);
+assert.match(
+	renderPreviewMarksForViewMethod,
+	/const source = document\?\.filePath === filePath\s*\? view\.data\s*: await this\.app\.vault\.read\(file\)/
+);
+assert.match(
+	renderPreviewMarksForViewMethod,
+	/document\?\.filePath === filePath\s*\? document\s*: await this\.store\.relocateDocument\(filePath, source\)/
+);
 
 async function writeAfterRemote(file, vaultFiles, remote, writtenPaths) {
 	await remote;
