@@ -580,7 +580,7 @@ Verify installed files match the build output, reload Obsidian, and confirm titl
 - Consumes: Markdown source passed to `buildRenderedSourceIndex(source, sourceStartOffset)`.
 - Produces: `findMarkdownLinkSyntaxOffsets(source: string): Set<number>`, excluding inline-link destinations and autolink delimiters from the rendered-source index while retaining every visible label character's source offsets.
 
-- [ ] **Step 1: Add failing cross-block link and safety tests**
+- [x] **Step 1: Add failing cross-block link and safety tests**
 
 Add a regression fixture whose source contains a heading followed by an ordered list, with bold labels, inline code, and a Markdown link in the middle item:
 
@@ -619,13 +619,13 @@ assert.equal(source.slice(escapedRange.from, escapedRange.to), "\\[标签](地�
 assert.equal(source.slice(codeRange.from, codeRange.to), "`[标签](地址)`");
 ```
 
-- [ ] **Step 2: Run the focused test and verify failure**
+- [x] **Step 2: Run the focused test and verify failure**
 
 Run: `rtk node test/test-reading-selection.mjs`
 
 Expected: FAIL on the cross-block fixture because the rendered-source index still contains `[`, `](https://example.com/rules)`, and therefore has no whole-selection candidate.
 
-- [ ] **Step 3: Implement syntax-aware inline-link indexing**
+- [x] **Step 3: Implement syntax-aware inline-link indexing**
 
 Precompute Markdown link syntax beside table syntax in `buildRenderedSourceIndex()`:
 
@@ -704,7 +704,7 @@ function findMarkdownLinkSyntaxOffsets(source: string): Set<number> {
 
 Implement `findMarkdownInlineLink()` with `findClosingMarkdownDelimiter()` so nested parentheses in destinations are balanced. Treat a preceding unescaped `!` as image syntax. Implement `findMarkdownAutolinkEnd()` for `http://`, `https://`, `mailto:`, and standard email autolinks. Do not interpret escaped opening brackets, code-span content, ordinary angle-bracket text, or HTML tags as links.
 
-- [ ] **Step 4: Run focused and complete verification**
+- [x] **Step 4: Run focused and complete verification**
 
 Run:
 

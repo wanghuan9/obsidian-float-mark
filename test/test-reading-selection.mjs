@@ -327,6 +327,63 @@ assert.deepEqual(autolinkRange, {
 	to: autolinkStart + "https://example.com".length
 });
 
+const linkedCrossBlockSource = [
+	"#### 关键设计决策（trade-off）",
+	"",
+	"1. **双项目分层**：BFF 参照 `RecycleOrderController`。",
+	"2. **依赖 A 表结构**：结构以 [留货规则 Wiki](https://example.com/rules) 为准。",
+	"3. **锁策略**：按 `product_no` 加锁。"
+].join("\n");
+const linkedCrossBlockSelection = [
+	"关键设计决策（trade-off）",
+	"双项目分层：BFF 参照 RecycleOrderController。",
+	"依赖 A 表结构：结构以 留货规则 Wiki 为准。",
+	"锁策略：按 product_no 加锁。"
+].join("\n");
+const linkedCrossBlockStart = linkedCrossBlockSource.indexOf("关键设计决策");
+assert.deepEqual(findSourceRangeForReadingSelection(
+	linkedCrossBlockSource,
+	linkedCrossBlockSelection,
+	{
+		sourceStartOffset: 0,
+		sourceEndOffset: linkedCrossBlockSource.length,
+		renderedOffset: 0,
+		prefix: "",
+		suffix: ""
+	}
+), { from: linkedCrossBlockStart, to: linkedCrossBlockSource.length });
+
+for (const [linkSource, linkSelection] of [
+	[
+		"前文 [甲](https://a.example) 中间 [乙](https://b.example) 后文",
+		"前文 甲 中间 乙 后文"
+	],
+	[
+		"前文 [嵌套链接](https://example.com/a_(b)) 后文",
+		"前文 嵌套链接 后文"
+	],
+	[
+		"前文 <https://example.com/path> 后文",
+		"前文 https://example.com/path 后文"
+	],
+	[
+		"前文 \\[标签](地址) 后文",
+		"前文 [标签](地址) 后文"
+	],
+	[
+		"前文 `[标签](地址)` 后文",
+		"前文 [标签](地址) 后文"
+	]
+]) {
+	assert.deepEqual(findSourceRangeForReadingSelection(linkSource, linkSelection, {
+		sourceStartOffset: 0,
+		sourceEndOffset: linkSource.length,
+		renderedOffset: 0,
+		prefix: "",
+		suffix: ""
+	}), { from: 0, to: linkSource.length });
+}
+
 const escapedPunctuationSource = "前文 \\*字面星号\\* 后文";
 const escapedPunctuationRange = findDomBackedRange(
 	escapedPunctuationSource,

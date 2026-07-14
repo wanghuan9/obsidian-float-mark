@@ -51,6 +51,13 @@ interface TablePipeScan {
 	escapedPipeBackslashes: number[];
 }
 
+interface MarkdownInlineLink {
+	labelEnd: number;
+	destinationStart: number;
+	end: number;
+	imageMarker: number | null;
+}
+
 export function findSourceRangeForReadingSelection(
 	source: string,
 	selectedText: string,
@@ -241,6 +248,7 @@ function buildRenderedSourceIndex(source: string, sourceStartOffset = 0): Render
 	const offsets: number[] = [];
 	const endOffsets: number[] = [];
 	const tableSyntaxOffsets = findTableSyntaxOffsets(source);
+	const linkSyntaxOffsets = findMarkdownLinkSyntaxOffsets(source);
 	let index = 0;
 	let inlineCodeRunLength = 0;
 	const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
@@ -261,7 +269,7 @@ function buildRenderedSourceIndex(source: string, sourceStartOffset = 0): Render
 			index += 2;
 			continue;
 		}
-		if (tableSyntaxOffsets.has(index)) {
+		if (tableSyntaxOffsets.has(index) || linkSyntaxOffsets.has(index)) {
 			index += 1;
 			continue;
 		}
@@ -332,6 +340,135 @@ function decodeHtmlEntityMatch(match: RegExpMatchArray): string | null {
 		return Number.isFinite(codePoint) && codePoint <= 0x10FFFF ? String.fromCodePoint(codePoint) : null;
 	}
 	return HTML_NAMED_ENTITIES[match[3] || ""] || null;
+}
+
+function findMarkdownLinkSyntaxOffsets(source: string): Set<number> {
+	const offsets = new Set<number>();
+	let inlineCodeRunLength = 0;
+	let index = 0;
+	while (index < source.length) {
+		if (source[index] === "`") {
+			const runLength = countCharacterRun(source, index, "`");
+			if (inlineCodeRunLength === 0) {
+				inlineCodeRunLength = runLength;
+			} else if (inlineCodeRunLength === runLength) {
+				inlineCodeRunLength = 0;
+			}
+			index += runLength;
+			continue;
+		}
+		if (inlineCodeRunLength > 0) {
+			index += 1;
+			continue;
+		}
+		if (source[index] === "\\") {
+			index += 2;
+			continue;
+		}
+		const inlineLink = findMarkdownInlineLink(source, index);
+		if (inlineLink) {
+			addMarkdownInlineLinkOffsets(offsets, index, inlineLink);
+			index = inlineLink.end + 1;
+			continue;
+		}
+		const autolinkEnd = findMarkdownAutolinkEnd(source, index);
+		if (autolinkEnd !== null) {
+			offsets.add(index);
+			offsets.add(autolinkEnd);
+			index = autolinkEnd + 1;
+			continue;
+		}
+		index += 1;
+	}
+	return offsets;
+}
+
+function findMarkdownInlineLink(source: string, start: number): MarkdownInlineLink | null {
+	if (source[start] !== "[") {
+		return null;
+	}
+	const labelEnd = findClosingMarkdownDelimiter(source, start, "[", "]");
+	const destinationStart = labelEnd === null ? -1 : labelEnd + 1;
+	if (labelEnd === null || source[destinationStart] !== "(") {
+		return null;
+	}
+	const end = findClosingMarkdownDelimiter(source, destinationStart, "(", ")");
+	if (end === null) {
+		return null;
+	}
+	const imageMarkerIndex = start - 1;
+	const imageMarker = source[imageMarkerIndex] === "!"
+		&& countPrecedingBackslashes(source, imageMarkerIndex) % 2 === 0
+		? imageMarkerIndex
+		: null;
+	return { labelEnd, destinationStart, end, imageMarker };
+}
+
+function findClosingMarkdownDelimiter(
+	source: string,
+	start: number,
+	opening: string,
+	closing: string
+): number | null {
+	let depth = 0;
+	let inlineCodeRunLength = 0;
+	let index = start;
+	while (index < source.length) {
+		if (source[index] === "\\") {
+			index += 2;
+			continue;
+		}
+		if (source[index] === "`") {
+			const runLength = countCharacterRun(source, index, "`");
+			if (inlineCodeRunLength === 0) {
+				inlineCodeRunLength = runLength;
+			} else if (inlineCodeRunLength === runLength) {
+				inlineCodeRunLength = 0;
+			}
+			index += runLength;
+			continue;
+		}
+		if (inlineCodeRunLength === 0 && source[index] === opening) {
+			depth += 1;
+		} else if (inlineCodeRunLength === 0 && source[index] === closing) {
+			depth -= 1;
+			if (depth === 0) {
+				return index;
+			}
+		}
+		index += 1;
+	}
+	return null;
+}
+
+function addMarkdownInlineLinkOffsets(
+	offsets: Set<number>,
+	labelStart: number,
+	link: MarkdownInlineLink
+): void {
+	offsets.add(labelStart);
+	offsets.add(link.labelEnd);
+	if (link.imageMarker !== null) {
+		offsets.add(link.imageMarker);
+	}
+	for (let index = link.destinationStart; index <= link.end; index += 1) {
+		offsets.add(index);
+	}
+}
+
+function findMarkdownAutolinkEnd(source: string, start: number): number | null {
+	if (source[start] !== "<") {
+		return null;
+	}
+	const end = source.indexOf(">", start + 1);
+	const lineEnd = source.indexOf("\n", start + 1);
+	if (end < 0 || (lineEnd >= 0 && end > lineEnd)) {
+		return null;
+	}
+	const value = source.slice(start + 1, end);
+	const isUrl = /^(?:https?:\/\/|mailto:)[^\s<>]+$/i.test(value);
+	const isEmail = /^[^\s<>@]+@[^\s<>@]+$/.test(value);
+	return isUrl || isEmail ? end : null;
 }
 
 function findTableSyntaxOffsets(source: string): Set<number> {
