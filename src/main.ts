@@ -32,7 +32,7 @@ import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
 import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginLanguage, translate, type I18nKey, type PluginLanguage } from "./i18n";
 import { NavigationGuard } from "./navigation-guard";
-import { resolvePreviewSectionBounds, type PreviewSectionBounds } from "./preview-sections";
+import { resolvePreviewSectionBounds, selectPreviewSections, type PreviewSectionBounds } from "./preview-sections";
 
 const READING_SELECTION_TOOLBAR_DELAY_MS = 100;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
@@ -1725,16 +1725,7 @@ function getPreviewSections(view: MarkdownView): PreviewSection[] {
 }
 
 function getSelectedPreviewSections(view: MarkdownView, range: Range): PreviewSection[] {
-	const sections = getPreviewSections(view);
-	const first = sections.findIndex((section) => section.el.contains(range.startContainer));
-	const last = sections.findIndex((section) => section.el.contains(range.endContainer));
-	if (first < 0 || last < first) {
-		return [];
-	}
-	const selected = sections.slice(first, last + 1);
-	return selected.every((section, index) => index === 0 || section.lineStart <= selected[index - 1].lineEnd + 1)
-		? selected
-		: [];
+	return selectPreviewSections(getPreviewSections(view), range);
 }
 
 function getCssHighlights(): CssHighlightRegistry | null {
