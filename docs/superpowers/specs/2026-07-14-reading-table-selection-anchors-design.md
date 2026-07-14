@@ -2,7 +2,7 @@
 
 ## Goal
 
-Allow reading-mode selections inside rendered Markdown table cells to map back to the exact Markdown source range without weakening duplicate-text protection or changing stored anchor semantics.
+Allow reading-mode selections whose rendered text differs from Markdown source syntax to map back to the exact source range without weakening duplicate-text protection or changing stored anchor semantics.
 
 ## Confirmed Failure
 
@@ -46,9 +46,9 @@ Extend the existing rendered-source index construction with table-block awarenes
 
 No changes are made to the selection API, context threshold, candidate sorting, sidecar schema, relocation behavior, reading renderer, or editor renderer.
 
-## Similar-risk Audit
+## Common Rendered/source Mismatches
 
-The verification pass will exercise other Markdown constructs where source text differs from rendered DOM text:
+The rendered-source index also covers common constructs where source text differs from rendered DOM text:
 
 - Task-list markers.
 - Markdown links and autolinks.
@@ -57,14 +57,31 @@ The verification pass will exercise other Markdown constructs where source text 
 - Fenced-code language markers.
 - Callout metadata.
 
-The table fix will not silently broaden into a general Markdown parser. Confirmed failures outside table structure will be reported with reproduction evidence and a scoped follow-up recommendation unless the same small normalization rule fixes them without changing unrelated behavior.
+Escaped punctuation and HTML entities retain explicit source end offsets, so a rendered character can map back to a multi-character source span. Inline-code content keeps escapes and entities literal. For syntax that still yields one nearby candidate inside the confirmed preview section, accept it when its rendered offset differs by no more than eight normalized characters. Multiple candidates continue to require the existing context threshold and unique best score; distant unique text remains unresolved.
+
+## Unique Exact-source Compatibility
+
+Obsidian can expose a preview section whose DOM wrapper contains text outside the section's reported Markdown source bounds. In that case the selected text can have one exact source occurrence while its DOM-derived prefix, suffix, and rendered offset describe a wider wrapper. Rejecting that occurrence produces a false unresolved result for ordinary headings such as `3.4 业务标签`.
+
+Track whether each candidate came from an exact substring match or rendered-text normalization. Apply these acceptance rules in order:
+
+1. If the confirmed source scope contains exactly one exact substring candidate, accept it regardless of DOM context score or rendered distance.
+2. If there is one rendered-only candidate, retain the nearby-distance and context requirements.
+3. If there are multiple candidates of either kind, retain the context threshold and require a unique best context score.
+4. If no candidate exists in the confirmed source scope, remain unresolved.
+
+This is intentionally broader than a heading special case: plain paragraphs, link labels, table cells, and other selectable text receive the same compatibility behavior. It does not choose the first occurrence of repeated text and does not accept generated DOM text that has no source occurrence.
 
 ## Verification
 
 - Add a JSDOM regression test using the reported table row and an actual selection spanning multiple inline-code nodes inside one cell.
 - Assert the returned source range includes the corresponding Markdown backticks and excludes adjacent table cells.
 - Add a repeated-value table case proving row context still selects the intended occurrence.
-- Add table fixtures for optional outer pipes, alignment markers, escaped pipes, and inline-code pipes.
+- Add table fixtures for optional outer pipes, alignment markers, escaped pipes, inline-code pipes, and a table nested in a blockquote or Callout.
+- Add regression fixtures for repeated bold labels, headings, links, autolinks, escaped punctuation, HTML entities, inline HTML, and literal inline-code content.
+- Add a heading fixture whose exact source scope contains only the heading while its DOM context and rendered offset describe surrounding blocks; require the unique exact candidate to resolve.
+- Keep a repeated-heading fixture unresolved when context cannot distinguish its occurrences.
+- Keep a distant rendered-only candidate unresolved.
 - Run the focused reading-selection test, the full test suite, TypeScript compilation, production build, and changed-line format check.
 - Run the similar-risk audit cases and summarize confirmed remaining gaps separately from the implemented table fix.
 
@@ -72,5 +89,9 @@ The table fix will not silently broaden into a general Markdown parser. Confirme
 
 - The reported selection creates a mark instead of showing the unresolved notice.
 - Repeated text in different table rows remains disambiguated by surrounding rendered context.
+- The reported repeated bold label and numbered headings resolve in the target document.
+- Common rendered/source syntax differences resolve only when their candidate is unique and positionally near.
+- A unique exact source occurrence resolves even when Obsidian reports incompatible DOM wrapper context.
+- Repeated exact occurrences still require unique contextual disambiguation.
 - Non-table reading selections retain their current results.
 - No global threshold is lowered and no ambiguous candidate is accepted.
