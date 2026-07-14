@@ -1,14 +1,16 @@
 import { addIcon, type Command, Editor, getLanguage, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import type { MarkdownPostProcessorContext } from "obsidian";
+import type { ChangeDesc } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
+import { mergePendingEditorAnchorUpdates, reconcileEditorMarks } from "./editor-anchor-tracker";
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
-import { SideMarkStore } from "./storage";
-import { DEFAULT_SETTINGS, type MarkColor, type RemoteSyncState, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { type MarkAnchorUpdate, SideMarkStore } from "./storage";
+import { DEFAULT_SETTINGS, type MarkColor, normalizeScopeControlStyle, type RemoteSyncState, type ScopeControlStyle, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 import { SIDE_MARK_VIEW_TYPE, SideMarkSidebarView } from "./sidebar-view";
 import {
 	canSyncMarkToLark,
@@ -20,14 +22,26 @@ import {
 	setLarkCommentResolved,
 	syncMarkToLark as syncMarkToLarkBridge
 } from "./lark-bridge";
-import { buildSourceLineStarts, getReadingMarksForSection, renderReadingMarks } from "./reading-view-renderer";
-import { findSourceRangeForReadingSelection, getReadingSelectionRect, getReadingSelectionRenderedOffset } from "./reading-selection";
+import {
+	buildSourceLineStarts,
+	getReadingMarkElements,
+	getReadingMarksForSection,
+	renderReadingMarks
+} from "./reading-view-renderer";
+import {
+	findSourceRangeForReadingSelection,
+	getReadingSelectionContext,
+	getReadingSelectionRect
+} from "./reading-selection";
 import { FLOAT_MARK_ICON_ID, FLOAT_MARK_ICON_SVG } from "./icons";
 import { getActiveDocument, getActiveSelection, isHtmlElement } from "./dom-utils";
 import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginLanguage, translate, type I18nKey, type PluginLanguage } from "./i18n";
+import { NavigationGuard } from "./navigation-guard";
+import { resolvePreviewSectionBounds, selectPreviewSections, type PreviewSectionBounds } from "./preview-sections";
 
-const READING_SELECTION_TOOLBAR_DELAY_MS = 300;
+const READING_SELECTION_TOOLBAR_DELAY_MS = 100;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
+const EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 
 type CssHighlightRegistry = {
 	set(name: string, highlight: unknown): void;
@@ -42,10 +56,26 @@ interface PreviewObserverState {
 	isObserving: boolean;
 }
 
+interface PreviewSection extends PreviewSectionBounds {
+	el: HTMLElement;
+}
+
 interface SourceLineStartsCacheEntry {
 	mtime: number;
 	size: number;
 	lineStarts: number[];
+}
+
+interface ReadingRenderSnapshot {
+	source: string;
+	document: SideMarkDocument;
+	lineStarts: number[];
+}
+
+interface ReadingRenderSnapshotLoad {
+	sourceVersion: string;
+	storeRevision: number;
+	load: Promise<ReadingRenderSnapshot>;
 }
 
 export default class SideMarkPlugin extends Plugin {
@@ -75,13 +105,19 @@ export default class SideMarkPlugin extends Plugin {
 		range: Range;
 	} | null = null;
 	private readingSelectionTimer: number | null = null;
+	private readingSelectionUnresolved = false;
+	private readonly editorDocumentSaveTimers = new Map<string, number>();
+	private readonly pendingEditorAnchorUpdatesByFile = new Map<string, Map<string, MarkAnchorUpdate>>();
 	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
 	private readonly previewObservers = new Map<MarkdownView, PreviewObserverState>();
 	private readonly previewRenderTimers = new Map<MarkdownView, number>();
 	private readonly previewRenderGenerations = new Map<MarkdownView, number>();
 	private readonly readingContainerGenerations = new WeakMap<HTMLElement, number>();
+	private readonly readingRenderSnapshots = new Map<string, ReadingRenderSnapshotLoad>();
 	private readonly sourceLineStartsCache = new Map<string, SourceLineStartsCacheEntry>();
+	private readonly documentMarkNavigation = new NavigationGuard();
+	private scopeControlStyleSave: Promise<void> = Promise.resolve();
 
 	override async onload(): Promise<void> {
 		await this.loadSettings();
@@ -103,8 +139,32 @@ export default class SideMarkPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncPreviewMarkObservers()));
 		this.registerDomEvent(getActiveDocument(), "selectionchange", () => this.handleReadingSelectionChange());
 		this.registerEvent(this.app.vault.on("modify", (file) => {
-			if (file instanceof TFile && file.extension === "md" && file.path === this.getActiveMarkdownFile()?.path) {
-				void this.reloadCurrentDocument();
+			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(file.path);
+				if (file.path === this.getActiveMarkdownFile()?.path) {
+					void this.reloadCurrentDocument();
+				}
+			}
+		}));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(oldPath);
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(oldPath);
+				this.sourceLineStartsCache.delete(file.path);
+				void this.handleMarkdownRename(file.path, oldPath).catch((error) => {
+					console.error(`FloatMark: failed to migrate sidecar from ${oldPath} to ${file.path}`, error);
+				});
+			}
+		}));
+		this.registerEvent(this.app.vault.on("delete", (file) => {
+			if (file instanceof TFile && file.extension === "md") {
+				this.invalidateReadingRenderSnapshot(file.path);
+				this.sourceLineStartsCache.delete(file.path);
+				void this.handleMarkdownDelete(file.path).catch((error) => {
+					console.error(`FloatMark: failed to delete sidecar for ${file.path}`, error);
+				});
 			}
 		}));
 		this.settingTab = new SideMarkSettingTab(this);
@@ -115,8 +175,11 @@ export default class SideMarkPlugin extends Plugin {
 
 	override onunload(): void {
 		this.clearPreviewMarkObservers();
+		this.readingRenderSnapshots.clear();
 		this.sourceLineStartsCache.clear();
 		this.clearReadingSelectionTimer();
+		this.flushPendingEditorAnchorUpdates();
+		this.clearEditorDocumentSaveTimers();
 		this.clearReadingSelectionHighlight();
 		this.toolbar?.destroy();
 		this.readingToolbar?.destroy();
@@ -132,11 +195,13 @@ export default class SideMarkPlugin extends Plugin {
 			? saved.language as PluginLanguage
 			: getInitialPluginLanguage(this.app, getLanguage());
 		const commentAuthorName = saved?.commentAuthorName || getDefaultCommentAuthorName(language);
+		const scopeControlStyle = normalizeScopeControlStyle(saved?.scopeControlStyle);
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...(saved || {}),
 			language,
-			commentAuthorName
+			commentAuthorName,
+			scopeControlStyle
 		};
 		if (!hasSavedLanguage) {
 			await this.saveData(this.settings);
@@ -160,6 +225,16 @@ export default class SideMarkPlugin extends Plugin {
 		this.settings.language = nextLanguage;
 		await this.saveSettings();
 		await this.refreshLanguage();
+	}
+
+	async setScopeControlStyle(style: ScopeControlStyle): Promise<void> {
+		if (this.settings.scopeControlStyle === style) {
+			return;
+		}
+		this.settings.scopeControlStyle = style;
+		this.scopeControlStyleSave = this.scopeControlStyleSave.catch(() => undefined).then(() => this.saveSettings());
+		await this.scopeControlStyleSave;
+		await this.refreshSidebar();
 	}
 
 	private async refreshLanguage(): Promise<void> {
@@ -255,6 +330,10 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	showBlockToolbar(view: EditorView, target: HoverBlockTarget): void {
+		if (!this.settings.showBlockToolbar) {
+			this.blockToolbar.hide();
+			return;
+		}
 		if (this.toolbar.isVisible()) {
 			this.blockToolbar.hide();
 			return;
@@ -271,15 +350,137 @@ export default class SideMarkPlugin extends Plugin {
 		this.blockToolbar.hide();
 	}
 
+	isBlockToolbarElement(target: EventTarget | null): boolean {
+		return this.blockToolbar?.contains(target) ?? false;
+	}
+
 	async reloadCurrentDocument(): Promise<void> {
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
 			this.currentDocument = null;
+			this.refreshEditorDecorations();
 			await this.refreshSidebar();
 			return;
 		}
 		const source = await this.app.vault.read(file);
 		this.currentDocument = await this.store.relocateDocument(file.path, source);
+		this.refreshEditorDecorations();
+		await this.refreshSidebar();
+	}
+
+	handleEditorDocumentChange(filePath: string, source: string, changes: ChangeDesc): void {
+		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+			return;
+		}
+		const previousMarks = this.currentDocument.marks;
+		const nextMarks = reconcileEditorMarks(previousMarks, source, changes);
+		this.currentDocument = {
+			...this.currentDocument,
+			marks: nextMarks
+		};
+		this.scheduleEditorDocumentSave(filePath, previousMarks, nextMarks);
+	}
+
+	private scheduleEditorDocumentSave(filePath: string, previousMarks: SideMark[], nextMarks: SideMark[]): void {
+		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
+			return;
+		}
+		const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath) || new Map<string, MarkAnchorUpdate>();
+		mergePendingEditorAnchorUpdates(pending, previousMarks, nextMarks);
+		if (pending.size === 0) {
+			return;
+		}
+		this.pendingEditorAnchorUpdatesByFile.set(filePath, pending);
+		this.scheduleEditorDocumentSaveTimer(filePath);
+	}
+
+	private scheduleEditorDocumentSaveTimer(filePath: string): void {
+		this.clearEditorDocumentSaveTimer(filePath);
+		const timer = window.setTimeout(() => {
+			this.editorDocumentSaveTimers.delete(filePath);
+			const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath);
+			if (!pending) {
+				return;
+			}
+			this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+			void this.saveEditorMarkAnchors(filePath, Array.from(pending.values()));
+		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+		this.editorDocumentSaveTimers.set(filePath, timer);
+	}
+
+	private clearEditorDocumentSaveTimer(filePath: string): void {
+		const timer = this.editorDocumentSaveTimers.get(filePath);
+		if (timer === undefined) {
+			return;
+		}
+		window.clearTimeout(timer);
+		this.editorDocumentSaveTimers.delete(filePath);
+	}
+
+	private clearEditorDocumentSaveTimers(): void {
+		for (const filePath of this.editorDocumentSaveTimers.keys()) {
+			this.clearEditorDocumentSaveTimer(filePath);
+		}
+	}
+
+	private migratePendingEditorAnchorUpdates(oldFilePath: string, newFilePath: string): void {
+		const pending = this.pendingEditorAnchorUpdatesByFile.get(oldFilePath);
+		this.clearEditorDocumentSaveTimer(oldFilePath);
+		if (!pending) {
+			return;
+		}
+		this.pendingEditorAnchorUpdatesByFile.delete(oldFilePath);
+		this.pendingEditorAnchorUpdatesByFile.set(newFilePath, pending);
+		this.scheduleEditorDocumentSaveTimer(newFilePath);
+	}
+
+	private discardPendingEditorAnchorUpdates(filePath: string): void {
+		this.clearEditorDocumentSaveTimer(filePath);
+		this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+	}
+
+	private flushPendingEditorAnchorUpdates(): void {
+		for (const [filePath, pending] of this.pendingEditorAnchorUpdatesByFile) {
+			const updates = Array.from(pending.values());
+			void this.store.updateMarkAnchors(filePath, updates).catch((error) => {
+				console.error(`FloatMark: failed to flush editor anchors for ${filePath}`, error);
+			});
+		}
+		this.pendingEditorAnchorUpdatesByFile.clear();
+	}
+
+	private async saveEditorMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<void> {
+		try {
+			const result = await this.store.updateMarkAnchors(filePath, updates);
+			if (!result.changed) {
+				return;
+			}
+			this.invalidateReadingRenderSnapshot(filePath);
+			const document = this.currentDocument?.filePath === filePath
+				? this.currentDocument
+				: result.document;
+			const refreshes = [this.renderPreviewMarksForFile(filePath, document)];
+			if (result.statusChanged) {
+				refreshes.push(this.refreshSidebar());
+			}
+			await Promise.all(refreshes);
+		} catch (error) {
+			console.error(`FloatMark: failed to save editor anchors for ${filePath}`, error);
+		}
+	}
+
+	private async handleMarkdownRename(newFilePath: string, oldFilePath: string): Promise<void> {
+		this.migratePendingEditorAnchorUpdates(oldFilePath, newFilePath);
+		await this.store.renameDocument(oldFilePath, newFilePath);
+		await this.reloadCurrentDocument();
+	}
+
+	private async handleMarkdownDelete(filePath: string): Promise<void> {
+		this.discardPendingEditorAnchorUpdates(filePath);
+		await this.store.deleteDocument(filePath);
+		if (this.currentDocument?.filePath === filePath) {
+			this.currentDocument = null;
+		}
 		await this.refreshSidebar();
 	}
 
@@ -291,9 +492,10 @@ export default class SideMarkPlugin extends Plugin {
 
 	async updateMarkNote(markId: string, noteContent: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!file) return;
 		this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async addMarkReply(markId: string, content: string): Promise<void> {
@@ -316,8 +518,8 @@ export default class SideMarkPlugin extends Plugin {
 		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
-		await this.refreshMarkViews(file.path);
-		this.deleteRemoteCommentReplyInBackground(file.path, mark, replyId);
+		await this.refreshMarkViews(file.path, mark);
+		this.deleteRemoteCommentReplyInBackground(file, mark, replyId);
 	}
 
 	async toggleResolved(markId: string): Promise<void> {
@@ -328,7 +530,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
 			status: nextStatus
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 		this.syncRemoteCommentResolutionInBackground(mark, nextStatus === "resolved");
 	}
 
@@ -342,7 +544,7 @@ export default class SideMarkPlugin extends Plugin {
 				color
 			}
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async updateMarkAppearance(markId: string, choice: MarkStyleChoice): Promise<void> {
@@ -352,7 +554,7 @@ export default class SideMarkPlugin extends Plugin {
 		if (isDefaultHighlightAppearance(choice)) {
 			this.currentDocument = await this.store.deleteMark(file.path, markId);
 			this.markStylePopover.hide();
-			await this.refreshMarkViews(file.path);
+			await this.refreshMarkViews(file.path, mark);
 			return;
 		}
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
@@ -362,7 +564,7 @@ export default class SideMarkPlugin extends Plugin {
 				backgroundColor: choice.backgroundColor
 			}
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async openMark(markId: string, rect: DOMRect): Promise<void> {
@@ -388,20 +590,115 @@ export default class SideMarkPlugin extends Plugin {
 		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteMark(file.path, markId);
 		this.markStylePopover.hide();
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 		this.deleteRemoteCommentInBackground(mark);
 	}
 
 	async jumpToMark(markId: string): Promise<void> {
+		const generation = this.documentMarkNavigation.begin();
 		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
-		if (!mark) return;
+		if (!mark) {
+			return;
+		}
+		const file = this.app.vault.getFileByPath(mark.filePath);
+		if (!(file instanceof TFile) || file.extension !== "md") {
+			return;
+		}
 		const view = await this.ensureMarkdownViewForFile(mark.filePath);
-		if (!mark || !view) return;
+		if (!view || !this.isCurrentDocumentMarkNavigation(generation, mark.filePath, file, view)) {
+			return;
+		}
+		const isCurrent = () => this.isCurrentDocumentMarkNavigation(generation, mark.filePath, file, view);
+		await this.locateMarkInView(view, mark, isCurrent);
+		if (!isCurrent()) {
+			return;
+		}
+	}
+
+	async jumpToDocumentMark(filePath: string, markId: string): Promise<void> {
+		const generation = this.documentMarkNavigation.begin();
+		const file = this.app.vault.getFileByPath(filePath);
+		if (!(file instanceof TFile) || file.extension !== "md") {
+			new Notice(this.t("notice.markFileUnavailable"));
+			return;
+		}
+		let view: MarkdownView | null;
+		try {
+			view = await this.ensureMarkdownViewForFile(filePath);
+		} catch (error) {
+			if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file)) {
+				return;
+			}
+			console.warn(`FloatMark: failed to open Markdown view ${filePath}`, error);
+			new Notice(this.t("notice.markFileUnavailable"));
+			return;
+		}
+		if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+			return;
+		}
+		if (!view) {
+			new Notice(this.t("notice.markFileUnavailable"));
+			return;
+		}
+		let document: SideMarkDocument;
+		try {
+			const source = await this.app.vault.read(file);
+			if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+				return;
+			}
+			document = await this.store.relocateDocument(filePath, source);
+		} catch (error) {
+			if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+				return;
+			}
+			console.warn(`FloatMark: failed to open mark source ${filePath}`, error);
+			new Notice(this.t("notice.markFileUnavailable"));
+			return;
+		}
+		if (!this.isCurrentDocumentMarkNavigation(generation, filePath, file, view)) {
+			return;
+		}
+		this.currentDocument = document;
+		this.lastMarkdownFilePath = filePath;
+		const mark = document.marks.find((item) => item.id === markId);
+		if (!mark) {
+			new Notice(this.t("notice.markUnavailable"));
+			return;
+		}
+		const isCurrent = () => this.isCurrentDocumentMarkNavigation(generation, filePath, file, view);
+		await this.locateMarkInView(view, mark, isCurrent);
+		if (!isCurrent()) {
+			return;
+		}
+	}
+
+	private isCurrentDocumentMarkNavigation(
+		generation: number,
+		filePath: string,
+		file: TFile,
+		view?: MarkdownView | null
+	): boolean {
+		const vaultFile = this.app.vault.getFileByPath(filePath);
+		const activeFile = view ? this.app.workspace.getActiveViewOfType(MarkdownView)?.file : undefined;
+		return this.documentMarkNavigation.isCurrent(generation, filePath, file, vaultFile, view?.file, activeFile);
+	}
+
+	private async locateMarkInView(
+		view: MarkdownView,
+		mark: SideMark,
+		isCurrent: () => boolean = () => true
+	): Promise<void> {
+		if (!isCurrent()) {
+			return;
+		}
 		if (view.getMode() === "preview") {
-			if (this.jumpToReadingMark(markId)) {
+			if (this.jumpToReadingMark(mark.id)) {
 				return;
 			}
 			await this.setMarkdownViewMode(view, "source");
+			if (!isCurrent()) {
+				return;
+			}
 		}
 		view.editor.setSelection(
 			view.editor.offsetToPos(mark.anchor.startOffset),
@@ -465,7 +762,7 @@ export default class SideMarkPlugin extends Plugin {
 		});
 	}
 
-	private deleteRemoteCommentReplyInBackground(filePath: string, mark: SideMark, replyId: string): void {
+	private deleteRemoteCommentReplyInBackground(file: TFile, mark: SideMark, replyId: string): void {
 		if (!shouldSyncRemoteComment(mark)) {
 			return;
 		}
@@ -474,8 +771,12 @@ export default class SideMarkPlugin extends Plugin {
 			if (!remote) {
 				return;
 			}
-			const document = await this.store.updateMark(filePath, mark.id, { remote });
-			if (this.currentDocument?.filePath === filePath) {
+			const currentFile = this.app.vault.getFileByPath(file.path);
+			if (!(currentFile instanceof TFile) || currentFile !== file || currentFile.extension !== "md") {
+				return;
+			}
+			const document = await this.store.updateMark(file.path, mark.id, { remote });
+			if (this.currentDocument?.filePath === file.path) {
 				this.currentDocument = document;
 				await this.refreshSidebar();
 			}
@@ -509,6 +810,7 @@ export default class SideMarkPlugin extends Plugin {
 	private handleReadingSelectionChange(): void {
 		this.clearReadingSelectionTimer();
 		const requestId = ++this.readingSelectionRequestId;
+		this.readingSelectionUnresolved = false;
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
 			this.readingSelection = null;
@@ -518,11 +820,11 @@ export default class SideMarkPlugin extends Plugin {
 		this.readingToolbar.hide();
 		this.readingSelectionTimer = window.setTimeout(() => {
 			this.readingSelectionTimer = null;
-			void this.updateReadingSelectionToolbar(requestId);
+			this.updateReadingSelectionToolbar(requestId);
 		}, READING_SELECTION_TOOLBAR_DELAY_MS);
 	}
 
-	private async updateReadingSelectionToolbar(requestId: number): Promise<void> {
+	private updateReadingSelectionToolbar(requestId: number): void {
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.toString().trim()) {
 			this.readingSelection = null;
@@ -543,23 +845,35 @@ export default class SideMarkPlugin extends Plugin {
 			return;
 		}
 		const selectedText = selection.toString().trim();
-		const source = await this.app.vault.read(file);
-		if (requestId !== this.readingSelectionRequestId) {
-			return;
-		}
-		const renderedOffset = getReadingSelectionRenderedOffset(view.contentEl, range);
-		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, renderedOffset);
-		if (!sourceRange) {
-			this.readingSelection = null;
-			this.readingToolbar.hide();
-			return;
-		}
 		const rect = getReadingSelectionRect(range);
 		if (!rect) {
 			this.readingSelection = null;
 			this.readingToolbar.hide();
 			return;
 		}
+		if (requestId !== this.readingSelectionRequestId) {
+			return;
+		}
+		const source = view.data;
+		const sections = getSelectedPreviewSections(view, range);
+		if (sections.length === 0) {
+			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
+			return;
+		}
+		const lineStarts = this.getSourceLineStarts(file, source);
+		const firstSection = sections[0];
+		const lastSection = sections[sections.length - 1];
+		const context = getReadingSelectionContext(sections.map((section) => section.el), range);
+		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
+			sourceStartOffset: firstSection.sourceStartOffset ?? lineStarts[firstSection.lineStart] ?? source.length,
+			sourceEndOffset: lastSection.sourceEndOffset ?? lineStarts[lastSection.lineEnd + 1] ?? source.length,
+			...context
+		});
+		if (!sourceRange) {
+			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
+			return;
+		}
+		this.readingSelectionUnresolved = false;
 		this.readingSelection = {
 			file,
 			source,
@@ -617,6 +931,11 @@ export default class SideMarkPlugin extends Plugin {
 	private async handleReadingToolbarAction(action: "highlight" | "comment"): Promise<void> {
 		const selection = this.readingSelection;
 		if (!selection) {
+			if (this.readingSelectionUnresolved) {
+				this.readingSelectionUnresolved = false;
+				this.readingToolbar.hide();
+				new Notice(this.t("notice.readingSelectionUnresolved"));
+			}
 			return;
 		}
 		if (action === "highlight") {
@@ -794,65 +1113,65 @@ export default class SideMarkPlugin extends Plugin {
 		const rect = view.coordsAtPos(selection.to);
 		if (!rect || selection.empty) return;
 		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-		let markId = "";
-		let createPromise: Promise<SideMark | null> | null = null;
-		this.markStylePopover.show(popoverRect, defaultHighlightAppearance(), (choice) => {
-			void (async () => {
-				if (!markId) {
-					if (!createPromise) {
-						createPromise = this.createMarkFromOffsets(
-							view,
-							selection.from,
-							selection.to,
-							"highlight",
-							"",
-							choice,
-							false
-						);
-					}
-					const createdMark = await createPromise;
-					markId = createdMark?.id || "";
-					if (markId) {
-						await this.updateMarkAppearance(markId, choice);
-					}
-					return;
-				}
-				await this.updateMarkAppearance(markId, choice);
-			})();
-		}, () => {
-			if (markId) {
-				void this.deleteMark(markId);
-			}
-		});
+		this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createMarkFromOffsets(
+			view,
+			selection.from,
+			selection.to,
+			"highlight",
+			"",
+			choice,
+			false
+		));
 	}
 
 	private showMarkStylePopoverForReadingSelection(
 		selection: NonNullable<SideMarkPlugin["readingSelection"]>
 	): void {
+		this.showMarkStylePopoverForNewMark(selection.rect, (choice) => this.createReadingMark(
+			selection,
+			"highlight",
+			"",
+			choice,
+			false
+		));
+	}
+
+	private showMarkStylePopoverForNewMark(
+		rect: DOMRect,
+		createMark: (choice: MarkStyleChoice) => Promise<SideMark | null>
+	): void {
 		let markId = "";
 		let createPromise: Promise<SideMark | null> | null = null;
-		this.markStylePopover.show(selection.rect, defaultHighlightAppearance(), (choice) => {
+		let latestChoice = defaultHighlightAppearance();
+		let resetRequested = false;
+		this.markStylePopover.show(rect, latestChoice, (choice) => {
+			latestChoice = choice;
+			if (markId) {
+				void this.updateMarkAppearance(markId, choice);
+				return;
+			}
+			if (createPromise) {
+				return;
+			}
+			const createdChoice = choice;
+			const pendingCreate = createMark(choice);
+			createPromise = pendingCreate;
 			void (async () => {
+				const createdMark = await pendingCreate;
+				markId = createdMark?.id || "";
 				if (!markId) {
-					if (!createPromise) {
-						createPromise = this.createReadingMark(
-							selection,
-							"highlight",
-							"",
-							choice,
-							false
-						);
-					}
-					const createdMark = await createPromise;
-					markId = createdMark?.id || "";
-					if (markId) {
-						await this.updateMarkAppearance(markId, choice);
-					}
 					return;
 				}
-				await this.updateMarkAppearance(markId, choice);
+				if (resetRequested) {
+					await this.deleteMark(markId);
+					return;
+				}
+				if (!isSameHighlightAppearance(createdChoice, latestChoice)) {
+					await this.updateMarkAppearance(markId, latestChoice);
+				}
 			})();
 		}, () => {
+			resetRequested = true;
 			if (markId) {
 				void this.deleteMark(markId);
 			}
@@ -897,8 +1216,7 @@ export default class SideMarkPlugin extends Plugin {
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-		await this.refreshSidebar();
-		await this.renderPreviewMarksForFile(selection.file.path);
+		await this.refreshMarkViews(selection.file.path, createdMark);
 		this.readingSelection = null;
 		window.getSelection()?.removeAllRanges();
 		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
@@ -936,9 +1254,7 @@ export default class SideMarkPlugin extends Plugin {
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-		await this.refreshSidebar();
-		this.refreshEditorDecorations();
-		await this.renderPreviewMarksForFile(file.path);
+		await this.refreshMarkViews(file.path, createdMark);
 		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
 			await this.openSidebar();
 		}
@@ -962,7 +1278,14 @@ export default class SideMarkPlugin extends Plugin {
 
 	private clearReadingSelection(): void {
 		this.readingSelection = null;
+		this.readingSelectionUnresolved = false;
 		window.getSelection()?.removeAllRanges();
+	}
+
+	private showUnresolvedReadingSelection(rect: DOMRect, boundary: DOMRect): void {
+		this.readingSelection = null;
+		this.readingSelectionUnresolved = true;
+		this.readingToolbar.show(rect, boundary);
 	}
 
 	private showReadingSelectionHighlight(selection: NonNullable<SideMarkPlugin["readingSelection"]>): boolean {
@@ -980,10 +1303,14 @@ export default class SideMarkPlugin extends Plugin {
 		getCssHighlights()?.delete(READING_SELECTION_HIGHLIGHT_NAME);
 	}
 
-	private async refreshMarkViews(filePath: string): Promise<void> {
+	private async refreshMarkViews(filePath: string, affectedMark?: SideMark): Promise<void> {
+		this.invalidateReadingRenderSnapshot(filePath);
 		this.refreshEditorDecorations();
-		await this.refreshSidebar();
-		await this.renderPreviewMarksForFile(filePath);
+		const document = this.currentDocument?.filePath === filePath ? this.currentDocument : undefined;
+		await Promise.all([
+			this.renderPreviewMarksForFile(filePath, document, affectedMark),
+			this.refreshSidebar()
+		]);
 	}
 
 	private syncMarkToLarkInBackground(markId: string): void {
@@ -1019,20 +1346,52 @@ export default class SideMarkPlugin extends Plugin {
 		if (!file || file.extension !== "md") {
 			return;
 		}
-		const source = await this.app.vault.read(file);
-		if (this.readingContainerGenerations.get(container) !== generation) {
-			return;
-		}
-		const document = await this.store.relocateDocument(file.path, source);
+		const { source, document, lineStarts } = await this.getReadingRenderSnapshot(file);
 		if (this.readingContainerGenerations.get(container) !== generation) {
 			return;
 		}
 		const section = context?.getSectionInfo(container);
-		const lineStarts = this.getSourceLineStarts(file, source);
 		const marks = section
 			? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts)
-			: document.marks;
+			: [];
 		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+	}
+
+	private getReadingRenderSnapshot(file: TFile): Promise<ReadingRenderSnapshot> {
+		const sourceVersion = `${file.stat.mtime}:${file.stat.size}`;
+		const storeRevision = this.store.getRevision();
+		const cached = this.readingRenderSnapshots.get(file.path);
+		if (cached?.sourceVersion === sourceVersion && cached.storeRevision === storeRevision) {
+			return cached.load;
+		}
+
+		const load = this.loadReadingRenderSnapshot(file);
+		const entry = { sourceVersion, storeRevision, load };
+		this.readingRenderSnapshots.set(file.path, entry);
+		void load.then(
+			() => {
+				if (this.readingRenderSnapshots.get(file.path) === entry) {
+					entry.storeRevision = this.store.getRevision();
+				}
+			},
+			() => {
+				if (this.readingRenderSnapshots.get(file.path) === entry) {
+					this.readingRenderSnapshots.delete(file.path);
+				}
+			}
+		);
+		return load;
+	}
+
+	private async loadReadingRenderSnapshot(file: TFile): Promise<ReadingRenderSnapshot> {
+		const source = await this.app.vault.read(file);
+		const document = await this.store.relocateDocument(file.path, source);
+		const lineStarts = this.getSourceLineStarts(file, source);
+		return { source, document, lineStarts };
+	}
+
+	private invalidateReadingRenderSnapshot(filePath: string): void {
+		this.readingRenderSnapshots.delete(filePath);
 	}
 
 	private syncPreviewMarkObservers(): void {
@@ -1134,7 +1493,12 @@ export default class SideMarkPlugin extends Plugin {
 		this.previewRenderGenerations.clear();
 	}
 
-	private async renderPreviewMarksForFile(filePath: string): Promise<void> {
+	private async renderPreviewMarksForFile(
+		filePath: string,
+		document?: SideMarkDocument,
+		affectedMark?: SideMark
+	): Promise<void> {
+		const renders: Promise<void>[] = [];
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== filePath || view.getMode() !== "preview") {
@@ -1142,21 +1506,31 @@ export default class SideMarkPlugin extends Plugin {
 			}
 			this.clearPreviewRenderTimer(view);
 			const generation = this.nextPreviewRenderGeneration(view);
-			await this.renderPreviewMarksForView(view, generation);
+			renders.push(this.renderPreviewMarksForView(view, generation, document, affectedMark));
 		}
+		await Promise.all(renders);
 	}
 
-	private async renderPreviewMarksForView(view: MarkdownView, generation: number): Promise<void> {
+	private async renderPreviewMarksForView(
+		view: MarkdownView,
+		generation: number,
+		document?: SideMarkDocument,
+		affectedMark?: SideMark
+	): Promise<void> {
 		const file = view.file;
 		if (!file || file.extension !== "md" || view.getMode() !== "preview") {
 			return;
 		}
 		const filePath = file.path;
-		const source = await this.app.vault.read(file);
+		const source = document?.filePath === filePath
+			? view.data
+			: await this.app.vault.read(file);
 		if (!this.isCurrentPreviewRender(view, filePath, generation)) {
 			return;
 		}
-		const document = await this.store.relocateDocument(file.path, source);
+		const resolvedDocument = document?.filePath === filePath
+			? document
+			: await this.store.relocateDocument(filePath, source);
 		if (!this.isCurrentPreviewRender(view, filePath, generation)) {
 			return;
 		}
@@ -1167,10 +1541,11 @@ export default class SideMarkPlugin extends Plugin {
 			const sections = getPreviewSections(view);
 			if (sections.length > 0) {
 				const lineStarts = this.getSourceLineStarts(file, source);
-				for (const section of sections) {
+				const sectionsToRender = this.getPreviewSectionsToRender(source, sections, lineStarts, affectedMark);
+				for (const section of sectionsToRender) {
 					const marks = getReadingMarksForSection(
 						source,
-						document.marks,
+						resolvedDocument.marks,
 						section.lineStart,
 						section.lineEnd,
 						lineStarts
@@ -1179,13 +1554,31 @@ export default class SideMarkPlugin extends Plugin {
 				}
 				return;
 			}
-			const previewRoot = getPreviewSectionsContainer(view);
-			renderReadingMarks(previewRoot, source, document.marks, onClick);
+			return;
 		} finally {
 			if (this.isCurrentPreviewRender(view, filePath, generation)) {
 				this.ensurePreviewObserver(view);
 			}
 		}
+	}
+
+	private getPreviewSectionsToRender(
+		source: string,
+		sections: PreviewSection[],
+		lineStarts: number[],
+		affectedMark?: SideMark
+	): PreviewSection[] {
+		if (!affectedMark) {
+			return sections;
+		}
+		const affectedSections = sections.filter((section) => getReadingMarksForSection(
+			source,
+			[affectedMark],
+			section.lineStart,
+			section.lineEnd,
+			lineStarts
+		).length > 0);
+		return affectedSections.length > 0 ? affectedSections : sections;
 	}
 
 	private isCurrentPreviewRender(view: MarkdownView, filePath: string, generation: number): boolean {
@@ -1199,46 +1592,53 @@ export default class SideMarkPlugin extends Plugin {
 		if (!mark) {
 			return false;
 		}
-		const markEl = this.findReadingMarkElement(markId, mark.filePath);
-		if (!markEl) {
+		const markEls = this.findReadingMarkElements(markId, mark.filePath);
+		if (markEls.length === 0) {
 			return false;
 		}
-		markEl.scrollIntoView({ block: "center", behavior: "smooth" });
-		markEl.addClass("side-mark-reading-flash");
-		window.setTimeout(() => markEl.removeClass("side-mark-reading-flash"), 1200);
+		markEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
+		for (const markEl of markEls) {
+			markEl.addClass("side-mark-reading-flash");
+		}
+		window.setTimeout(() => {
+			for (const markEl of markEls) {
+				markEl.removeClass("side-mark-reading-flash");
+			}
+		}, 1200);
 		return true;
 	}
 
-	private findReadingMarkElement(markId: string, filePath: string): HTMLElement | null {
+	private findReadingMarkElements(markId: string, filePath: string): HTMLElement[] {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== filePath || view.getMode() !== "preview") {
 				continue;
 			}
-			const element = view.contentEl.querySelector<HTMLElement>(`[data-side-mark-reading-id="${markId}"]`);
-			if (element) {
-					void this.app.workspace.revealLeaf(leaf);
-				return element;
+			const elements = getReadingMarkElements(view.contentEl, markId);
+			if (elements.length > 0) {
+				void this.app.workspace.revealLeaf(leaf);
+				return elements;
 			}
 		}
-		return null;
+		return [];
 	}
 
 	private async ensureMarkdownViewForFile(filePath: string): Promise<MarkdownView | null> {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (view instanceof MarkdownView && view.file?.path === filePath) {
-					void this.app.workspace.revealLeaf(leaf);
-				return view;
+				await this.app.workspace.revealLeaf(leaf);
+				return leaf.view instanceof MarkdownView && leaf.view.file?.path === filePath ? leaf.view : null;
 			}
 		}
 		const file = this.app.vault.getFileByPath(filePath);
-		if (!file) {
+		if (!(file instanceof TFile) || file.extension !== "md") {
 			return null;
 		}
 		const leaf = this.app.workspace.getLeaf(false);
 		await leaf.openFile(file);
-		return leaf.view instanceof MarkdownView ? leaf.view : null;
+		await this.app.workspace.revealLeaf(leaf);
+		return leaf.view instanceof MarkdownView && leaf.view.file?.path === filePath ? leaf.view : null;
 	}
 
 	private async setMarkdownViewMode(view: MarkdownView, mode: "source" | "preview"): Promise<void> {
@@ -1269,7 +1669,11 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	private async refreshSidebar(): Promise<void> {
-		await this.getSidebarView()?.render();
+		for (const leaf of this.app.workspace.getLeavesOfType(SIDE_MARK_VIEW_TYPE)) {
+			if (leaf.view instanceof SideMarkSidebarView) {
+				await leaf.view.render();
+			}
+		}
 	}
 }
 
@@ -1385,27 +1789,36 @@ function isDefaultHighlightAppearance(choice: MarkStyleChoice): boolean {
 	return choice.textColor === "default" && choice.backgroundColor === "none";
 }
 
-function getPreviewSectionsContainer(view: MarkdownView): HTMLElement {
-	return view.contentEl.querySelector<HTMLElement>(".markdown-preview-sections")
-		|| view.contentEl.querySelector<HTMLElement>(".markdown-preview-section")?.parentElement
-		|| view.contentEl;
+function isSameHighlightAppearance(left: MarkStyleChoice, right: MarkStyleChoice): boolean {
+	return left.textColor === right.textColor && left.backgroundColor === right.backgroundColor;
 }
 
-function getPreviewSections(view: MarkdownView): { el: HTMLElement; lineStart: number; lineEnd: number }[] {
+function getPreviewSections(view: MarkdownView): PreviewSection[] {
 	const preview = view.previewMode as unknown as {
-		renderer?: { sections?: Array<{ el?: unknown; lineStart?: unknown; lineEnd?: unknown }> };
+		renderer?: { sections?: Array<{
+			el?: unknown;
+			lineStart?: unknown;
+			lineEnd?: unknown;
+			start?: { line?: unknown; offset?: unknown };
+			end?: { line?: unknown; offset?: unknown };
+		}> };
 	} | undefined;
 	const sections = preview?.renderer?.sections;
 	if (!Array.isArray(sections)) {
 		return [];
 	}
-	const result: { el: HTMLElement; lineStart: number; lineEnd: number }[] = [];
+	const result: PreviewSection[] = [];
 	for (const section of sections) {
-		if (section?.el instanceof HTMLElement && typeof section.lineStart === "number" && typeof section.lineEnd === "number") {
-			result.push({ el: section.el, lineStart: section.lineStart, lineEnd: section.lineEnd });
+		const bounds = resolvePreviewSectionBounds(section);
+		if (section?.el instanceof HTMLElement && bounds) {
+			result.push({ el: section.el, ...bounds });
 		}
 	}
 	return result;
+}
+
+function getSelectedPreviewSections(view: MarkdownView, range: Range): PreviewSection[] {
+	return selectPreviewSections(getPreviewSections(view), range);
 }
 
 function getCssHighlights(): CssHighlightRegistry | null {
@@ -1450,6 +1863,34 @@ class SideMarkSettingTab extends PluginSettingTab {
 					this.plugin.settings.autoOpenSidebar = value;
 					await this.plugin.saveSettings();
 				});
+			});
+
+		new Setting(containerEl)
+			.setName(this.plugin.t("settings.showBlockToolbar.name"))
+			.setDesc(this.plugin.t("settings.showBlockToolbar.desc"))
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showBlockToolbar).onChange(async (value) => {
+					this.plugin.settings.showBlockToolbar = value;
+					if (!value) {
+						this.plugin.hideBlockToolbar();
+					}
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName(this.plugin.t("settings.scopeControlStyle.name"))
+			.setDesc(this.plugin.t("settings.scopeControlStyle.desc"))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("tabs", this.plugin.t("settings.scopeControlStyle.tabs"))
+					.addOption("dropdown", this.plugin.t("settings.scopeControlStyle.dropdown"))
+					.addOption("swap", this.plugin.t("settings.scopeControlStyle.swap"))
+					.addOption("switch", this.plugin.t("settings.scopeControlStyle.switch"))
+					.setValue(this.plugin.settings.scopeControlStyle)
+					.onChange(async (value) => {
+						await this.plugin.setScopeControlStyle(value as ScopeControlStyle);
+					});
 			});
 
 		this.renderLarkSyncSetting(containerEl);
