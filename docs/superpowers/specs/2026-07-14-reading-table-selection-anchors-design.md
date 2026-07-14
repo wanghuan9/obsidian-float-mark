@@ -72,6 +72,21 @@ Track whether each candidate came from an exact substring match or rendered-text
 
 This is intentionally broader than a heading special case: plain paragraphs, link labels, table cells, and other selectable text receive the same compatibility behavior. It does not choose the first occurrence of repeated text and does not accept generated DOM text that has no source occurrence.
 
+## DOM Selection Artifact Compatibility
+
+Obsidian can insert non-rendering DOM sentinels around heading controls, inline-code widgets, and table-cell boundaries. A browser selection may therefore contain `U+200B`–`U+200D`, `U+FEFF`, or the `U+FFFC` object-replacement character even though the highlighted text looks identical to the Markdown source.
+
+The confirmed reproductions are:
+
+- `4.1 方案概览` resolves, while `U+200B + 4.1 方案概览` does not.
+- The reported `pjt-partner-api` cell resolves without a sentinel, while the same visible selection followed by `U+FFFC` does not.
+
+Sanitize only these known non-rendering sentinels before candidate discovery. Use the sanitized text for both direct substring ranges and rendered-source normalization so a visually exact heading retains exact-source provenance and a table selection spanning inline code can enter the existing rendered-source path. If sanitization removes the whole selection, return unresolved.
+
+Do not strip arbitrary Unicode control or format characters. Do not lower the distance or context thresholds. Multiple candidates continue through the existing contextual disambiguation, so repeated headings and repeated table text remain unresolved unless their surrounding context uniquely identifies one occurrence.
+
+This is preferred over stripping every control character, which could alter authored content, and over DOM-node coordinate mapping, which would duplicate Obsidian rendering behavior and add substantially more surface area.
+
 ## Verification
 
 - Add a JSDOM regression test using the reported table row and an actual selection spanning multiple inline-code nodes inside one cell.
@@ -80,7 +95,10 @@ This is intentionally broader than a heading special case: plain paragraphs, lin
 - Add table fixtures for optional outer pipes, alignment markers, escaped pipes, inline-code pipes, and a table nested in a blockquote or Callout.
 - Add regression fixtures for repeated bold labels, headings, links, autolinks, escaped punctuation, HTML entities, inline HTML, and literal inline-code content.
 - Add a heading fixture whose exact source scope contains only the heading while its DOM context and rendered offset describe surrounding blocks; require the unique exact candidate to resolve.
+- Add a heading fixture with a leading `U+200B` and deliberately incompatible DOM context; require the sanitized exact-source candidate to resolve.
+- Add the reported full table-cell fixture with a trailing `U+FFFC`; require the returned source range to span the embedded Markdown backticks and exclude adjacent cells.
 - Keep a repeated-heading fixture unresolved when context cannot distinguish its occurrences.
+- Keep a repeated-heading fixture with DOM sentinels unresolved when context cannot distinguish its occurrences.
 - Keep a distant rendered-only candidate unresolved.
 - Run the focused reading-selection test, the full test suite, TypeScript compilation, production build, and changed-line format check.
 - Run the similar-risk audit cases and summarize confirmed remaining gaps separately from the implemented table fix.
@@ -92,6 +110,7 @@ This is intentionally broader than a heading special case: plain paragraphs, lin
 - The reported repeated bold label and numbered headings resolve in the target document.
 - Common rendered/source syntax differences resolve only when their candidate is unique and positionally near.
 - A unique exact source occurrence resolves even when Obsidian reports incompatible DOM wrapper context.
+- Known non-rendering DOM sentinels do not prevent a visually exact heading or table-cell selection from resolving.
 - Repeated exact occurrences still require unique contextual disambiguation.
 - Non-table reading selections retain their current results.
 - No global threshold is lowered and no ambiguous candidate is accepted.
