@@ -422,3 +422,148 @@ Copy `main.js`, `manifest.json`, and `styles.css` to both plugin directories:
 ```
 
 Verify SHA-256 equality, reload Obsidian, and confirm both `4.1 方案概览` and `无模型入参变更；导出结果随 titans FixedSheetWriter 调整` show the `高亮标注` and `评论` actions without creating a mark.
+
+---
+
+### Task 6: Normalize Preview-block Selection Boundaries
+
+**Files:**
+- Modify: `src/preview-sections.ts`
+- Modify: `src/main.ts:35,1775-1786`
+- Test: `test/test-preview-sections.mjs`
+
+**Interfaces:**
+- Consumes: ordered preview sections with source bounds and the browser `Range` returned for a reading-mode selection.
+- Produces: `selectPreviewSections<T extends PreviewSectionBounds & { el: HTMLElement }>(sections: readonly T[], range: Range): T[]`, returning only content-contributing, renderer-contiguous, source-monotonic sections.
+
+- [ ] **Step 1: Add boundary, blank-line, cross-block, and ordering regression tests**
+
+Extend `test/test-preview-sections.mjs` with JSDOM sections for adjacent headings, a multiline paragraph containing inline code, and a table. Assert these outcomes:
+
+```js
+assert.deepEqual(selectedIds(headingToTableBoundary), ["heading"]);
+assert.deepEqual(selectedIds(headingThroughParagraph), ["heading", "paragraph"]);
+assert.deepEqual(selectedIds(headingThroughNextHeading), ["heading", "next-heading"]);
+assert.deepEqual(selectedIds(headingIntoTable), ["heading", "paragraph", "table"]);
+assert.deepEqual(selectedIds(afterHeadingThroughParagraph), ["paragraph"]);
+assert.deepEqual(selectPreviewSections(reorderedSections, headingThroughParagraph), []);
+```
+
+Construct `headingToTableBoundary` with its end at offset `0` of the following table root. Give the heading and paragraph source lines `58` and `60` to prove a blank Markdown line is valid. Put the next heading in a separate two-section fixture with another blank Markdown line and select into its text. Construct `afterHeadingThroughParagraph` with its start at `heading.childNodes.length` on the heading root. End `headingThroughParagraph` in the paragraph's trailing text after an inline-code node, and end `headingIntoTable` inside a table-cell text node so a genuinely entered table remains selected.
+
+- [ ] **Step 2: Run the focused test and verify failure**
+
+Run: `rtk node test/test-preview-sections.mjs`
+
+Expected: FAIL because `selectPreviewSections` is not exported yet.
+
+- [ ] **Step 3: Implement preview-section boundary trimming and monotonic ordering**
+
+Add the exported selector to `src/preview-sections.ts`:
+
+```ts
+export function selectPreviewSections<T extends PreviewSectionBounds & { el: HTMLElement }>(
+	sections: readonly T[],
+	range: Range
+): T[] {
+	let first = sections.findIndex((section) => section.el.contains(range.startContainer));
+	let last = sections.findIndex((section) => section.el.contains(range.endContainer));
+	if (first < 0 || last < first) {
+		return [];
+	}
+	const firstSection = sections[first];
+	if (
+		firstSection
+		&& range.startContainer === firstSection.el
+		&& range.startOffset === firstSection.el.childNodes.length
+	) {
+		first += 1;
+	}
+	const lastSection = sections[last];
+	if (lastSection && range.endContainer === lastSection.el && range.endOffset === 0) {
+		last -= 1;
+	}
+	if (last < first) {
+		return [];
+	}
+	const selected = sections.slice(first, last + 1);
+	return selected.every((section, index) => isPreviewSectionMonotonic(section, selected[index - 1]))
+		? selected
+		: [];
+}
+
+function isPreviewSectionMonotonic(
+	section: PreviewSectionBounds,
+	previous: PreviewSectionBounds | undefined
+): boolean {
+	if (section.lineStart > section.lineEnd) {
+		return false;
+	}
+	if (!previous) {
+		return true;
+	}
+	const startOrdered = section.sourceStartOffset !== undefined && previous.sourceStartOffset !== undefined
+		? section.sourceStartOffset >= previous.sourceStartOffset
+		: section.lineStart >= previous.lineStart;
+	const endOrdered = section.sourceEndOffset !== undefined && previous.sourceEndOffset !== undefined
+		? section.sourceEndOffset >= previous.sourceEndOffset
+		: section.lineEnd >= previous.lineEnd;
+	return startOrdered && endOrdered;
+}
+```
+
+Import `selectPreviewSections` in `src/main.ts` and replace the current local adjacency rule with:
+
+```ts
+function getSelectedPreviewSections(view: MarkdownView, range: Range): PreviewSection[] {
+	return selectPreviewSections(getPreviewSections(view), range);
+}
+```
+
+Do not change source-candidate thresholds, duplicate protection, stored anchors, or selection context construction.
+
+- [ ] **Step 4: Run focused and related regression tests**
+
+Run:
+
+```bash
+rtk node test/test-preview-sections.mjs
+rtk node test/test-reading-selection.mjs
+rtk node test/test-main-file-reference.mjs
+```
+
+Expected: all three commands pass, including boundary-only trimming, blank-line cross-block selection, existing duplicate-text protection, and main-file invariants.
+
+- [ ] **Step 5: Run complete verification and build**
+
+Run:
+
+```bash
+rtk npm test
+rtk npx tsc --noEmit
+rtk npm run build
+rtk git diff --check
+rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standards/scripts/format-check.py --git-diff
+```
+
+Expected: full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
+
+- [ ] **Step 6: Commit only the plan, selector, focused test, and the selector call-site hunk**
+
+Stage `docs/superpowers/plans/2026-07-14-reading-table-selection-anchors.md`, `src/preview-sections.ts`, `test/test-preview-sections.mjs`, and only the Task 6 import/call-site changes from `src/main.ts`. Do not stage pre-existing unrelated changes in `main.js`, `src/main.ts`, `src/storage.ts`, `test/test-main-file-reference.mjs`, `test/test-storage.mjs`, `.superpowers/`, or branch-regression-hardening documents.
+
+Commit with:
+
+```bash
+rtk git commit -m "fix:[reading-mode-precise-anchors] 兼容预览块选区边界"
+```
+
+- [ ] **Step 7: Install and verify the target vault**
+
+Copy the built `main.js`, `manifest.json`, and `styles.css` to:
+
+```text
+/Users/wanghuan/Documents/obsidian/.obsidian/plugins/float-mark/
+```
+
+Verify installed files match the build output, reload Obsidian, and confirm title-only, title-plus-paragraph, title-to-title, and title-into-table selections create marks without the unresolved notice.
