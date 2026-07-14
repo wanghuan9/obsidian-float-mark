@@ -199,7 +199,10 @@ function relocateAnchor(source, anchor, options = {}) {
   }
   const matches = findExactMatches(source, anchor.selectedText);
   if (matches.length === 1) {
-    return createTextAnchor(source, matches[0], matches[0] + anchor.selectedText.length);
+    const match = matches[0];
+    if (match !== void 0) {
+      return createTextAnchor(source, match, match + anchor.selectedText.length);
+    }
   }
   return null;
 }

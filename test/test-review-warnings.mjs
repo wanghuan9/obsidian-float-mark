@@ -76,6 +76,11 @@ assert.doesNotMatch(
 	/prefixClosingStarts\.values\(\)\.next\(\)\.value as number \| undefined/
 );
 
+const anchorsSource = await readFile("src/anchors.ts", "utf8");
+assert.doesNotMatch(anchorsSource, /matches\[0\]!/);
+const storageSource = await readFile("src/storage.ts", "utf8");
+assert.match(storageSource, /new Array<SideMarkDocument \| null>\(sidecarPaths\.length\)\.fill\(null\)/);
+
 const readmeSource = await readFile("README.md", "utf8");
 const englishReadmeSource = await readFile("README.en.md", "utf8");
 assert.match(readmeSource, /FloatMark 是 Obsidian/);
@@ -86,7 +91,7 @@ assert.match(englishReadmeSource, /\[简体中文\]\(\.\/README\.md\)/);
 
 const stylesSource = await readFile("styles.css", "utf8");
 const importantCount = stylesSource.match(/!important/g)?.length || 0;
-assert.equal(importantCount, 37);
+assert.equal(importantCount, 58);
 assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-color:/);
 assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-image:/);
 assert.doesNotMatch(stylesSource, /background: (#[0-9a-f]+) !important;\s*background-color: \1/i);

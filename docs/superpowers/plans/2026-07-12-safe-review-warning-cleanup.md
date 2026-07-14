@@ -276,3 +276,19 @@ rtk git commit -m "chore:[review-warning-cleanup] 安全精简审核样式告警
 - [x] 在中文简介后添加完整英文描述，满足社区审核器的英文正文要求。
 - [x] 完整英文说明恢复到 `README.en.md`，并反向链接中文根 README。
 - [x] 更新审核告警契约测试和设计说明。
+
+---
+
+### Task 4: 基于最新主线清理安全告警
+
+**Files:**
+- Modify: `src/anchors.ts`
+- Modify: `src/storage.ts`
+- Modify: `test/test-review-warnings.mjs`
+- Generated: `main.js`
+
+- [x] 确认最新 `main` 已完整包含在当前功能分支中。
+- [x] 删除唯一匹配分支中的两个冗余非空断言。
+- [x] 修复全部文档加载数组的 `any[]` 类型推断。
+- [x] 保留 58 条主题兼容 `!important`，不修改高风险样式。
+- [x] 全量测试、生产构建和两位 reviewer 审查通过。

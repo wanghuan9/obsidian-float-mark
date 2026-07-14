@@ -438,7 +438,7 @@ export class SideMarkStore {
 
 		const listed = await this.app.vault.adapter.list(filesDir);
 		const sidecarPaths = listed.files.filter((filePath) => filePath.endsWith(".json")).sort();
-		const documents: Array<SideMarkDocument | null> = new Array(sidecarPaths.length).fill(null);
+		const documents = new Array<SideMarkDocument | null>(sidecarPaths.length).fill(null);
 		let nextIndex = 0;
 		const readNext = async (): Promise<void> => {
 			while (nextIndex < sidecarPaths.length) {
