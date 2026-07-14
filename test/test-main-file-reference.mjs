@@ -40,6 +40,7 @@ const loadReadingRenderSnapshotMethod = readMethod("async loadReadingRenderSnaps
 const invalidateReadingRenderSnapshotMethod = readMethod("invalidateReadingRenderSnapshot");
 const renderPreviewMarksForFileMethod = readMethod("async renderPreviewMarksForFile");
 const renderPreviewMarksForViewMethod = readMethod("async renderPreviewMarksForView");
+const getPreviewSectionsToRenderMethod = readMethod("getPreviewSectionsToRender");
 const jumpToReadingMarkMethod = readMethod("jumpToReadingMark");
 const findReadingMarkElementsMethod = readMethod("findReadingMarkElements");
 const scheduleEditorDocumentSaveMethod = readMethod("scheduleEditorDocumentSave");
@@ -61,8 +62,9 @@ assert.match(newMarkStylePopoverMethod, /if \(createPromise\) \{\s*return;/);
 assert.match(newMarkStylePopoverMethod, /resetRequested = true/);
 assert.match(newMarkStylePopoverMethod, /if \(resetRequested\) \{\s*await this\.deleteMark\(markId\)/);
 assert.match(newMarkStylePopoverMethod, /isSameHighlightAppearance\(createdChoice, latestChoice\)/);
-assert.match(createReadingMarkMethod, /await this\.refreshMarkViews\(selection\.file\.path\)/);
-assert.match(createMarkFromOffsetsMethod, /await this\.refreshMarkViews\(file\.path\)/);
+assert.match(createReadingMarkMethod, /await this\.refreshMarkViews\(selection\.file\.path, createdMark\)/);
+assert.match(createMarkFromOffsetsMethod, /await this\.refreshMarkViews\(file\.path, createdMark\)/);
+assert.equal((source.match(/await this\.refreshMarkViews\(file\.path, mark\)/g) || []).length, 7);
 assert.match(source, /interface ReadingRenderSnapshot \{/);
 assert.match(source, /interface ReadingRenderSnapshotLoad \{/);
 assert.match(source, /readingRenderSnapshots = new Map<string, ReadingRenderSnapshotLoad>\(\)/);
@@ -92,7 +94,13 @@ assert.match(source, /vault\.on\("rename", \(file, oldPath\) => \{\s*if \(file i
 assert.match(source, /vault\.on\("delete", \(file\) => \{\s*if \(file instanceof TFile && file\.extension === "md"\) \{\s*this\.invalidateReadingRenderSnapshot\(file\.path\)/);
 assert.match(source, /onunload\(\): void \{\s*this\.clearPreviewMarkObservers\(\);\s*this\.readingRenderSnapshots\.clear\(\)/);
 assert.match(refreshMarkViewsMethod, /this\.invalidateReadingRenderSnapshot\(filePath\)/);
-assert.match(refreshMarkViewsMethod, /await Promise\.all\(\[\s*this\.refreshSidebar\(\),\s*this\.renderPreviewMarksForFile\(filePath, document\)\s*\]\)/);
+assert.match(refreshMarkViewsMethod, /async refreshMarkViews\(filePath: string, affectedMark\?: SideMark\)/);
+assert.match(
+	refreshMarkViewsMethod,
+	/await Promise\.all\(\[\s*this\.renderPreviewMarksForFile\(filePath, document, affectedMark\),\s*this\.refreshSidebar\(\)\s*\]\)/
+);
+assert.match(renderPreviewMarksForFileMethod, /affectedMark\?: SideMark/);
+assert.match(renderPreviewMarksForFileMethod, /renderPreviewMarksForView\(view, generation, document, affectedMark\)/);
 assert.match(renderPreviewMarksForFileMethod, /await Promise\.all\(renders\)/);
 assert.match(
 	renderPreviewMarksForViewMethod,
@@ -101,6 +109,27 @@ assert.match(
 assert.match(
 	renderPreviewMarksForViewMethod,
 	/document\?\.filePath === filePath\s*\? document\s*: await this\.store\.relocateDocument\(filePath, source\)/
+);
+assert.match(renderPreviewMarksForViewMethod, /affectedMark\?: SideMark/);
+assert.match(
+	renderPreviewMarksForViewMethod,
+	/const sectionsToRender = this\.getPreviewSectionsToRender\(source, sections, lineStarts, affectedMark\)/
+);
+assert.match(
+	getPreviewSectionsToRenderMethod,
+	/const affectedSections = sections\.filter\(\(section\) => getReadingMarksForSection\(\s*source,\s*\[affectedMark\],\s*section\.lineStart,\s*section\.lineEnd,\s*lineStarts\s*\)\.length > 0\)/
+);
+assert.match(
+	getPreviewSectionsToRenderMethod,
+	/if \(!affectedMark\) \{\s*return sections;/
+);
+assert.match(
+	getPreviewSectionsToRenderMethod,
+	/return affectedSections\.length > 0 \? affectedSections : sections/
+);
+assert.match(
+	renderPreviewMarksForViewMethod,
+	/for \(const section of sectionsToRender\) \{[\s\S]*getReadingMarksForSection\(\s*source,\s*resolvedDocument\.marks,/
 );
 assert.match(source, /editorDocumentSaveTimers = new Map<string, number>\(\)/);
 assert.match(source, /pendingEditorAnchorUpdatesByFile = new Map<string, Map<string, MarkAnchorUpdate>>\(\)/);

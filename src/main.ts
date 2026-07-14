@@ -484,9 +484,10 @@ export default class SideMarkPlugin extends Plugin {
 
 	async updateMarkNote(markId: string, noteContent: string): Promise<void> {
 		const file = this.getActiveMarkdownFile();
+		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!file) return;
 		this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async addMarkReply(markId: string, content: string): Promise<void> {
@@ -509,7 +510,7 @@ export default class SideMarkPlugin extends Plugin {
 		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 		this.deleteRemoteCommentReplyInBackground(file, mark, replyId);
 	}
 
@@ -521,7 +522,7 @@ export default class SideMarkPlugin extends Plugin {
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
 			status: nextStatus
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 		this.syncRemoteCommentResolutionInBackground(mark, nextStatus === "resolved");
 	}
 
@@ -535,7 +536,7 @@ export default class SideMarkPlugin extends Plugin {
 				color
 			}
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async updateMarkAppearance(markId: string, choice: MarkStyleChoice): Promise<void> {
@@ -545,7 +546,7 @@ export default class SideMarkPlugin extends Plugin {
 		if (isDefaultHighlightAppearance(choice)) {
 			this.currentDocument = await this.store.deleteMark(file.path, markId);
 			this.markStylePopover.hide();
-			await this.refreshMarkViews(file.path);
+			await this.refreshMarkViews(file.path, mark);
 			return;
 		}
 		this.currentDocument = await this.store.updateMark(file.path, markId, {
@@ -555,7 +556,7 @@ export default class SideMarkPlugin extends Plugin {
 				backgroundColor: choice.backgroundColor
 			}
 		});
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 	}
 
 	async openMark(markId: string, rect: DOMRect): Promise<void> {
@@ -581,7 +582,7 @@ export default class SideMarkPlugin extends Plugin {
 		if (!file || !mark) return;
 		this.currentDocument = await this.store.deleteMark(file.path, markId);
 		this.markStylePopover.hide();
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, mark);
 		this.deleteRemoteCommentInBackground(mark);
 	}
 
@@ -1207,7 +1208,7 @@ export default class SideMarkPlugin extends Plugin {
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-		await this.refreshMarkViews(selection.file.path);
+		await this.refreshMarkViews(selection.file.path, createdMark);
 		this.readingSelection = null;
 		window.getSelection()?.removeAllRanges();
 		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
@@ -1245,7 +1246,7 @@ export default class SideMarkPlugin extends Plugin {
 			noteContent
 		});
 		const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-		await this.refreshMarkViews(file.path);
+		await this.refreshMarkViews(file.path, createdMark);
 		if (autoOpenSidebar && this.settings.autoOpenSidebar) {
 			await this.openSidebar();
 		}
@@ -1294,13 +1295,13 @@ export default class SideMarkPlugin extends Plugin {
 		getCssHighlights()?.delete(READING_SELECTION_HIGHLIGHT_NAME);
 	}
 
-	private async refreshMarkViews(filePath: string): Promise<void> {
+	private async refreshMarkViews(filePath: string, affectedMark?: SideMark): Promise<void> {
 		this.invalidateReadingRenderSnapshot(filePath);
 		this.refreshEditorDecorations();
 		const document = this.currentDocument?.filePath === filePath ? this.currentDocument : undefined;
 		await Promise.all([
-			this.refreshSidebar(),
-			this.renderPreviewMarksForFile(filePath, document)
+			this.renderPreviewMarksForFile(filePath, document, affectedMark),
+			this.refreshSidebar()
 		]);
 	}
 
@@ -1484,7 +1485,11 @@ export default class SideMarkPlugin extends Plugin {
 		this.previewRenderGenerations.clear();
 	}
 
-	private async renderPreviewMarksForFile(filePath: string, document?: SideMarkDocument): Promise<void> {
+	private async renderPreviewMarksForFile(
+		filePath: string,
+		document?: SideMarkDocument,
+		affectedMark?: SideMark
+	): Promise<void> {
 		const renders: Promise<void>[] = [];
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
@@ -1493,7 +1498,7 @@ export default class SideMarkPlugin extends Plugin {
 			}
 			this.clearPreviewRenderTimer(view);
 			const generation = this.nextPreviewRenderGeneration(view);
-			renders.push(this.renderPreviewMarksForView(view, generation, document));
+			renders.push(this.renderPreviewMarksForView(view, generation, document, affectedMark));
 		}
 		await Promise.all(renders);
 	}
@@ -1501,7 +1506,8 @@ export default class SideMarkPlugin extends Plugin {
 	private async renderPreviewMarksForView(
 		view: MarkdownView,
 		generation: number,
-		document?: SideMarkDocument
+		document?: SideMarkDocument,
+		affectedMark?: SideMark
 	): Promise<void> {
 		const file = view.file;
 		if (!file || file.extension !== "md" || view.getMode() !== "preview") {
@@ -1527,7 +1533,8 @@ export default class SideMarkPlugin extends Plugin {
 			const sections = getPreviewSections(view);
 			if (sections.length > 0) {
 				const lineStarts = this.getSourceLineStarts(file, source);
-				for (const section of sections) {
+				const sectionsToRender = this.getPreviewSectionsToRender(source, sections, lineStarts, affectedMark);
+				for (const section of sectionsToRender) {
 					const marks = getReadingMarksForSection(
 						source,
 						resolvedDocument.marks,
@@ -1545,6 +1552,25 @@ export default class SideMarkPlugin extends Plugin {
 				this.ensurePreviewObserver(view);
 			}
 		}
+	}
+
+	private getPreviewSectionsToRender(
+		source: string,
+		sections: PreviewSection[],
+		lineStarts: number[],
+		affectedMark?: SideMark
+	): PreviewSection[] {
+		if (!affectedMark) {
+			return sections;
+		}
+		const affectedSections = sections.filter((section) => getReadingMarksForSection(
+			source,
+			[affectedMark],
+			section.lineStart,
+			section.lineEnd,
+			lineStarts
+		).length > 0);
+		return affectedSections.length > 0 ? affectedSections : sections;
 	}
 
 	private isCurrentPreviewRender(view: MarkdownView, filePath: string, generation: number): boolean {

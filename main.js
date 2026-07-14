@@ -6405,10 +6405,12 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     view == null ? void 0 : view.focusMark(markId);
   }
   async updateMarkNote(markId, noteContent) {
+    var _a;
     const file = this.getActiveMarkdownFile();
+    const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!file) return;
     this.currentDocument = await this.store.updateMark(file.path, markId, { noteContent });
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
   }
   async addMarkReply(markId, content) {
     const file = this.getActiveMarkdownFile();
@@ -6429,7 +6431,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!file || !mark) return;
     this.currentDocument = await this.store.deleteReply(file.path, markId, replyId);
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
     this.deleteRemoteCommentReplyInBackground(file, mark, replyId);
   }
   async toggleResolved(markId) {
@@ -6441,7 +6443,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.currentDocument = await this.store.updateMark(file.path, markId, {
       status: nextStatus
     });
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
     this.syncRemoteCommentResolutionInBackground(mark, nextStatus === "resolved");
   }
   async updateMarkColor(markId, color) {
@@ -6455,7 +6457,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         color
       }
     });
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
   }
   async updateMarkAppearance(markId, choice) {
     var _a;
@@ -6465,7 +6467,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (isDefaultHighlightAppearance(choice)) {
       this.currentDocument = await this.store.deleteMark(file.path, markId);
       this.markStylePopover.hide();
-      await this.refreshMarkViews(file.path);
+      await this.refreshMarkViews(file.path, mark);
       return;
     }
     this.currentDocument = await this.store.updateMark(file.path, markId, {
@@ -6475,7 +6477,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
         backgroundColor: choice.backgroundColor
       }
     });
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
   }
   async openMark(markId, rect) {
     var _a;
@@ -6501,7 +6503,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (!file || !mark) return;
     this.currentDocument = await this.store.deleteMark(file.path, markId);
     this.markStylePopover.hide();
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, mark);
     this.deleteRemoteCommentInBackground(mark);
   }
   async jumpToMark(markId) {
@@ -7085,7 +7087,7 @@ ${stripped}
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-    await this.refreshMarkViews(selection.file.path);
+    await this.refreshMarkViews(selection.file.path, createdMark);
     this.readingSelection = null;
     (_b = window.getSelection()) == null ? void 0 : _b.removeAllRanges();
     if (autoOpenSidebar && this.settings.autoOpenSidebar) {
@@ -7115,7 +7117,7 @@ ${stripped}
       noteContent
     });
     const createdMark = this.currentDocument.marks.find((mark) => !previousMarkIds.has(mark.id));
-    await this.refreshMarkViews(file.path);
+    await this.refreshMarkViews(file.path, createdMark);
     if (autoOpenSidebar && this.settings.autoOpenSidebar) {
       await this.openSidebar();
     }
@@ -7160,14 +7162,14 @@ ${stripped}
     var _a;
     (_a = getCssHighlights()) == null ? void 0 : _a.delete(READING_SELECTION_HIGHLIGHT_NAME);
   }
-  async refreshMarkViews(filePath) {
+  async refreshMarkViews(filePath, affectedMark) {
     var _a;
     this.invalidateReadingRenderSnapshot(filePath);
     this.refreshEditorDecorations();
     const document = ((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath ? this.currentDocument : void 0;
     await Promise.all([
-      this.refreshSidebar(),
-      this.renderPreviewMarksForFile(filePath, document)
+      this.renderPreviewMarksForFile(filePath, document, affectedMark),
+      this.refreshSidebar()
     ]);
   }
   syncMarkToLarkInBackground(markId) {
@@ -7333,7 +7335,7 @@ ${stripped}
     this.previewRenderTimers.clear();
     this.previewRenderGenerations.clear();
   }
-  async renderPreviewMarksForFile(filePath, document) {
+  async renderPreviewMarksForFile(filePath, document, affectedMark) {
     var _a;
     const renders = [];
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
@@ -7343,11 +7345,11 @@ ${stripped}
       }
       this.clearPreviewRenderTimer(view);
       const generation = this.nextPreviewRenderGeneration(view);
-      renders.push(this.renderPreviewMarksForView(view, generation, document));
+      renders.push(this.renderPreviewMarksForView(view, generation, document, affectedMark));
     }
     await Promise.all(renders);
   }
-  async renderPreviewMarksForView(view, generation, document) {
+  async renderPreviewMarksForView(view, generation, document, affectedMark) {
     const file = view.file;
     if (!file || file.extension !== "md" || view.getMode() !== "preview") {
       return;
@@ -7368,7 +7370,8 @@ ${stripped}
       const sections = getPreviewSections(view);
       if (sections.length > 0) {
         const lineStarts = this.getSourceLineStarts(file, source);
-        for (const section of sections) {
+        const sectionsToRender = this.getPreviewSectionsToRender(source, sections, lineStarts, affectedMark);
+        for (const section of sectionsToRender) {
           const marks = getReadingMarksForSection(
             source,
             resolvedDocument.marks,
@@ -7386,6 +7389,19 @@ ${stripped}
         this.ensurePreviewObserver(view);
       }
     }
+  }
+  getPreviewSectionsToRender(source, sections, lineStarts, affectedMark) {
+    if (!affectedMark) {
+      return sections;
+    }
+    const affectedSections = sections.filter((section) => getReadingMarksForSection(
+      source,
+      [affectedMark],
+      section.lineStart,
+      section.lineEnd,
+      lineStarts
+    ).length > 0);
+    return affectedSections.length > 0 ? affectedSections : sections;
   }
   isCurrentPreviewRender(view, filePath, generation) {
     var _a;
