@@ -786,8 +786,8 @@
 	transition: box-shadow 160ms ease, background-color 160ms ease;
 }
 
-.side-mark-reading.is-group-hovered {
-	box-shadow: 0 0 0 2px rgba(47, 109, 246, 0.2);
+.side-mark-reading.side-mark-reading-continuous-paint {
+	border-radius: 0;
 }
 
 .side-mark-reading.side-mark--highlight * {

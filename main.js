@@ -469,14 +469,9 @@ function hasNonEmptyDomSelection(selection) {
 // src/reading-view-renderer.ts
 var READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
 var READING_MARK_SELECTOR = ".side-mark-reading[data-side-mark-reading-id]";
-var READING_MARK_GROUP_HOVER_CLASS = "is-group-hovered";
 var ANCHOR_CONTEXT_LENGTH = 40;
 var originalReadingMarks = /* @__PURE__ */ new WeakMap();
-var readingMarkFeedbackRoots = /* @__PURE__ */ new WeakSet();
-var hoveredReadingMarkIds = /* @__PURE__ */ new WeakMap();
 function renderReadingMarks(container, source, marks, onClick, options = {}) {
-  const feedbackRoot = container.closest(".markdown-preview-view") || container;
-  ensureReadingMarkGroupFeedback(feedbackRoot);
   clearReadingMarks(container, options.excludedContainerSelector);
   const activeMarks = marks.map((mark, sourceIndex) => ({
     mark,
@@ -491,57 +486,9 @@ function renderReadingMarks(container, source, marks, onClick, options = {}) {
   }).filter((item) => item !== null);
   applyReadingMarkFragments(ranges, plannedMarks, onClick);
   promoteFullyMarkedInlineCodeElements(container);
-  const hoveredMarkId = hoveredReadingMarkIds.get(feedbackRoot);
-  if (hoveredMarkId) {
-    applyHoveredReadingMarkGroup(feedbackRoot, hoveredMarkId);
-  }
 }
 function getReadingMarkElements(root, markId) {
   return Array.from(root.querySelectorAll(READING_MARK_SELECTOR)).filter((element) => element.dataset.sideMarkReadingId === markId);
-}
-function ensureReadingMarkGroupFeedback(root) {
-  if (readingMarkFeedbackRoots.has(root)) {
-    return;
-  }
-  readingMarkFeedbackRoots.add(root);
-  root.addEventListener("mouseover", (event) => {
-    setHoveredReadingMarkGroup(root, findReadingMarkId(event.target, root));
-  });
-  root.addEventListener("mouseout", (event) => {
-    setHoveredReadingMarkGroup(root, findReadingMarkId(event.relatedTarget, root));
-  });
-  root.addEventListener("mouseleave", () => {
-    setHoveredReadingMarkGroup(root, null);
-  });
-}
-function findReadingMarkId(target, root) {
-  var _a;
-  const ElementConstructor = (_a = root.ownerDocument.defaultView) == null ? void 0 : _a.Element;
-  if (!ElementConstructor || !(target instanceof ElementConstructor)) {
-    return null;
-  }
-  const wrapper = target.closest(READING_MARK_SELECTOR);
-  return wrapper && root.contains(wrapper) ? wrapper.dataset.sideMarkReadingId || null : null;
-}
-function setHoveredReadingMarkGroup(root, markId) {
-  const currentMarkId = hoveredReadingMarkIds.get(root) || null;
-  if (currentMarkId === markId) {
-    return;
-  }
-  if (markId) {
-    hoveredReadingMarkIds.set(root, markId);
-  } else {
-    hoveredReadingMarkIds.delete(root);
-  }
-  applyHoveredReadingMarkGroup(root, markId);
-}
-function applyHoveredReadingMarkGroup(root, markId) {
-  for (const element of Array.from(root.querySelectorAll(READING_MARK_SELECTOR))) {
-    element.classList.toggle(
-      READING_MARK_GROUP_HOVER_CLASS,
-      Boolean(markId) && element.dataset.sideMarkReadingId === markId
-    );
-  }
 }
 function clearReadingMarks(container, excludedContainerSelector) {
   const isExcluded = (element) => Boolean(
