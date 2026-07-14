@@ -436,7 +436,7 @@ Verify SHA-256 equality, reload Obsidian, and confirm both `4.1 方案概览` an
 - Consumes: ordered preview sections with source bounds and the browser `Range` returned for a reading-mode selection.
 - Produces: `selectPreviewSections<T extends PreviewSectionBounds & { el: HTMLElement }>(sections: readonly T[], range: Range): T[]`, returning only content-contributing, renderer-contiguous, source-monotonic sections.
 
-- [ ] **Step 1: Add boundary, blank-line, cross-block, and ordering regression tests**
+- [x] **Step 1: Add boundary, blank-line, cross-block, and ordering regression tests**
 
 Extend `test/test-preview-sections.mjs` with JSDOM sections for adjacent headings, a multiline paragraph containing inline code, and a table. Assert these outcomes:
 
@@ -451,13 +451,13 @@ assert.deepEqual(selectPreviewSections(reorderedSections, headingThroughParagrap
 
 Construct `headingToTableBoundary` with its end at offset `0` of the following table root. Give the heading and paragraph source lines `58` and `60` to prove a blank Markdown line is valid. Put the next heading in a separate two-section fixture with another blank Markdown line and select into its text. Construct `afterHeadingThroughParagraph` with its start at `heading.childNodes.length` on the heading root. End `headingThroughParagraph` in the paragraph's trailing text after an inline-code node, and end `headingIntoTable` inside a table-cell text node so a genuinely entered table remains selected.
 
-- [ ] **Step 2: Run the focused test and verify failure**
+- [x] **Step 2: Run the focused test and verify failure**
 
 Run: `rtk node test/test-preview-sections.mjs`
 
 Expected: FAIL because `selectPreviewSections` is not exported yet.
 
-- [ ] **Step 3: Implement preview-section boundary trimming and monotonic ordering**
+- [x] **Step 3: Implement preview-section boundary trimming and monotonic ordering**
 
 Add the exported selector to `src/preview-sections.ts`:
 
@@ -522,7 +522,7 @@ function getSelectedPreviewSections(view: MarkdownView, range: Range): PreviewSe
 
 Do not change source-candidate thresholds, duplicate protection, stored anchors, or selection context construction.
 
-- [ ] **Step 4: Run focused and related regression tests**
+- [x] **Step 4: Run focused and related regression tests**
 
 Run:
 
@@ -534,7 +534,7 @@ rtk node test/test-main-file-reference.mjs
 
 Expected: all three commands pass, including boundary-only trimming, blank-line cross-block selection, existing duplicate-text protection, and main-file invariants.
 
-- [ ] **Step 5: Run complete verification and build**
+- [x] **Step 5: Run complete verification and build**
 
 Run:
 
@@ -548,7 +548,7 @@ rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standar
 
 Expected: full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
 
-- [ ] **Step 6: Commit only the plan, selector, focused test, and the selector call-site hunk**
+- [x] **Step 6: Commit only the plan, selector, focused test, and the selector call-site hunk**
 
 Stage `docs/superpowers/plans/2026-07-14-reading-table-selection-anchors.md`, `src/preview-sections.ts`, `test/test-preview-sections.mjs`, and only the Task 6 import/call-site changes from `src/main.ts`. Do not stage pre-existing unrelated changes in `main.js`, `src/main.ts`, `src/storage.ts`, `test/test-main-file-reference.mjs`, `test/test-storage.mjs`, `.superpowers/`, or branch-regression-hardening documents.
 
@@ -558,7 +558,7 @@ Commit with:
 rtk git commit -m "fix:[reading-mode-precise-anchors] 兼容预览块选区边界"
 ```
 
-- [ ] **Step 7: Install and verify the target vault**
+- [x] **Step 7: Install and verify the target vault**
 
 Copy the built `main.js`, `manifest.json`, and `styles.css` to:
 
