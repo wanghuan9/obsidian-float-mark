@@ -11,6 +11,7 @@
 ## Global Constraints
 
 - Do not lower `MIN_CONTEXT_SCORE` or accept ambiguous candidates.
+- Strip only `U+200B`–`U+200D`, `U+FEFF`, and `U+FFFC` as known DOM selection artifacts.
 - Preserve every retained rendered character's absolute Markdown source offset.
 - Do not change sidecar schema, anchor relocation, reading rendering, or editor rendering.
 - Ignore unrelated untracked `.superpowers/` content.
@@ -284,3 +285,140 @@ Copy the built `main.js` to:
 ```
 
 Verify both installed files have the same SHA-256 as the build output. Reload Obsidian, select `3.4 业务标签` in the reported document, and confirm the `高亮标注` and `评论` actions appear without creating a mark.
+
+---
+
+### Task 5: Ignore Non-rendering DOM Selection Artifacts
+
+**Files:**
+- Modify: `src/reading-selection.ts`
+- Test: `test/test-reading-selection.mjs`
+
+**Interfaces:**
+- Consumes: `selectedText` and DOM context strings passed to `findSourceRangeForReadingSelection()`.
+- Produces: `sanitizeReadingSelection(text: string): string`, removing only `U+200B`–`U+200D`, `U+FEFF`, and `U+FFFC` before candidate discovery.
+
+- [ ] **Step 1: Add failing heading, table-cell, and duplicate-safety tests**
+
+Add a unique heading assertion with deliberately incompatible context:
+
+```js
+for (const artifact of ["\u200B", "\u200C", "\u200D", "\uFEFF"]) {
+	assert.deepEqual(findSourceRangeForReadingSelection(
+		"### 4.1 方案概览",
+		`${artifact}4.1 方案概览`,
+		{
+			sourceStartOffset: 0,
+			sourceEndOffset: "### 4.1 方案概览".length,
+			renderedOffset: 100,
+			prefix: "不匹配前文",
+			suffix: "不匹配后文"
+		}
+	), { from: 4, to: "### 4.1 方案概览".length });
+}
+```
+
+Use the reported Markdown table and select the rendered text with a trailing `U+FFFC`:
+
+```js
+const artifactTableSource = [
+	"| 项目 | 改造点 |",
+	"|---|---|",
+	"| pjt-partner-api | 无模型入参变更；导出结果随 titans `FixedSheetWriter` 调整 |"
+].join("\n");
+const artifactTableSelection = "无模型入参变更；导出结果随 titans FixedSheetWriter 调整\uFFFC";
+const artifactTableStart = artifactTableSource.indexOf("无模型入参变更");
+const artifactTableEnd = artifactTableSource.indexOf(" 调整", artifactTableStart) + " 调整".length;
+assert.deepEqual(findSourceRangeForReadingSelection(artifactTableSource, artifactTableSelection, {
+	sourceStartOffset: 0,
+	sourceEndOffset: artifactTableSource.length,
+	renderedOffset: 0,
+	prefix: "",
+	suffix: ""
+}), { from: artifactTableStart, to: artifactTableEnd });
+```
+
+Add a repeated-heading assertion using `"\u200B相同标题"`:
+
+```js
+const repeatedArtifactHeadings = "### 相同标题\n\n### 相同标题";
+assert.equal(findSourceRangeForReadingSelection(repeatedArtifactHeadings, "\u200B相同标题", {
+	sourceStartOffset: 0,
+	sourceEndOffset: repeatedArtifactHeadings.length,
+	renderedOffset: 0,
+	prefix: "",
+	suffix: ""
+}), null);
+```
+
+- [ ] **Step 2: Run the focused test and verify failure**
+
+Run: `rtk node test/test-reading-selection.mjs`
+
+Expected: FAIL because the current direct search keeps `U+200B` and the current rendered normalization keeps `U+FFFC`.
+
+- [ ] **Step 3: Sanitize only known non-rendering DOM sentinels**
+
+Add one helper in `src/reading-selection.ts`:
+
+```ts
+function sanitizeReadingSelection(text: string): string {
+	return text.replace(/[\u200B-\u200D\uFEFF\uFFFC]/g, "");
+}
+```
+
+Use it before direct and rendered candidate discovery:
+
+```ts
+const sourceSelection = sanitizeReadingSelection(selectedText);
+const renderedSelection = normalizeReadingSelection(sourceSelection);
+if (!renderedSelection) {
+	return [];
+}
+const directRanges = findDirectSourceRanges(sectionSource, sourceSelection, scope.sourceStartOffset)
+	.map((range) => ({ ...range, isExactSource: true }));
+```
+
+Call `sanitizeReadingSelection()` at the start of `normalizeReadingSelection()` so prefix and suffix context receive the same treatment. Do not strip other Unicode control or format characters and do not change candidate thresholds.
+
+- [ ] **Step 4: Run the focused test and verify success**
+
+Run: `rtk node test/test-reading-selection.mjs`
+
+Expected: PASS with `reading selection tests passed`.
+
+- [ ] **Step 5: Run complete verification**
+
+Run:
+
+```bash
+rtk npm test
+rtk npx tsc --noEmit
+rtk npm run build
+rtk git diff --check
+rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standards/scripts/format-check.py --git-diff
+```
+
+Expected: full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
+
+- [ ] **Step 6: Commit only source and regression tests**
+
+Run:
+
+```bash
+rtk git add src/reading-selection.ts test/test-reading-selection.mjs
+rtk git commit -m $'fix:[reading-mode-precise-anchors] 兼容不可见选区字符\n\n- 清理已知 DOM 选区占位符\n- 保留重复文本和远距离候选安全边界'
+```
+
+Do not stage `main.js`, `src/main.ts`, `src/storage.ts`, `.superpowers/`, or branch-regression-hardening files because they contain unrelated or concurrent worktree changes.
+
+- [ ] **Step 7: Install and verify both reported selections**
+
+Copy `main.js`, `manifest.json`, and `styles.css` to both plugin directories:
+
+```text
+/Users/wanghuan/Documents/opt-knowledge/.obsidian/plugins/float-mark/
+/Users/wanghuan/Documents/obsidian/.obsidian/plugins/float-mark/
+```
+
+Verify SHA-256 equality, reload Obsidian, and confirm both `4.1 方案概览` and `无模型入参变更；导出结果随 titans FixedSheetWriter 调整` show the `高亮标注` and `评论` actions without creating a mark.
