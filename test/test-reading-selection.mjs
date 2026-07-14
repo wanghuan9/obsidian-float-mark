@@ -432,8 +432,45 @@ assert.deepEqual(findSourceRangeForReadingSelection(incompatibleHeadingSource, i
 	to: incompatibleHeadingStart + incompatibleHeadingText.length
 });
 
+for (const artifact of ["\u200B", "\u200C", "\u200D", "\uFEFF"]) {
+	assert.deepEqual(findSourceRangeForReadingSelection(
+		"### 4.1 方案概览",
+		`${artifact}4.1 方案概览`,
+		{
+			sourceStartOffset: 0,
+			sourceEndOffset: "### 4.1 方案概览".length,
+			renderedOffset: 100,
+			prefix: "不匹配前文",
+			suffix: "不匹配后文"
+		}
+	), { from: 4, to: "### 4.1 方案概览".length });
+}
+
+const artifactTableSource = [
+	"| 项目 | 改造点 |",
+	"|---|---|",
+	"| pjt-partner-api | 无模型入参变更；导出结果随 titans `FixedSheetWriter` 调整 |"
+].join("\n");
+const artifactTableSelection = "无模型入参变更；导出结果随 titans FixedSheetWriter 调整\uFFFC";
+const artifactTableStart = artifactTableSource.indexOf("无模型入参变更");
+const artifactTableEnd = artifactTableSource.indexOf(" 调整", artifactTableStart) + " 调整".length;
+assert.deepEqual(findSourceRangeForReadingSelection(artifactTableSource, artifactTableSelection, {
+	sourceStartOffset: 0,
+	sourceEndOffset: artifactTableSource.length,
+	renderedOffset: 0,
+	prefix: "",
+	suffix: ""
+}), { from: artifactTableStart, to: artifactTableEnd });
+
 const indistinguishableHeadingsSource = "### 相同标题\n\n### 相同标题";
 assert.equal(findSourceRangeForReadingSelection(indistinguishableHeadingsSource, "相同标题", {
+	sourceStartOffset: 0,
+	sourceEndOffset: indistinguishableHeadingsSource.length,
+	renderedOffset: 0,
+	prefix: "",
+	suffix: ""
+}), null);
+assert.equal(findSourceRangeForReadingSelection(indistinguishableHeadingsSource, "\u200B相同标题", {
 	sourceStartOffset: 0,
 	sourceEndOffset: indistinguishableHeadingsSource.length,
 	renderedOffset: 0,

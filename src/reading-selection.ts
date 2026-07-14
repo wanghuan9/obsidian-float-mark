@@ -89,11 +89,12 @@ function findSourceCandidates(
 	selectedText: string,
 	scope: ReadingSelectionScope
 ): SourceCandidate[] {
-	const renderedSelection = normalizeReadingSelection(selectedText);
+	const sourceSelection = sanitizeReadingSelection(selectedText);
+	const renderedSelection = normalizeReadingSelection(sourceSelection);
 	if (!renderedSelection) {
 		return [];
 	}
-	const directRanges = findDirectSourceRanges(sectionSource, selectedText, scope.sourceStartOffset)
+	const directRanges = findDirectSourceRanges(sectionSource, sourceSelection, scope.sourceStartOffset)
 		.map((range) => ({ ...range, isExactSource: true }));
 	const renderedRanges = findRenderedSourceRanges(source, sourceIndex, renderedSelection)
 		.map((range) => ({ ...range, isExactSource: false }));
@@ -528,12 +529,15 @@ function expandStartToOpeningMarker(source: string, offset: number | undefined):
 }
 
 function normalizeReadingSelection(text: string): string {
-	return text
-		.replace(/[\u200B-\u200D\uFEFF]/g, "")
+	return sanitizeReadingSelection(text)
 		.split(/\n+/)
 		.map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "").replace(/^\s*\[(?: |x|X)\]\s+/, ""))
 		.join("")
-		.replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
+		.replace(/\s+/g, "");
+}
+
+function sanitizeReadingSelection(text: string): string {
+	return text.replace(/[\u200B-\u200D\uFEFF\uFFFC]/g, "");
 }
 
 function isMarkdownMarkerAt(source: string, index: number): boolean {
