@@ -567,3 +567,176 @@ Copy the built `main.js`, `manifest.json`, and `styles.css` to:
 ```
 
 Verify installed files match the build output, reload Obsidian, and confirm title-only, title-plus-paragraph, title-to-title, and title-into-table selections create marks without the unresolved notice.
+
+---
+
+### Task 7: Normalize Source-only Markdown Link Syntax Inside Wider Selections
+
+**Files:**
+- Modify: `src/reading-selection.ts:239-305`
+- Test: `test/test-reading-selection.mjs`
+
+**Interfaces:**
+- Consumes: Markdown source passed to `buildRenderedSourceIndex(source, sourceStartOffset)`.
+- Produces: `findMarkdownLinkSyntaxOffsets(source: string): Set<number>`, excluding inline-link destinations and autolink delimiters from the rendered-source index while retaining every visible label character's source offsets.
+
+- [ ] **Step 1: Add failing cross-block link and safety tests**
+
+Add a regression fixture whose source contains a heading followed by an ordered list, with bold labels, inline code, and a Markdown link in the middle item:
+
+```js
+const linkedCrossBlockSource = [
+	"#### 关键设计决策（trade-off）",
+	"",
+	"1. **双项目分层**：BFF 参照 `RecycleOrderController`。",
+	"2. **依赖 A 表结构**：结构以 [留货规则 Wiki](https://example.com/rules) 为准。",
+	"3. **锁策略**：按 `product_no` 加锁。"
+].join("\n");
+const linkedCrossBlockSelection = [
+	"关键设计决策（trade-off）",
+	"双项目分层：BFF 参照 RecycleOrderController。",
+	"依赖 A 表结构：结构以 留货规则 Wiki 为准。",
+	"锁策略：按 product_no 加锁。"
+].join("\n");
+const linkedCrossBlockStart = linkedCrossBlockSource.indexOf("关键设计决策");
+assert.deepEqual(findSourceRangeForReadingSelection(
+	linkedCrossBlockSource,
+	linkedCrossBlockSelection,
+	{
+		sourceStartOffset: 0,
+		sourceEndOffset: linkedCrossBlockSource.length,
+		renderedOffset: 0,
+		prefix: "",
+		suffix: ""
+	}
+), { from: linkedCrossBlockStart, to: linkedCrossBlockSource.length });
+```
+
+Add assertions proving that the same normalization works for multiple inline links, nested parentheses in a link destination, and an autolink inside a wider selection. Keep escaped link-like text and link-like text inside inline code literal:
+
+```js
+assert.equal(source.slice(escapedRange.from, escapedRange.to), "\\[标签](地址)");
+assert.equal(source.slice(codeRange.from, codeRange.to), "`[标签](地址)`");
+```
+
+- [ ] **Step 2: Run the focused test and verify failure**
+
+Run: `rtk node test/test-reading-selection.mjs`
+
+Expected: FAIL on the cross-block fixture because the rendered-source index still contains `[`, `](https://example.com/rules)`, and therefore has no whole-selection candidate.
+
+- [ ] **Step 3: Implement syntax-aware inline-link indexing**
+
+Precompute Markdown link syntax beside table syntax in `buildRenderedSourceIndex()`:
+
+```ts
+const tableSyntaxOffsets = findTableSyntaxOffsets(source);
+const linkSyntaxOffsets = findMarkdownLinkSyntaxOffsets(source);
+```
+
+Skip either source-only syntax set before normal marker handling:
+
+```ts
+if (tableSyntaxOffsets.has(index) || linkSyntaxOffsets.has(index)) {
+	index += 1;
+	continue;
+}
+```
+
+Implement a scanner that ignores escaped delimiters and content inside inline code:
+
+```ts
+interface MarkdownInlineLink {
+	labelEnd: number;
+	destinationStart: number;
+	end: number;
+	imageMarker: number | null;
+}
+
+function findMarkdownLinkSyntaxOffsets(source: string): Set<number> {
+	const offsets = new Set<number>();
+	let codeRunLength = 0;
+	let index = 0;
+	while (index < source.length) {
+		if (source[index] === "`") {
+			const runLength = countCharacterRun(source, index, "`");
+			if (codeRunLength === 0) {
+				codeRunLength = runLength;
+			} else if (codeRunLength === runLength) {
+				codeRunLength = 0;
+			}
+			index += runLength;
+			continue;
+		}
+		if (codeRunLength > 0) {
+			index += 1;
+			continue;
+		}
+		if (source[index] === "\\") {
+			index += 2;
+			continue;
+		}
+		const inlineLink = findMarkdownInlineLink(source, index);
+		if (inlineLink) {
+			offsets.add(index);
+			offsets.add(inlineLink.labelEnd);
+			if (inlineLink.imageMarker !== null) {
+				offsets.add(inlineLink.imageMarker);
+			}
+			for (let syntaxOffset = inlineLink.destinationStart; syntaxOffset <= inlineLink.end; syntaxOffset += 1) {
+				offsets.add(syntaxOffset);
+			}
+			index = inlineLink.end + 1;
+			continue;
+		}
+		const autolinkEnd = findMarkdownAutolinkEnd(source, index);
+		if (autolinkEnd !== null) {
+			offsets.add(index);
+			offsets.add(autolinkEnd);
+			index = autolinkEnd + 1;
+			continue;
+		}
+		index += 1;
+	}
+	return offsets;
+}
+```
+
+Implement `findMarkdownInlineLink()` with `findClosingMarkdownDelimiter()` so nested parentheses in destinations are balanced. Treat a preceding unescaped `!` as image syntax. Implement `findMarkdownAutolinkEnd()` for `http://`, `https://`, `mailto:`, and standard email autolinks. Do not interpret escaped opening brackets, code-span content, ordinary angle-bracket text, or HTML tags as links.
+
+- [ ] **Step 4: Run focused and complete verification**
+
+Run:
+
+```bash
+rtk node test/test-reading-selection.mjs
+rtk node test/test-preview-sections.mjs
+rtk npm test
+rtk npx tsc --noEmit
+rtk npm run build
+rtk git diff --check
+rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standards/scripts/format-check.py --git-diff
+```
+
+Expected: focused tests, preview-section tests, full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
+
+- [ ] **Step 5: Commit only source, focused tests, and this task's plan state**
+
+Stage `src/reading-selection.ts`, `test/test-reading-selection.mjs`, and this Task 7 plan update. Do not stage pre-existing unrelated changes in `main.js`, `src/main.ts`, `src/storage.ts`, `test/test-main-file-reference.mjs`, `test/test-storage.mjs`, `.superpowers/`, or branch-regression-hardening documents.
+
+Commit with:
+
+```bash
+rtk git commit -m "fix:[reading-mode-precise-anchors] 兼容跨块链接选区"
+```
+
+- [ ] **Step 6: Install and verify both vaults**
+
+Copy the built `main.js`, `manifest.json`, and `styles.css` to:
+
+```text
+/Users/wanghuan/Documents/obsidian/.obsidian/plugins/float-mark/
+/Users/wanghuan/Documents/opt-knowledge/.obsidian/plugins/float-mark/
+```
+
+Verify SHA-256 equality, reload Obsidian, select the complete heading-plus-list block containing the Wiki link, and confirm both `高亮标注` and `评论` open without the unresolved notice or creating a mark.
