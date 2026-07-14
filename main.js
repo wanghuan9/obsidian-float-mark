@@ -1346,7 +1346,7 @@ function createSideMarkEditorExtension(plugin) {
         this.keyupHandler = () => this.scheduleSelectionCheck();
         this.clickHandler = (event) => this.handleMarkClick(event);
         this.mousemoveHandler = (event) => this.handleMouseMove(event);
-        this.mouseleaveHandler = () => plugin.scheduleHideBlockToolbar();
+        this.mouseleaveHandler = (event) => this.handleMouseLeave(event);
         this.scrollHandler = () => plugin.hideBlockToolbar();
         view.dom.addEventListener("mouseup", this.mouseupHandler);
         view.dom.addEventListener("keyup", this.keyupHandler);
@@ -1491,6 +1491,12 @@ function createSideMarkEditorExtension(plugin) {
           label: getLineLabel(line.text),
           rect: lineRect || new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
         });
+      }
+      handleMouseLeave(event) {
+        if (plugin.isBlockToolbarElement(event.relatedTarget)) {
+          return;
+        }
+        plugin.scheduleHideBlockToolbar();
       }
       getLineRect(target, lineText) {
         const lineEl = target.closest(".cm-line");
@@ -1854,6 +1860,12 @@ var HoverBlockToolbar = class {
       return;
     }
     this.hideTimer = window.setTimeout(() => this.hide(), 220);
+  }
+  contains(target) {
+    if (!(target instanceof Node)) {
+      return false;
+    }
+    return this.pill.contains(target) || this.menu.contains(target) || this.submenu.contains(target);
   }
   destroy() {
     this.cancelHide();
@@ -2618,6 +2630,8 @@ var TRANSLATIONS = {
     "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
     "settings.language.en": "English",
     "settings.autoOpenSidebar.name": "\u521B\u5EFA\u6807\u6CE8\u540E\u6253\u5F00\u4FA7\u680F",
+    "settings.showBlockToolbar.name": "\u663E\u793A\u5757\u7EA7\u6D6E\u52A8\u5DE5\u5177\u680F",
+    "settings.showBlockToolbar.desc": "\u9F20\u6807\u60AC\u505C\u5728\u6B63\u6587\u5757\u4E0A\u65F6\uFF0C\u663E\u793A\u5757\u683C\u5F0F\u4E0E\u64CD\u4F5C\u83DC\u5355\u3002",
     "settings.scopeControlStyle.name": "\u6587\u6863\u8303\u56F4\u5207\u6362\u6837\u5F0F",
     "settings.scopeControlStyle.desc": "\u9009\u62E9\u4FA7\u680F\u9876\u90E8\u7684\u5F53\u524D\u6587\u6863\u4E0E\u5168\u90E8\u6587\u6863\u5207\u6362\u65B9\u5F0F\u3002",
     "settings.scopeControlStyle.tabs": "A \xB7 \u6587\u5B57\u4E0B\u5212\u7EBF",
@@ -2789,6 +2803,8 @@ var TRANSLATIONS = {
     "settings.language.zh": "\u7B80\u4F53\u4E2D\u6587",
     "settings.language.en": "English",
     "settings.autoOpenSidebar.name": "Open sidebar after creating a mark",
+    "settings.showBlockToolbar.name": "Show block floating toolbar",
+    "settings.showBlockToolbar.desc": "Show block formatting and action menu when hovering over an editor block.",
     "settings.scopeControlStyle.name": "Document scope control",
     "settings.scopeControlStyle.desc": "Choose how Current document and All documents are switched in the sidebar.",
     "settings.scopeControlStyle.tabs": "A \xB7 Underline tabs",
@@ -2998,6 +3014,7 @@ var DEFAULT_SETTINGS = {
   dataDir: DATA_DIR,
   language: void 0,
   autoOpenSidebar: true,
+  showBlockToolbar: true,
   autoSyncToLark: false,
   preferBodyBlockForLark: false,
   commentAuthorName: "\u6211",
@@ -6268,6 +6285,10 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     };
   }
   showBlockToolbar(view, target) {
+    if (!this.settings.showBlockToolbar) {
+      this.blockToolbar.hide();
+      return;
+    }
     if (this.toolbar.isVisible()) {
       this.blockToolbar.hide();
       return;
@@ -6280,6 +6301,10 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
   }
   hideBlockToolbar() {
     this.blockToolbar.hide();
+  }
+  isBlockToolbarElement(target) {
+    var _a, _b;
+    return (_b = (_a = this.blockToolbar) == null ? void 0 : _a.contains(target)) != null ? _b : false;
   }
   async reloadCurrentDocument() {
     const file = this.getActiveMarkdownFile();
@@ -7635,6 +7660,15 @@ var SideMarkSettingTab = class extends import_obsidian10.PluginSettingTab {
     new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.autoOpenSidebar.name")).addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
         this.plugin.settings.autoOpenSidebar = value;
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian10.Setting(containerEl).setName(this.plugin.t("settings.showBlockToolbar.name")).setDesc(this.plugin.t("settings.showBlockToolbar.desc")).addToggle((toggle) => {
+      toggle.setValue(this.plugin.settings.showBlockToolbar).onChange(async (value) => {
+        this.plugin.settings.showBlockToolbar = value;
+        if (!value) {
+          this.plugin.hideBlockToolbar();
+        }
         await this.plugin.saveSettings();
       });
     });

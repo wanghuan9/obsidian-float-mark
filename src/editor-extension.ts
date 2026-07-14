@@ -16,7 +16,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			private readonly keyupHandler: () => void;
 			private readonly clickHandler: (event: MouseEvent) => void;
 			private readonly mousemoveHandler: (event: MouseEvent) => void;
-			private readonly mouseleaveHandler: () => void;
+			private readonly mouseleaveHandler: (event: MouseEvent) => void;
 			private readonly scrollHandler: () => void;
 			private readonly tableMarkRenderer: EditorTableMarkRenderer;
 			private selectionTimer: number | null = null;
@@ -42,7 +42,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 				this.keyupHandler = () => this.scheduleSelectionCheck();
 				this.clickHandler = (event) => this.handleMarkClick(event);
 				this.mousemoveHandler = (event) => this.handleMouseMove(event);
-				this.mouseleaveHandler = () => plugin.scheduleHideBlockToolbar();
+				this.mouseleaveHandler = (event) => this.handleMouseLeave(event);
 				this.scrollHandler = () => plugin.hideBlockToolbar();
 				view.dom.addEventListener("mouseup", this.mouseupHandler);
 				view.dom.addEventListener("keyup", this.keyupHandler);
@@ -193,6 +193,13 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 					label: getLineLabel(line.text),
 					rect: lineRect || new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
 				});
+			}
+
+			private handleMouseLeave(event: MouseEvent): void {
+				if (plugin.isBlockToolbarElement(event.relatedTarget)) {
+					return;
+				}
+				plugin.scheduleHideBlockToolbar();
 			}
 
 			private getLineRect(target: HTMLElement, lineText: string): DOMRect | null {

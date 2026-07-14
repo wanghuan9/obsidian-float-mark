@@ -98,6 +98,7 @@ export interface SideMarkSettings {
 	dataDir: string;
 	language?: PluginLanguage;
 	autoOpenSidebar: boolean;
+	showBlockToolbar: boolean;
 	autoSyncToLark: boolean;
 	preferBodyBlockForLark: boolean;
 	commentAuthorName: string;
@@ -108,6 +109,7 @@ export const DEFAULT_SETTINGS: SideMarkSettings = {
 	dataDir: DATA_DIR,
 	language: undefined,
 	autoOpenSidebar: true,
+	showBlockToolbar: true,
 	autoSyncToLark: false,
 	preferBodyBlockForLark: false,
 	commentAuthorName: "我",

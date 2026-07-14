@@ -330,6 +330,10 @@ export default class SideMarkPlugin extends Plugin {
 	}
 
 	showBlockToolbar(view: EditorView, target: HoverBlockTarget): void {
+		if (!this.settings.showBlockToolbar) {
+			this.blockToolbar.hide();
+			return;
+		}
 		if (this.toolbar.isVisible()) {
 			this.blockToolbar.hide();
 			return;
@@ -344,6 +348,10 @@ export default class SideMarkPlugin extends Plugin {
 
 	hideBlockToolbar(): void {
 		this.blockToolbar.hide();
+	}
+
+	isBlockToolbarElement(target: EventTarget | null): boolean {
+		return this.blockToolbar?.contains(target) ?? false;
 	}
 
 	async reloadCurrentDocument(): Promise<void> {
@@ -1853,6 +1861,19 @@ class SideMarkSettingTab extends PluginSettingTab {
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.autoOpenSidebar).onChange(async (value) => {
 					this.plugin.settings.autoOpenSidebar = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName(this.plugin.t("settings.showBlockToolbar.name"))
+			.setDesc(this.plugin.t("settings.showBlockToolbar.desc"))
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showBlockToolbar).onChange(async (value) => {
+					this.plugin.settings.showBlockToolbar = value;
+					if (!value) {
+						this.plugin.hideBlockToolbar();
+					}
 					await this.plugin.saveSettings();
 				});
 			});

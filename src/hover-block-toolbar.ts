@@ -157,6 +157,13 @@ export class HoverBlockToolbar {
 		this.hideTimer = window.setTimeout(() => this.hide(), 220);
 	}
 
+	contains(target: EventTarget | null): boolean {
+		if (!(target instanceof Node)) {
+			return false;
+		}
+		return this.pill.contains(target) || this.menu.contains(target) || this.submenu.contains(target);
+	}
+
 	destroy(): void {
 		this.cancelHide();
 		this.cancelOpen();
