@@ -10,6 +10,12 @@ export interface MarkAnchorUpdate extends Pick<SideMark, "id" | "anchor" | "stat
 	expectedStatus: SideMark["status"];
 }
 
+export interface MarkAnchorUpdateResult {
+	document: SideMarkDocument;
+	changed: boolean;
+	statusChanged: boolean;
+}
+
 interface RelocatedMarks {
 	marks: SideMark[];
 	changed: boolean;
@@ -66,17 +72,27 @@ export class SideMarkStore {
 		return this.enqueueMutation(() => this.writeDocument(document));
 	}
 
-	async updateMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<SideMarkDocument> {
+	async updateMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<MarkAnchorUpdateResult> {
 		return this.enqueueMutation(async () => {
 			const document = await this.readDocument(normalizePath(filePath));
 			const updatesById = new Map(updates.map((update) => [update.id, update]));
+			let changed = false;
+			let statusChanged = false;
 			const marks = document.marks.map((mark) => {
 				const update = updatesById.get(mark.id);
-				return update && mark.status === update.expectedStatus
-					? { ...mark, anchor: update.anchor, status: update.status }
-					: mark;
+				if (!update || mark.status !== update.expectedStatus
+					|| hasSameAnchor(mark.anchor, update.anchor) && mark.status === update.status) {
+					return mark;
+				}
+				changed = true;
+				statusChanged ||= mark.status !== update.status;
+				return { ...mark, anchor: update.anchor, status: update.status };
 			});
-			return this.writeDocument({ ...document, marks });
+			if (!changed) {
+				return { document, changed: false, statusChanged: false };
+			}
+			const updatedDocument = await this.writeDocument({ ...document, marks });
+			return { document: updatedDocument, changed: true, statusChanged };
 		});
 	}
 
@@ -346,7 +362,7 @@ export class SideMarkStore {
 		const marks = document.marks.map((mark) => {
 			const anchor = relocateAnchor(source, mark.anchor, {
 				trustStoredPosition: mark.status !== "orphaned",
-				allowUniqueTextFallback: false
+				allowUniqueTextFallback: true
 			});
 			if (!anchor) {
 				if (mark.status === "orphaned") {
@@ -517,6 +533,18 @@ export class SideMarkStore {
 			updatedAt: now
 		};
 	}
+}
+
+function hasSameAnchor(left: SideMark["anchor"], right: SideMark["anchor"]): boolean {
+	return left.startOffset === right.startOffset
+		&& left.endOffset === right.endOffset
+		&& left.selectedText === right.selectedText
+		&& left.prefix === right.prefix
+		&& left.suffix === right.suffix
+		&& left.position.lineStart === right.position.lineStart
+		&& left.position.lineEnd === right.position.lineEnd
+		&& left.position.columnStart === right.position.columnStart
+		&& left.position.columnEnd === right.position.columnEnd;
 }
 
 export function hashPath(filePath: string): string {

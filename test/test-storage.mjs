@@ -31,6 +31,7 @@ class MemoryAdapter {
 	directories = new Set();
 	listCount = 0;
 	readCount = 0;
+	writeCount = 0;
 
 	async exists(path) {
 		return this.files.has(path) || this.directories.has(path);
@@ -58,6 +59,7 @@ class MemoryAdapter {
 	}
 
 	async write(path, value) {
+		this.writeCount += 1;
 		this.files.set(path, value);
 	}
 
@@ -265,12 +267,14 @@ const staleAnchorUpdate = {
 	endOffset: 16,
 	position: { lineStart: 2, lineEnd: 2, columnStart: 3, columnEnd: 7 }
 };
-await anchorMergeStore.updateMarkAnchors("merge.md", [{
+const statusChangeResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
 	id: "tracked",
 	anchor: staleAnchorUpdate,
 	expectedStatus: "active",
 	status: "orphaned"
 }]);
+assert.equal(statusChangeResult.changed, true);
+assert.equal(statusChangeResult.statusChanged, true);
 const anchorMergedDocument = await anchorMergeStore.loadDocument("merge.md");
 const anchorMergedMark = anchorMergedDocument.marks.find((mark) => mark.id === "tracked");
 assert.deepEqual(anchorMergedDocument.marks.map((mark) => mark.id), ["new-mark", "tracked"]);
@@ -280,14 +284,35 @@ assert.deepEqual(anchorMergedMark.mark, currentTrackedMark.mark);
 assert.deepEqual(anchorMergedMark.note, currentTrackedMark.note);
 assert.deepEqual(anchorMergedMark.remote, currentTrackedMark.remote);
 
+const offsetOnlyAnchorUpdate = {
+	...staleAnchorUpdate,
+	startOffset: 14,
+	endOffset: 18,
+	position: { lineStart: 2, lineEnd: 2, columnStart: 5, columnEnd: 9 }
+};
+const offsetOnlyResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: offsetOnlyAnchorUpdate,
+	expectedStatus: "orphaned",
+	status: "orphaned"
+}]);
+assert.equal(offsetOnlyResult.changed, true);
+assert.equal(offsetOnlyResult.statusChanged, false);
+
 const resolvedTrackedMark = { ...currentTrackedMark, status: "resolved" };
 await anchorMergeStore.saveDocument(createDocument("merge.md", [resolvedTrackedMark, currentNewMark]));
-await anchorMergeStore.updateMarkAnchors("merge.md", [{
+const writesBeforeStatusConflict = anchorMergeAdapter.writeCount;
+const revisionBeforeStatusConflict = anchorMergeStore.getRevision();
+const statusConflictResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
 	id: "tracked",
 	anchor: staleAnchorUpdate,
 	expectedStatus: "active",
 	status: "orphaned"
 }]);
+assert.equal(statusConflictResult.changed, false);
+assert.equal(statusConflictResult.statusChanged, false);
+assert.equal(anchorMergeAdapter.writeCount, writesBeforeStatusConflict);
+assert.equal(anchorMergeStore.getRevision(), revisionBeforeStatusConflict);
 const statusConflictDocument = await anchorMergeStore.loadDocument("merge.md");
 const statusConflictMark = statusConflictDocument.marks.find((mark) => mark.id === "tracked");
 assert.equal(statusConflictMark.status, "resolved");
@@ -344,6 +369,33 @@ assert.equal(relocatedMark.anchor.startOffset, 13);
 assert.equal(relocatedMark.anchor.endOffset, 17);
 assert.equal(relocatedMark.mark.color, "blue");
 assert.equal(relocatedMark.status, "active");
+
+const fallbackAdapter = new MemoryAdapter();
+const fallbackDataDir = ".unique-anchor-fallback";
+const fallbackAnchor = {
+	startOffset: 100,
+	endOffset: 106,
+	selectedText: "unique",
+	prefix: "AAAA",
+	suffix: "BBBB",
+	position: { lineStart: 1, lineEnd: 1, columnStart: 101, columnEnd: 107 }
+};
+const uniqueFilePath = "unique.md";
+const uniqueMark = { ...createMark("unique", uniqueFilePath), anchor: fallbackAnchor };
+seedDocument(fallbackAdapter, fallbackDataDir, createDocument(uniqueFilePath, [uniqueMark]));
+const duplicateFilePath = "duplicate.md";
+const duplicateMark = { ...createMark("duplicate", duplicateFilePath), anchor: fallbackAnchor };
+seedDocument(fallbackAdapter, fallbackDataDir, createDocument(duplicateFilePath, [duplicateMark]));
+const fallbackStore = createStore(fallbackAdapter, fallbackDataDir);
+const uniqueSource = "xxxx unique yyyy";
+const uniqueRelocated = await fallbackStore.relocateDocument(uniqueFilePath, uniqueSource);
+assert.equal(uniqueRelocated.marks[0].status, "active");
+assert.equal(uniqueRelocated.marks[0].anchor.startOffset, uniqueSource.indexOf("unique"));
+const duplicateRelocated = await fallbackStore.relocateDocument(
+	duplicateFilePath,
+	"xxxx unique yyyy unique zzzz"
+);
+assert.equal(duplicateRelocated.marks[0].status, "orphaned");
 
 await store.saveDocument(createDocument("old.md", [createMark("renamed", "old.md")]));
 await store.renameDocument("old.md", "renamed/new.md");

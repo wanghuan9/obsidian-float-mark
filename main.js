@@ -468,9 +468,15 @@ function hasNonEmptyDomSelection(selection) {
 
 // src/reading-view-renderer.ts
 var READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
+var READING_MARK_SELECTOR = ".side-mark-reading[data-side-mark-reading-id]";
+var READING_MARK_GROUP_HOVER_CLASS = "is-group-hovered";
 var ANCHOR_CONTEXT_LENGTH = 40;
 var originalReadingMarks = /* @__PURE__ */ new WeakMap();
+var readingMarkFeedbackRoots = /* @__PURE__ */ new WeakSet();
+var hoveredReadingMarkIds = /* @__PURE__ */ new WeakMap();
 function renderReadingMarks(container, source, marks, onClick, options = {}) {
+  const feedbackRoot = container.closest(".markdown-preview-view") || container;
+  ensureReadingMarkGroupFeedback(feedbackRoot);
   clearReadingMarks(container, options.excludedContainerSelector);
   const activeMarks = marks.map((mark, sourceIndex) => ({
     mark,
@@ -485,6 +491,57 @@ function renderReadingMarks(container, source, marks, onClick, options = {}) {
   }).filter((item) => item !== null);
   applyReadingMarkFragments(ranges, plannedMarks, onClick);
   promoteFullyMarkedInlineCodeElements(container);
+  const hoveredMarkId = hoveredReadingMarkIds.get(feedbackRoot);
+  if (hoveredMarkId) {
+    applyHoveredReadingMarkGroup(feedbackRoot, hoveredMarkId);
+  }
+}
+function getReadingMarkElements(root, markId) {
+  return Array.from(root.querySelectorAll(READING_MARK_SELECTOR)).filter((element) => element.dataset.sideMarkReadingId === markId);
+}
+function ensureReadingMarkGroupFeedback(root) {
+  if (readingMarkFeedbackRoots.has(root)) {
+    return;
+  }
+  readingMarkFeedbackRoots.add(root);
+  root.addEventListener("mouseover", (event) => {
+    setHoveredReadingMarkGroup(root, findReadingMarkId(event.target, root));
+  });
+  root.addEventListener("mouseout", (event) => {
+    setHoveredReadingMarkGroup(root, findReadingMarkId(event.relatedTarget, root));
+  });
+  root.addEventListener("mouseleave", () => {
+    setHoveredReadingMarkGroup(root, null);
+  });
+}
+function findReadingMarkId(target, root) {
+  var _a;
+  const ElementConstructor = (_a = root.ownerDocument.defaultView) == null ? void 0 : _a.Element;
+  if (!ElementConstructor || !(target instanceof ElementConstructor)) {
+    return null;
+  }
+  const wrapper = target.closest(READING_MARK_SELECTOR);
+  return wrapper && root.contains(wrapper) ? wrapper.dataset.sideMarkReadingId || null : null;
+}
+function setHoveredReadingMarkGroup(root, markId) {
+  const currentMarkId = hoveredReadingMarkIds.get(root) || null;
+  if (currentMarkId === markId) {
+    return;
+  }
+  if (markId) {
+    hoveredReadingMarkIds.set(root, markId);
+  } else {
+    hoveredReadingMarkIds.delete(root);
+  }
+  applyHoveredReadingMarkGroup(root, markId);
+}
+function applyHoveredReadingMarkGroup(root, markId) {
+  for (const element of Array.from(root.querySelectorAll(READING_MARK_SELECTOR))) {
+    element.classList.toggle(
+      READING_MARK_GROUP_HOVER_CLASS,
+      Boolean(markId) && element.dataset.sideMarkReadingId === markId
+    );
+  }
 }
 function clearReadingMarks(container, excludedContainerSelector) {
   const isExcluded = (element) => Boolean(
@@ -3051,11 +3108,22 @@ var SideMarkStore = class {
     return this.enqueueMutation(async () => {
       const document = await this.readDocument((0, import_obsidian7.normalizePath)(filePath));
       const updatesById = new Map(updates.map((update) => [update.id, update]));
+      let changed = false;
+      let statusChanged = false;
       const marks = document.marks.map((mark) => {
         const update = updatesById.get(mark.id);
-        return update && mark.status === update.expectedStatus ? { ...mark, anchor: update.anchor, status: update.status } : mark;
+        if (!update || mark.status !== update.expectedStatus || hasSameAnchor(mark.anchor, update.anchor) && mark.status === update.status) {
+          return mark;
+        }
+        changed = true;
+        statusChanged || (statusChanged = mark.status !== update.status);
+        return { ...mark, anchor: update.anchor, status: update.status };
       });
-      return this.writeDocument({ ...document, marks });
+      if (!changed) {
+        return { document, changed: false, statusChanged: false };
+      }
+      const updatedDocument = await this.writeDocument({ ...document, marks });
+      return { document: updatedDocument, changed: true, statusChanged };
     });
   }
   async renameDocument(oldFilePath, newFilePath) {
@@ -3288,7 +3356,7 @@ var SideMarkStore = class {
     const marks = document.marks.map((mark) => {
       const anchor = relocateAnchor(source, mark.anchor, {
         trustStoredPosition: mark.status !== "orphaned",
-        allowUniqueTextFallback: false
+        allowUniqueTextFallback: true
       });
       if (!anchor) {
         if (mark.status === "orphaned") {
@@ -3443,6 +3511,9 @@ var SideMarkStore = class {
     };
   }
 };
+function hasSameAnchor(left, right) {
+  return left.startOffset === right.startOffset && left.endOffset === right.endOffset && left.selectedText === right.selectedText && left.prefix === right.prefix && left.suffix === right.suffix && left.position.lineStart === right.position.lineStart && left.position.lineEnd === right.position.lineEnd && left.position.columnStart === right.position.columnStart && left.position.columnEnd === right.position.columnEnd;
+}
 function hashPath(filePath) {
   return (0, import_crypto.createHash)("sha1").update((0, import_obsidian7.normalizePath)(filePath)).digest("hex");
 }
@@ -5402,6 +5473,16 @@ function normalizeLarkCommentResult(plugin, result) {
 // src/reading-selection.ts
 var READING_CONTEXT_LENGTH = 40;
 var MIN_CONTEXT_SCORE = 1.4;
+var MAX_UNIQUE_RENDERED_DISTANCE = 8;
+var MARKDOWN_ESCAPABLE_CHARACTERS = "\\!\"#$%&'()*+,-./:;<=>?@[]^_`{|}~";
+var HTML_NAMED_ENTITIES = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: "\xA0",
+  quot: '"'
+};
 function findSourceRangeForReadingSelection(source, selectedText, scope) {
   const sectionSource = source.slice(scope.sourceStartOffset, scope.sourceEndOffset);
   const sourceIndex = buildRenderedSourceIndex(sectionSource, scope.sourceStartOffset);
@@ -5428,20 +5509,26 @@ function getReadingSelectionContext(containers, range) {
   };
 }
 function findSourceCandidates(source, sectionSource, sourceIndex, selectedText, scope) {
-  const renderedSelection = normalizeReadingSelection(selectedText);
+  const sourceSelection = sanitizeReadingSelection(selectedText);
+  const renderedSelection = normalizeReadingSelection(sourceSelection);
   if (!renderedSelection) {
     return [];
   }
-  const directRanges = findDirectSourceRanges(sectionSource, selectedText, scope.sourceStartOffset);
-  const ranges = directRanges.length > 0 ? directRanges : findRenderedSourceRanges(source, sourceIndex, renderedSelection);
-  return ranges.map((range) => {
+  const directRanges = findDirectSourceRanges(sectionSource, sourceSelection, scope.sourceStartOffset).map((range) => ({ ...range, isExactSource: true }));
+  const renderedRanges = findRenderedSourceRanges(source, sourceIndex, renderedSelection).map((range) => ({ ...range, isExactSource: false }));
+  const candidatesByRenderedOffset = /* @__PURE__ */ new Map();
+  for (const range of [...directRanges, ...renderedRanges]) {
     const renderedOffset = renderedOffsetForSourceOffset(sourceIndex.offsets, range.from);
-    return {
+    if (candidatesByRenderedOffset.has(renderedOffset)) {
+      continue;
+    }
+    candidatesByRenderedOffset.set(renderedOffset, {
       ...range,
       renderedDistance: Math.abs(renderedOffset - scope.renderedOffset),
       contextScore: getContextScore(sourceIndex.text, renderedSelection, renderedOffset, scope)
-    };
-  });
+    });
+  }
+  return Array.from(candidatesByRenderedOffset.values());
 }
 function findDirectSourceRanges(sectionSource, selectedText, sourceStartOffset) {
   return findTextStarts(sectionSource, selectedText).map((index) => ({
@@ -5452,11 +5539,15 @@ function findDirectSourceRanges(sectionSource, selectedText, sourceStartOffset) 
 function findRenderedSourceRanges(source, sourceIndex, renderedSelection) {
   return findTextStarts(sourceIndex.text, renderedSelection).flatMap((renderedOffset) => {
     const from = expandStartToOpeningMarker(source, sourceIndex.offsets[renderedOffset]);
-    const lastOffset = sourceIndex.offsets[renderedOffset + renderedSelection.length - 1];
-    return from === void 0 || lastOffset === void 0 ? [] : [{ from, to: lastOffset + 1 }];
+    const to = sourceIndex.endOffsets[renderedOffset + renderedSelection.length - 1];
+    return from === void 0 || to === void 0 ? [] : [{ from, to }];
   });
 }
 function chooseUniqueCandidate(candidates) {
+  const only = candidates[0];
+  if (candidates.length === 1 && ((only == null ? void 0 : only.isExactSource) || (only == null ? void 0 : only.renderedDistance) <= MAX_UNIQUE_RENDERED_DISTANCE)) {
+    return only;
+  }
   const accepted = candidates.filter((candidate) => candidate.contextScore >= MIN_CONTEXT_SCORE);
   if (accepted.length === 1) {
     return accepted[0] || null;
@@ -5533,7 +5624,11 @@ function getBoundingRect(rects) {
 function buildRenderedSourceIndex(source, sourceStartOffset = 0) {
   let rendered = "";
   const offsets = [];
+  const endOffsets = [];
+  const tableSyntaxOffsets = findTableSyntaxOffsets(source);
+  const linkSyntaxOffsets = findMarkdownLinkSyntaxOffsets(source);
   let index = 0;
+  let inlineCodeRunLength = 0;
   const linePrefixPattern = /^(?:[\t ]{0,3}#{1,6}[\t ]+|[\t ]*(?:[-+*]|\d+[.)])[\t ]+|[\t ]{0,3}>[\t ]?)/;
   while (index < source.length) {
     const lineStart = index === 0 || source[index - 1] === "\n";
@@ -5544,8 +5639,42 @@ function buildRenderedSourceIndex(source, sourceStartOffset = 0) {
         continue;
       }
     }
+    const escapedCharacter = inlineCodeRunLength === 0 ? getEscapedMarkdownCharacter(source, index) : null;
+    if (escapedCharacter) {
+      rendered += escapedCharacter;
+      offsets.push(sourceStartOffset + index);
+      endOffsets.push(sourceStartOffset + index + 2);
+      index += 2;
+      continue;
+    }
+    if (tableSyntaxOffsets.has(index) || linkSyntaxOffsets.has(index)) {
+      index += 1;
+      continue;
+    }
     const char = source[index] || "";
-    if (isMarkdownMarkerAt(source, index)) {
+    if (char === "`") {
+      const runLength = countCharacterRun(source, index, "`");
+      if (inlineCodeRunLength === 0) {
+        inlineCodeRunLength = runLength;
+      } else if (inlineCodeRunLength === runLength) {
+        inlineCodeRunLength = 0;
+      }
+      index += runLength;
+      continue;
+    }
+    const entity = inlineCodeRunLength === 0 ? getDecodedHtmlEntity(source, index) : null;
+    if (entity) {
+      if (!isIgnoredSpacing(entity.value)) {
+        rendered += entity.value;
+        for (let entityIndex = 0; entityIndex < entity.value.length; entityIndex += 1) {
+          offsets.push(sourceStartOffset + index);
+          endOffsets.push(sourceStartOffset + entity.endOffset);
+        }
+      }
+      index = entity.endOffset;
+      continue;
+    }
+    if (inlineCodeRunLength === 0 && isMarkdownMarkerAt(source, index)) {
       index += markerLengthAt(source, index);
       continue;
     }
@@ -5555,9 +5684,311 @@ function buildRenderedSourceIndex(source, sourceStartOffset = 0) {
     }
     rendered += char;
     offsets.push(sourceStartOffset + index);
+    endOffsets.push(sourceStartOffset + index + 1);
     index += 1;
   }
-  return { text: rendered, offsets };
+  return { text: rendered, offsets, endOffsets };
+}
+function getEscapedMarkdownCharacter(source, index) {
+  if (source[index] !== "\\") {
+    return null;
+  }
+  const escaped = source[index + 1];
+  return escaped && MARKDOWN_ESCAPABLE_CHARACTERS.includes(escaped) ? escaped : null;
+}
+function getDecodedHtmlEntity(source, index) {
+  if (source[index] !== "&") {
+    return null;
+  }
+  const match = source.slice(index).match(/^&(?:#(\d+)|#x([\dA-Fa-f]+)|(amp|lt|gt|quot|apos|nbsp));/);
+  if (!(match == null ? void 0 : match[0])) {
+    return null;
+  }
+  const value = decodeHtmlEntityMatch(match);
+  return value === null ? null : { value, endOffset: index + match[0].length };
+}
+function decodeHtmlEntityMatch(match) {
+  const decimal = match[1];
+  const hexadecimal = match[2];
+  if (decimal || hexadecimal) {
+    const codePoint = Number.parseInt(decimal || hexadecimal || "", decimal ? 10 : 16);
+    return Number.isFinite(codePoint) && codePoint <= 1114111 ? String.fromCodePoint(codePoint) : null;
+  }
+  return HTML_NAMED_ENTITIES[match[3] || ""] || null;
+}
+function findMarkdownLinkSyntaxOffsets(source) {
+  const offsets = /* @__PURE__ */ new Set();
+  let inlineCodeRunLength = 0;
+  let index = 0;
+  while (index < source.length) {
+    if (source[index] === "`") {
+      const runLength = countCharacterRun(source, index, "`");
+      if (inlineCodeRunLength === 0) {
+        inlineCodeRunLength = runLength;
+      } else if (inlineCodeRunLength === runLength) {
+        inlineCodeRunLength = 0;
+      }
+      index += runLength;
+      continue;
+    }
+    if (inlineCodeRunLength > 0) {
+      index += 1;
+      continue;
+    }
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    const inlineLink = findMarkdownInlineLink(source, index);
+    if (inlineLink) {
+      addMarkdownInlineLinkOffsets(offsets, index, inlineLink);
+      index = inlineLink.end + 1;
+      continue;
+    }
+    const autolinkEnd = findMarkdownAutolinkEnd(source, index);
+    if (autolinkEnd !== null) {
+      offsets.add(index);
+      offsets.add(autolinkEnd);
+      index = autolinkEnd + 1;
+      continue;
+    }
+    index += 1;
+  }
+  return offsets;
+}
+function findMarkdownInlineLink(source, start) {
+  if (source[start] !== "[") {
+    return null;
+  }
+  const labelEnd = findClosingMarkdownDelimiter(source, start, "[", "]");
+  const destinationStart = labelEnd === null ? -1 : labelEnd + 1;
+  if (labelEnd === null || source[destinationStart] !== "(") {
+    return null;
+  }
+  const end = findClosingMarkdownDelimiter(source, destinationStart, "(", ")");
+  if (end === null) {
+    return null;
+  }
+  const imageMarkerIndex = start - 1;
+  const imageMarker = source[imageMarkerIndex] === "!" && countPrecedingBackslashes(source, imageMarkerIndex) % 2 === 0 ? imageMarkerIndex : null;
+  return { labelEnd, destinationStart, end, imageMarker };
+}
+function findClosingMarkdownDelimiter(source, start, opening, closing) {
+  let depth = 0;
+  let inlineCodeRunLength = 0;
+  let index = start;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] === "`") {
+      const runLength = countCharacterRun(source, index, "`");
+      if (inlineCodeRunLength === 0) {
+        inlineCodeRunLength = runLength;
+      } else if (inlineCodeRunLength === runLength) {
+        inlineCodeRunLength = 0;
+      }
+      index += runLength;
+      continue;
+    }
+    if (inlineCodeRunLength === 0 && source[index] === opening) {
+      depth += 1;
+    } else if (inlineCodeRunLength === 0 && source[index] === closing) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+    index += 1;
+  }
+  return null;
+}
+function addMarkdownInlineLinkOffsets(offsets, labelStart, link) {
+  offsets.add(labelStart);
+  offsets.add(link.labelEnd);
+  if (link.imageMarker !== null) {
+    offsets.add(link.imageMarker);
+  }
+  for (let index = link.destinationStart; index <= link.end; index += 1) {
+    offsets.add(index);
+  }
+}
+function findMarkdownAutolinkEnd(source, start) {
+  if (source[start] !== "<") {
+    return null;
+  }
+  const end = source.indexOf(">", start + 1);
+  const lineEnd = source.indexOf("\n", start + 1);
+  if (end < 0 || lineEnd >= 0 && end > lineEnd) {
+    return null;
+  }
+  const value = source.slice(start + 1, end);
+  const isUrl = /^(?:https?:\/\/|mailto:)[^\s<>]+$/i.test(value);
+  const isEmail = /^[^\s<>@]+@[^\s<>@]+$/.test(value);
+  return isUrl || isEmail ? end : null;
+}
+function findTableSyntaxOffsets(source) {
+  const lines = splitSourceLines(source);
+  const fencedCodeLines = findFencedCodeLines(lines);
+  const offsets = /* @__PURE__ */ new Set();
+  for (let index = 1; index < lines.length; index += 1) {
+    const delimiter = lines[index];
+    const header = lines[index - 1];
+    if (!delimiter || !header || fencedCodeLines.has(index) || fencedCodeLines.has(index - 1)) {
+      continue;
+    }
+    if (isIndentedCodeLine(delimiter.text) || isIndentedCodeLine(header.text)) {
+      continue;
+    }
+    const delimiterCells = getTableCells(delimiter.text);
+    const headerCells = getTableCells(header.text);
+    if (!isTableDelimiterCells(delimiterCells) || headerCells.length !== delimiterCells.length) {
+      continue;
+    }
+    addTableRowSyntaxOffsets(header, offsets);
+    addLineOffsets(delimiter, offsets);
+    let rowIndex = index + 1;
+    while (rowIndex < lines.length && isTableBodyLine(lines[rowIndex], fencedCodeLines, rowIndex)) {
+      addTableRowSyntaxOffsets(lines[rowIndex], offsets);
+      rowIndex += 1;
+    }
+    index = rowIndex - 1;
+  }
+  return offsets;
+}
+function splitSourceLines(source) {
+  const lines = [];
+  let startOffset = 0;
+  for (let index = 0; index <= source.length; index += 1) {
+    if (index < source.length && source[index] !== "\n") {
+      continue;
+    }
+    const endOffset = index > startOffset && source[index - 1] === "\r" ? index - 1 : index;
+    lines.push({ startOffset, text: source.slice(startOffset, endOffset) });
+    startOffset = index + 1;
+  }
+  return lines;
+}
+function findFencedCodeLines(lines) {
+  var _a;
+  const fencedLines = /* @__PURE__ */ new Set();
+  let activeFence = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = stripBlockquotePrefixes(((_a = lines[index]) == null ? void 0 : _a.text) || "");
+    if (activeFence) {
+      fencedLines.add(index);
+      if (isClosingFence(line, activeFence)) {
+        activeFence = null;
+      }
+      continue;
+    }
+    const opening = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/);
+    if (opening == null ? void 0 : opening[1]) {
+      activeFence = { marker: opening[1][0] || "", length: opening[1].length };
+      fencedLines.add(index);
+    }
+  }
+  return fencedLines;
+}
+function isClosingFence(line, fence) {
+  var _a;
+  const pattern = fence.marker === "`" ? /^ {0,3}(`{3,})[ \t]*$/ : /^ {0,3}(~{3,})[ \t]*$/;
+  const closing = (_a = line.match(pattern)) == null ? void 0 : _a[1];
+  return Boolean(closing && closing.length >= fence.length);
+}
+function isIndentedCodeLine(line) {
+  return /^(?: {4}|\t)/.test(stripBlockquotePrefixes(line));
+}
+function isTableBodyLine(line, fencedLines, lineIndex) {
+  return Boolean(line && !fencedLines.has(lineIndex) && !isIndentedCodeLine(line.text) && getTableCells(line.text).length > 0);
+}
+function getTableCells(line) {
+  const tableContent = stripBlockquotePrefixes(line);
+  const pipes = scanTablePipes(tableContent).structuralPipes;
+  if (pipes.length === 0) {
+    return [];
+  }
+  const cells = [];
+  let start = 0;
+  for (const pipe of pipes) {
+    cells.push(tableContent.slice(start, pipe).trim());
+    start = pipe + 1;
+  }
+  cells.push(tableContent.slice(start).trim());
+  if (cells[0] === "") {
+    cells.shift();
+  }
+  if (cells[cells.length - 1] === "") {
+    cells.pop();
+  }
+  return cells;
+}
+function stripBlockquotePrefixes(line) {
+  let content = line;
+  while (/^[ \t]{0,3}>[ \t]?/.test(content)) {
+    content = content.replace(/^[ \t]{0,3}>[ \t]?/, "");
+  }
+  return content;
+}
+function isTableDelimiterCells(cells) {
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+function addTableRowSyntaxOffsets(line, offsets) {
+  const pipeScan = scanTablePipes(line.text);
+  for (const pipe of pipeScan.structuralPipes) {
+    offsets.add(line.startOffset + pipe);
+  }
+  for (const backslash of pipeScan.escapedPipeBackslashes) {
+    offsets.add(line.startOffset + backslash);
+  }
+}
+function addLineOffsets(line, offsets) {
+  for (let index = 0; index < line.text.length; index += 1) {
+    offsets.add(line.startOffset + index);
+  }
+}
+function scanTablePipes(line) {
+  const structuralPipes = [];
+  const escapedPipeBackslashes = [];
+  let codeRunLength = 0;
+  let index = 0;
+  while (index < line.length) {
+    if (line[index] === "`") {
+      const runLength = countCharacterRun(line, index, "`");
+      if (codeRunLength === 0) {
+        codeRunLength = runLength;
+      } else if (codeRunLength === runLength) {
+        codeRunLength = 0;
+      }
+      index += runLength;
+      continue;
+    }
+    if (line[index] === "|" && codeRunLength === 0) {
+      const backslashCount = countPrecedingBackslashes(line, index);
+      if (backslashCount % 2 === 1) {
+        escapedPipeBackslashes.push(index - 1);
+      } else {
+        structuralPipes.push(index);
+      }
+    }
+    index += 1;
+  }
+  return { structuralPipes, escapedPipeBackslashes };
+}
+function countCharacterRun(text, start, char) {
+  let length = 0;
+  while (text[start + length] === char) {
+    length += 1;
+  }
+  return length;
+}
+function countPrecedingBackslashes(text, index) {
+  let count = 0;
+  while (text[index - count - 1] === "\\") {
+    count += 1;
+  }
+  return count;
 }
 function renderedOffsetForSourceOffset(offsets, sourceOffset) {
   const index = offsets.findIndex((offset) => offset >= sourceOffset);
@@ -5578,7 +6009,10 @@ function expandStartToOpeningMarker(source, offset) {
   return offset;
 }
 function normalizeReadingSelection(text) {
-  return text.replace(/[\u200B-\u200D\uFEFF]/g, "").split(/\n+/).map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "").replace(/^\s*\[(?: |x|X)\]\s+/, "")).join("").replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
+  return sanitizeReadingSelection(text).split(/\n+/).map((line) => line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "").replace(/^\s*\[(?: |x|X)\]\s+/, "")).join("").replace(/\s+/g, "");
+}
+function sanitizeReadingSelection(text) {
+  return text.replace(/[\u200B-\u200D\uFEFF\uFFFC]/g, "");
 }
 function isMarkdownMarkerAt(source, index) {
   return markerLengthAt(source, index) > 0;
@@ -5629,6 +6063,37 @@ function resolvePreviewSectionBounds(section) {
   const sourceEndOffset = readNumber((_f = section.end) == null ? void 0 : _f.offset);
   return sourceStartOffset === null || sourceEndOffset === null ? { lineStart, lineEnd } : { lineStart, lineEnd, sourceStartOffset, sourceEndOffset };
 }
+function selectPreviewSections(sections, range) {
+  let first = sections.findIndex((section) => section.el.contains(range.startContainer));
+  let last = sections.findIndex((section) => section.el.contains(range.endContainer));
+  if (first < 0 || last < first) {
+    return [];
+  }
+  const firstSection = sections[first];
+  if (firstSection && range.startContainer === firstSection.el && range.startOffset === firstSection.el.childNodes.length) {
+    first += 1;
+  }
+  const lastSection = sections[last];
+  if (lastSection && range.endContainer === lastSection.el && range.endOffset === 0) {
+    last -= 1;
+  }
+  if (last < first) {
+    return [];
+  }
+  const selected = sections.slice(first, last + 1);
+  return selected.every((section, index) => isPreviewSectionMonotonic(section, selected[index - 1])) ? selected : [];
+}
+function isPreviewSectionMonotonic(section, previous) {
+  if (section.lineStart > section.lineEnd) {
+    return false;
+  }
+  if (!previous) {
+    return true;
+  }
+  const startOrdered = section.sourceStartOffset !== void 0 && previous.sourceStartOffset !== void 0 ? section.sourceStartOffset >= previous.sourceStartOffset : section.lineStart >= previous.lineStart;
+  const endOrdered = section.sourceEndOffset !== void 0 && previous.sourceEndOffset !== void 0 ? section.sourceEndOffset >= previous.sourceEndOffset : section.lineEnd >= previous.lineEnd;
+  return startOrdered && endOrdered;
+}
 function readNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -5648,8 +6113,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.readingSelection = null;
     this.readingSelectionTimer = null;
     this.readingSelectionUnresolved = false;
-    this.editorDocumentSaveTimer = null;
-    this.pendingEditorAnchorUpdates = /* @__PURE__ */ new Map();
+    this.editorDocumentSaveTimers = /* @__PURE__ */ new Map();
+    this.pendingEditorAnchorUpdatesByFile = /* @__PURE__ */ new Map();
     this.readingSelectionRequestId = 0;
     this.lastMarkdownFilePath = "";
     this.previewObservers = /* @__PURE__ */ new Map();
@@ -5720,8 +6185,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     this.readingRenderSnapshots.clear();
     this.sourceLineStartsCache.clear();
     this.clearReadingSelectionTimer();
-    this.clearEditorDocumentSaveTimer();
-    this.pendingEditorAnchorUpdates.clear();
+    this.flushPendingEditorAnchorUpdates();
+    this.clearEditorDocumentSaveTimers();
     this.clearReadingSelectionHighlight();
     (_a = this.toolbar) == null ? void 0 : _a.destroy();
     (_b = this.readingToolbar) == null ? void 0 : _b.destroy();
@@ -5898,40 +6363,89 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
       return;
     }
-    mergePendingEditorAnchorUpdates(this.pendingEditorAnchorUpdates, previousMarks, nextMarks);
-    if (this.pendingEditorAnchorUpdates.size === 0) {
+    const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath) || /* @__PURE__ */ new Map();
+    mergePendingEditorAnchorUpdates(pending, previousMarks, nextMarks);
+    if (pending.size === 0) {
       return;
     }
-    this.clearEditorDocumentSaveTimer();
-    this.editorDocumentSaveTimer = window.setTimeout(() => {
-      this.editorDocumentSaveTimer = null;
-      const pending = this.pendingEditorAnchorUpdates;
-      this.pendingEditorAnchorUpdates = /* @__PURE__ */ new Map();
-      void this.saveEditorMarkAnchors(filePath, Array.from(pending.values())).finally(() => pending.clear());
-    }, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+    this.pendingEditorAnchorUpdatesByFile.set(filePath, pending);
+    this.scheduleEditorDocumentSaveTimer(filePath);
   }
-  clearEditorDocumentSaveTimer() {
-    if (this.editorDocumentSaveTimer !== null) {
-      window.clearTimeout(this.editorDocumentSaveTimer);
-      this.editorDocumentSaveTimer = null;
+  scheduleEditorDocumentSaveTimer(filePath) {
+    this.clearEditorDocumentSaveTimer(filePath);
+    const timer = window.setTimeout(() => {
+      this.editorDocumentSaveTimers.delete(filePath);
+      const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath);
+      if (!pending) {
+        return;
+      }
+      this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+      void this.saveEditorMarkAnchors(filePath, Array.from(pending.values()));
+    }, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+    this.editorDocumentSaveTimers.set(filePath, timer);
+  }
+  clearEditorDocumentSaveTimer(filePath) {
+    const timer = this.editorDocumentSaveTimers.get(filePath);
+    if (timer === void 0) {
+      return;
+    }
+    window.clearTimeout(timer);
+    this.editorDocumentSaveTimers.delete(filePath);
+  }
+  clearEditorDocumentSaveTimers() {
+    for (const filePath of this.editorDocumentSaveTimers.keys()) {
+      this.clearEditorDocumentSaveTimer(filePath);
     }
   }
+  migratePendingEditorAnchorUpdates(oldFilePath, newFilePath) {
+    const pending = this.pendingEditorAnchorUpdatesByFile.get(oldFilePath);
+    this.clearEditorDocumentSaveTimer(oldFilePath);
+    if (!pending) {
+      return;
+    }
+    this.pendingEditorAnchorUpdatesByFile.delete(oldFilePath);
+    this.pendingEditorAnchorUpdatesByFile.set(newFilePath, pending);
+    this.scheduleEditorDocumentSaveTimer(newFilePath);
+  }
+  discardPendingEditorAnchorUpdates(filePath) {
+    this.clearEditorDocumentSaveTimer(filePath);
+    this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+  }
+  flushPendingEditorAnchorUpdates() {
+    for (const [filePath, pending] of this.pendingEditorAnchorUpdatesByFile) {
+      const updates = Array.from(pending.values());
+      void this.store.updateMarkAnchors(filePath, updates).catch((error) => {
+        console.error(`FloatMark: failed to flush editor anchors for ${filePath}`, error);
+      });
+    }
+    this.pendingEditorAnchorUpdatesByFile.clear();
+  }
   async saveEditorMarkAnchors(filePath, updates) {
+    var _a;
     try {
-      await this.store.updateMarkAnchors(filePath, updates);
+      const result = await this.store.updateMarkAnchors(filePath, updates);
+      if (!result.changed) {
+        return;
+      }
       this.invalidateReadingRenderSnapshot(filePath);
-      await this.refreshSidebar();
-      await this.renderPreviewMarksForFile(filePath);
+      const document = ((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath ? this.currentDocument : result.document;
+      const refreshes = [this.renderPreviewMarksForFile(filePath, document)];
+      if (result.statusChanged) {
+        refreshes.push(this.refreshSidebar());
+      }
+      await Promise.all(refreshes);
     } catch (error) {
       console.error(`FloatMark: failed to save editor anchors for ${filePath}`, error);
     }
   }
   async handleMarkdownRename(newFilePath, oldFilePath) {
+    this.migratePendingEditorAnchorUpdates(oldFilePath, newFilePath);
     await this.store.renameDocument(oldFilePath, newFilePath);
     await this.reloadCurrentDocument();
   }
   async handleMarkdownDelete(filePath) {
     var _a;
+    this.discardPendingEditorAnchorUpdates(filePath);
     await this.store.deleteDocument(filePath);
     if (((_a = this.currentDocument) == null ? void 0 : _a.filePath) === filePath) {
       this.currentDocument = null;
@@ -6919,8 +7433,7 @@ ${stripped}
         }
         return;
       }
-      const previewRoot = getPreviewSectionsContainer(view);
-      renderReadingMarks(previewRoot, source, [], onClick);
+      return;
     } finally {
       if (this.isCurrentPreviewRender(view, filePath, generation)) {
         this.ensurePreviewObserver(view);
@@ -6937,29 +7450,35 @@ ${stripped}
     if (!mark) {
       return false;
     }
-    const markEl = this.findReadingMarkElement(markId, mark.filePath);
-    if (!markEl) {
+    const markEls = this.findReadingMarkElements(markId, mark.filePath);
+    if (markEls.length === 0) {
       return false;
     }
-    markEl.scrollIntoView({ block: "center", behavior: "smooth" });
-    markEl.addClass("side-mark-reading-flash");
-    window.setTimeout(() => markEl.removeClass("side-mark-reading-flash"), 1200);
+    markEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
+    for (const markEl of markEls) {
+      markEl.addClass("side-mark-reading-flash");
+    }
+    window.setTimeout(() => {
+      for (const markEl of markEls) {
+        markEl.removeClass("side-mark-reading-flash");
+      }
+    }, 1200);
     return true;
   }
-  findReadingMarkElement(markId, filePath) {
+  findReadingMarkElements(markId, filePath) {
     var _a;
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
       if (!(view instanceof import_obsidian10.MarkdownView) || ((_a = view.file) == null ? void 0 : _a.path) !== filePath || view.getMode() !== "preview") {
         continue;
       }
-      const element = view.contentEl.querySelector(`[data-side-mark-reading-id="${markId}"]`);
-      if (element) {
+      const elements = getReadingMarkElements(view.contentEl, markId);
+      if (elements.length > 0) {
         void this.app.workspace.revealLeaf(leaf);
-        return element;
+        return elements;
       }
     }
-    return null;
+    return [];
   }
   async ensureMarkdownViewForFile(filePath) {
     var _a, _b, _c;
@@ -7107,10 +7626,6 @@ function isDefaultHighlightAppearance(choice) {
 function isSameHighlightAppearance(left, right) {
   return left.textColor === right.textColor && left.backgroundColor === right.backgroundColor;
 }
-function getPreviewSectionsContainer(view) {
-  var _a;
-  return view.contentEl.querySelector(".markdown-preview-sections") || ((_a = view.contentEl.querySelector(".markdown-preview-section")) == null ? void 0 : _a.parentElement) || view.contentEl;
-}
 function getPreviewSections(view) {
   var _a;
   const preview = view.previewMode;
@@ -7128,14 +7643,7 @@ function getPreviewSections(view) {
   return result;
 }
 function getSelectedPreviewSections(view, range) {
-  const sections = getPreviewSections(view);
-  const first = sections.findIndex((section) => section.el.contains(range.startContainer));
-  const last = sections.findIndex((section) => section.el.contains(range.endContainer));
-  if (first < 0 || last < first) {
-    return [];
-  }
-  const selected = sections.slice(first, last + 1);
-  return selected.every((section, index) => index === 0 || section.lineStart <= selected[index - 1].lineEnd + 1) ? selected : [];
+  return selectPreviewSections(getPreviewSections(view), range);
 }
 function getCssHighlights() {
   if (typeof CSS === "undefined") {

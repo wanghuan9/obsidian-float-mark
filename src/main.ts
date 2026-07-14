@@ -22,7 +22,12 @@ import {
 	setLarkCommentResolved,
 	syncMarkToLark as syncMarkToLarkBridge
 } from "./lark-bridge";
-import { buildSourceLineStarts, getReadingMarksForSection, renderReadingMarks } from "./reading-view-renderer";
+import {
+	buildSourceLineStarts,
+	getReadingMarkElements,
+	getReadingMarksForSection,
+	renderReadingMarks
+} from "./reading-view-renderer";
 import {
 	findSourceRangeForReadingSelection,
 	getReadingSelectionContext,
@@ -101,8 +106,8 @@ export default class SideMarkPlugin extends Plugin {
 	} | null = null;
 	private readingSelectionTimer: number | null = null;
 	private readingSelectionUnresolved = false;
-	private editorDocumentSaveTimer: number | null = null;
-	private pendingEditorAnchorUpdates = new Map<string, MarkAnchorUpdate>();
+	private readonly editorDocumentSaveTimers = new Map<string, number>();
+	private readonly pendingEditorAnchorUpdatesByFile = new Map<string, Map<string, MarkAnchorUpdate>>();
 	private readingSelectionRequestId = 0;
 	private lastMarkdownFilePath = "";
 	private readonly previewObservers = new Map<MarkdownView, PreviewObserverState>();
@@ -173,8 +178,8 @@ export default class SideMarkPlugin extends Plugin {
 		this.readingRenderSnapshots.clear();
 		this.sourceLineStartsCache.clear();
 		this.clearReadingSelectionTimer();
-		this.clearEditorDocumentSaveTimer();
-		this.pendingEditorAnchorUpdates.clear();
+		this.flushPendingEditorAnchorUpdates();
+		this.clearEditorDocumentSaveTimers();
 		this.clearReadingSelectionHighlight();
 		this.toolbar?.destroy();
 		this.readingToolbar?.destroy();
@@ -372,43 +377,98 @@ export default class SideMarkPlugin extends Plugin {
 		if (!this.currentDocument || this.currentDocument.filePath !== filePath) {
 			return;
 		}
-		mergePendingEditorAnchorUpdates(this.pendingEditorAnchorUpdates, previousMarks, nextMarks);
-		if (this.pendingEditorAnchorUpdates.size === 0) {
+		const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath) || new Map<string, MarkAnchorUpdate>();
+		mergePendingEditorAnchorUpdates(pending, previousMarks, nextMarks);
+		if (pending.size === 0) {
 			return;
 		}
-		this.clearEditorDocumentSaveTimer();
-		this.editorDocumentSaveTimer = window.setTimeout(() => {
-			this.editorDocumentSaveTimer = null;
-			const pending = this.pendingEditorAnchorUpdates;
-			this.pendingEditorAnchorUpdates = new Map();
-			void this.saveEditorMarkAnchors(filePath, Array.from(pending.values())).finally(() => pending.clear());
-		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+		this.pendingEditorAnchorUpdatesByFile.set(filePath, pending);
+		this.scheduleEditorDocumentSaveTimer(filePath);
 	}
 
-	private clearEditorDocumentSaveTimer(): void {
-		if (this.editorDocumentSaveTimer !== null) {
-			window.clearTimeout(this.editorDocumentSaveTimer);
-			this.editorDocumentSaveTimer = null;
+	private scheduleEditorDocumentSaveTimer(filePath: string): void {
+		this.clearEditorDocumentSaveTimer(filePath);
+		const timer = window.setTimeout(() => {
+			this.editorDocumentSaveTimers.delete(filePath);
+			const pending = this.pendingEditorAnchorUpdatesByFile.get(filePath);
+			if (!pending) {
+				return;
+			}
+			this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+			void this.saveEditorMarkAnchors(filePath, Array.from(pending.values()));
+		}, EDITOR_DOCUMENT_SAVE_DELAY_MS);
+		this.editorDocumentSaveTimers.set(filePath, timer);
+	}
+
+	private clearEditorDocumentSaveTimer(filePath: string): void {
+		const timer = this.editorDocumentSaveTimers.get(filePath);
+		if (timer === undefined) {
+			return;
 		}
+		window.clearTimeout(timer);
+		this.editorDocumentSaveTimers.delete(filePath);
+	}
+
+	private clearEditorDocumentSaveTimers(): void {
+		for (const filePath of this.editorDocumentSaveTimers.keys()) {
+			this.clearEditorDocumentSaveTimer(filePath);
+		}
+	}
+
+	private migratePendingEditorAnchorUpdates(oldFilePath: string, newFilePath: string): void {
+		const pending = this.pendingEditorAnchorUpdatesByFile.get(oldFilePath);
+		this.clearEditorDocumentSaveTimer(oldFilePath);
+		if (!pending) {
+			return;
+		}
+		this.pendingEditorAnchorUpdatesByFile.delete(oldFilePath);
+		this.pendingEditorAnchorUpdatesByFile.set(newFilePath, pending);
+		this.scheduleEditorDocumentSaveTimer(newFilePath);
+	}
+
+	private discardPendingEditorAnchorUpdates(filePath: string): void {
+		this.clearEditorDocumentSaveTimer(filePath);
+		this.pendingEditorAnchorUpdatesByFile.delete(filePath);
+	}
+
+	private flushPendingEditorAnchorUpdates(): void {
+		for (const [filePath, pending] of this.pendingEditorAnchorUpdatesByFile) {
+			const updates = Array.from(pending.values());
+			void this.store.updateMarkAnchors(filePath, updates).catch((error) => {
+				console.error(`FloatMark: failed to flush editor anchors for ${filePath}`, error);
+			});
+		}
+		this.pendingEditorAnchorUpdatesByFile.clear();
 	}
 
 	private async saveEditorMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<void> {
 		try {
-			await this.store.updateMarkAnchors(filePath, updates);
+			const result = await this.store.updateMarkAnchors(filePath, updates);
+			if (!result.changed) {
+				return;
+			}
 			this.invalidateReadingRenderSnapshot(filePath);
-			await this.refreshSidebar();
-			await this.renderPreviewMarksForFile(filePath);
+			const document = this.currentDocument?.filePath === filePath
+				? this.currentDocument
+				: result.document;
+			const refreshes = [this.renderPreviewMarksForFile(filePath, document)];
+			if (result.statusChanged) {
+				refreshes.push(this.refreshSidebar());
+			}
+			await Promise.all(refreshes);
 		} catch (error) {
 			console.error(`FloatMark: failed to save editor anchors for ${filePath}`, error);
 		}
 	}
 
 	private async handleMarkdownRename(newFilePath: string, oldFilePath: string): Promise<void> {
+		this.migratePendingEditorAnchorUpdates(oldFilePath, newFilePath);
 		await this.store.renameDocument(oldFilePath, newFilePath);
 		await this.reloadCurrentDocument();
 	}
 
 	private async handleMarkdownDelete(filePath: string): Promise<void> {
+		this.discardPendingEditorAnchorUpdates(filePath);
 		await this.store.deleteDocument(filePath);
 		if (this.currentDocument?.filePath === filePath) {
 			this.currentDocument = null;
@@ -1479,8 +1539,7 @@ export default class SideMarkPlugin extends Plugin {
 				}
 				return;
 			}
-			const previewRoot = getPreviewSectionsContainer(view);
-			renderReadingMarks(previewRoot, source, [], onClick);
+			return;
 		} finally {
 			if (this.isCurrentPreviewRender(view, filePath, generation)) {
 				this.ensurePreviewObserver(view);
@@ -1499,29 +1558,35 @@ export default class SideMarkPlugin extends Plugin {
 		if (!mark) {
 			return false;
 		}
-		const markEl = this.findReadingMarkElement(markId, mark.filePath);
-		if (!markEl) {
+		const markEls = this.findReadingMarkElements(markId, mark.filePath);
+		if (markEls.length === 0) {
 			return false;
 		}
-		markEl.scrollIntoView({ block: "center", behavior: "smooth" });
-		markEl.addClass("side-mark-reading-flash");
-		window.setTimeout(() => markEl.removeClass("side-mark-reading-flash"), 1200);
+		markEls[0].scrollIntoView({ block: "center", behavior: "smooth" });
+		for (const markEl of markEls) {
+			markEl.addClass("side-mark-reading-flash");
+		}
+		window.setTimeout(() => {
+			for (const markEl of markEls) {
+				markEl.removeClass("side-mark-reading-flash");
+			}
+		}, 1200);
 		return true;
 	}
 
-	private findReadingMarkElement(markId: string, filePath: string): HTMLElement | null {
+	private findReadingMarkElements(markId: string, filePath: string): HTMLElement[] {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== filePath || view.getMode() !== "preview") {
 				continue;
 			}
-			const element = view.contentEl.querySelector<HTMLElement>(`[data-side-mark-reading-id="${markId}"]`);
-			if (element) {
-					void this.app.workspace.revealLeaf(leaf);
-				return element;
+			const elements = getReadingMarkElements(view.contentEl, markId);
+			if (elements.length > 0) {
+				void this.app.workspace.revealLeaf(leaf);
+				return elements;
 			}
 		}
-		return null;
+		return [];
 	}
 
 	private async ensureMarkdownViewForFile(filePath: string): Promise<MarkdownView | null> {
@@ -1692,12 +1757,6 @@ function isDefaultHighlightAppearance(choice: MarkStyleChoice): boolean {
 
 function isSameHighlightAppearance(left: MarkStyleChoice, right: MarkStyleChoice): boolean {
 	return left.textColor === right.textColor && left.backgroundColor === right.backgroundColor;
-}
-
-function getPreviewSectionsContainer(view: MarkdownView): HTMLElement {
-	return view.contentEl.querySelector<HTMLElement>(".markdown-preview-sections")
-		|| view.contentEl.querySelector<HTMLElement>(".markdown-preview-section")?.parentElement
-		|| view.contentEl;
 }
 
 function getPreviewSections(view: MarkdownView): PreviewSection[] {

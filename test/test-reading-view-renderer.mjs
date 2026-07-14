@@ -15,6 +15,7 @@ await esbuild.build({
 const {
 	buildSourceLineStarts,
 	findReadingMatchForTest,
+	getReadingMarkElements,
 	getReadingMarksForSection,
 	renderReadingMarks
 } = await import("./.tmp/reading-view-renderer.mjs");
@@ -159,6 +160,79 @@ assert.equal(crossBlockRoot.querySelectorAll(".side-mark-reading p, .side-mark-r
 assert.ok(crossBlockRoot.querySelectorAll(".side-mark-reading").length >= 8);
 renderReadingMarks(crossBlockRoot, crossBlockSource, [], () => undefined);
 assert.equal(crossBlockRoot.innerHTML, crossBlockOriginalHtml);
+
+const groupedHoverDom = new JSDOM(`
+	<div class="markdown-preview-view" id="preview">
+		<p id="first">first</p>
+		<p id="second">second</p>
+		<p id="outside">outside</p>
+	</div>
+`);
+const groupedHoverPreview = groupedHoverDom.window.document.querySelector("#preview");
+const groupedHoverFirst = groupedHoverDom.window.document.querySelector("#first");
+const groupedHoverSecond = groupedHoverDom.window.document.querySelector("#second");
+const groupedHoverOutside = groupedHoverDom.window.document.querySelector("#outside");
+renderReadingMarks(groupedHoverFirst, "first", [createMark({
+	id: "grouped-hover",
+	selectedText: "first"
+})], () => undefined);
+renderReadingMarks(groupedHoverSecond, "second", [createMark({
+	id: "grouped-hover",
+	selectedText: "second"
+})], () => undefined);
+let groupedHoverFragments = getReadingMarkElements(groupedHoverPreview, "grouped-hover");
+assert.equal(groupedHoverFragments.length, 2);
+groupedHoverFragments[0].dispatchEvent(new groupedHoverDom.window.MouseEvent("mouseover", {
+	bubbles: true
+}));
+assert.equal(
+	groupedHoverFragments.every((fragment) => fragment.classList.contains("is-group-hovered")),
+	true
+);
+renderReadingMarks(groupedHoverSecond, "second", [createMark({
+	id: "grouped-hover",
+	selectedText: "second"
+})], () => undefined);
+groupedHoverFragments = getReadingMarkElements(groupedHoverPreview, "grouped-hover");
+assert.equal(
+	groupedHoverFragments.every((fragment) => fragment.classList.contains("is-group-hovered")),
+	true
+);
+groupedHoverFragments[0].dispatchEvent(new groupedHoverDom.window.MouseEvent("mouseout", {
+	bubbles: true,
+	relatedTarget: groupedHoverFragments[1]
+}));
+assert.equal(
+	groupedHoverFragments.every((fragment) => fragment.classList.contains("is-group-hovered")),
+	true
+);
+groupedHoverFragments[1].dispatchEvent(new groupedHoverDom.window.MouseEvent("mouseout", {
+	bubbles: true,
+	relatedTarget: groupedHoverOutside
+}));
+assert.equal(
+	groupedHoverFragments.some((fragment) => fragment.classList.contains("is-group-hovered")),
+	false
+);
+
+const groupedOverlapDom = new JSDOM('<div class="markdown-preview-view" id="root"><p>abcdef</p></div>');
+const groupedOverlapRoot = groupedOverlapDom.window.document.querySelector("#root");
+renderReadingMarks(groupedOverlapRoot, "abcdef", [
+	createMark({ id: "grouped-outer", selectedText: "abcdef", startOffset: 0, endOffset: 6 }),
+	createMark({ id: "grouped-inner", selectedText: "cd", startOffset: 2, endOffset: 4 })
+], () => undefined);
+const groupedInnerFragment = getReadingMarkElements(groupedOverlapRoot, "grouped-inner")[0];
+groupedInnerFragment.dispatchEvent(new groupedOverlapDom.window.MouseEvent("mouseover", { bubbles: true }));
+assert.equal(
+	getReadingMarkElements(groupedOverlapRoot, "grouped-inner")
+		.every((fragment) => fragment.classList.contains("is-group-hovered")),
+	true
+);
+assert.equal(
+	getReadingMarkElements(groupedOverlapRoot, "grouped-outer")
+		.some((fragment) => fragment.classList.contains("is-group-hovered")),
+	false
+);
 
 const boundaryDom = new JSDOM("<div id=\"root\"><p>first<strong>second</strong></p></div>");
 const boundaryRoot = boundaryDom.window.document.querySelector("#root");

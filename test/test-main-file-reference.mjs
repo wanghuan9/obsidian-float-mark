@@ -40,6 +40,13 @@ const loadReadingRenderSnapshotMethod = readMethod("async loadReadingRenderSnaps
 const invalidateReadingRenderSnapshotMethod = readMethod("invalidateReadingRenderSnapshot");
 const renderPreviewMarksForFileMethod = readMethod("async renderPreviewMarksForFile");
 const renderPreviewMarksForViewMethod = readMethod("async renderPreviewMarksForView");
+const jumpToReadingMarkMethod = readMethod("jumpToReadingMark");
+const findReadingMarkElementsMethod = readMethod("findReadingMarkElements");
+const scheduleEditorDocumentSaveMethod = readMethod("scheduleEditorDocumentSave");
+const scheduleEditorDocumentSaveTimerMethod = readMethod("scheduleEditorDocumentSaveTimer");
+const saveEditorMarkAnchorsMethod = readMethod("async saveEditorMarkAnchors");
+const handleMarkdownRenameMethod = readMethod("async handleMarkdownRename");
+const handleMarkdownDeleteMethod = readMethod("async handleMarkdownDelete");
 assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
 assert.doesNotMatch(updateReadingSelectionMethod, /this\.app\.vault\.read/);
 assert.match(updateReadingSelectionMethod, /const source = view\.data/);
@@ -94,6 +101,34 @@ assert.match(
 assert.match(
 	renderPreviewMarksForViewMethod,
 	/document\?\.filePath === filePath\s*\? document\s*: await this\.store\.relocateDocument\(filePath, source\)/
+);
+assert.match(source, /editorDocumentSaveTimers = new Map<string, number>\(\)/);
+assert.match(source, /pendingEditorAnchorUpdatesByFile = new Map<string, Map<string, MarkAnchorUpdate>>\(\)/);
+assert.match(scheduleEditorDocumentSaveMethod, /this\.pendingEditorAnchorUpdatesByFile\.get\(filePath\)/);
+assert.match(scheduleEditorDocumentSaveTimerMethod, /this\.editorDocumentSaveTimers\.set\(filePath,/);
+assert.match(handleMarkdownRenameMethod, /this\.migratePendingEditorAnchorUpdates\(oldFilePath, newFilePath\)/);
+assert.match(handleMarkdownDeleteMethod, /this\.discardPendingEditorAnchorUpdates\(filePath\)/);
+assert.match(source, /onunload\(\): void \{[\s\S]*this\.flushPendingEditorAnchorUpdates\(\)/);
+assert.match(saveEditorMarkAnchorsMethod, /const result = await this\.store\.updateMarkAnchors\(filePath, updates\)/);
+assert.match(saveEditorMarkAnchorsMethod, /if \(!result\.changed\) \{\s*return;/);
+assert.match(saveEditorMarkAnchorsMethod, /if \(result\.statusChanged\) \{\s*refreshes\.push\(this\.refreshSidebar\(\)\)/);
+assert.match(
+	saveEditorMarkAnchorsMethod,
+	/this\.currentDocument\?\.filePath === filePath\s*\? this\.currentDocument\s*: result\.document/
+);
+assert.doesNotMatch(renderPreviewMarksForViewMethod, /renderReadingMarks\([^\n]*\[\]/);
+assert.match(source, /import \{[^}]*getReadingMarkElements[^}]*\} from "\.\/reading-view-renderer"/s);
+assert.match(findReadingMarkElementsMethod, /getReadingMarkElements\(view\.contentEl, markId\)/);
+assert.match(findReadingMarkElementsMethod, /void this\.app\.workspace\.revealLeaf\(leaf\)/);
+assert.match(jumpToReadingMarkMethod, /const markEls = this\.findReadingMarkElements\(markId, mark\.filePath\)/);
+assert.match(jumpToReadingMarkMethod, /markEls\[0\]\.scrollIntoView/);
+assert.match(
+	jumpToReadingMarkMethod,
+	/for \(const markEl of markEls\) \{\s*markEl\.addClass\("side-mark-reading-flash"\)/
+);
+assert.match(
+	jumpToReadingMarkMethod,
+	/for \(const markEl of markEls\) \{\s*markEl\.removeClass\("side-mark-reading-flash"\)/
 );
 
 async function writeAfterRemote(file, vaultFiles, remote, writtenPaths) {

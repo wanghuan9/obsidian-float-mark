@@ -3,8 +3,12 @@ import { hasNonEmptyDomSelection, shouldOpenMarkForSelection } from "./mark-clic
 import { compareMarkRangeSpecificity, hasContinuousMarkPaint } from "./mark-appearance";
 
 const READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
+const READING_MARK_SELECTOR = ".side-mark-reading[data-side-mark-reading-id]";
+const READING_MARK_GROUP_HOVER_CLASS = "is-group-hovered";
 const ANCHOR_CONTEXT_LENGTH = 40;
 const originalReadingMarks = new WeakMap<SideMark, SideMark>();
+const readingMarkFeedbackRoots = new WeakSet<HTMLElement>();
+const hoveredReadingMarkIds = new WeakMap<HTMLElement, string>();
 
 interface TextNodeRange {
 	node: Text;
@@ -43,6 +47,8 @@ export function renderReadingMarks(
 	onClick: (markId: string, rect: DOMRect) => void,
 	options: ReadingRenderOptions = {}
 ): void {
+	const feedbackRoot = container.closest<HTMLElement>(".markdown-preview-view") || container;
+	ensureReadingMarkGroupFeedback(feedbackRoot);
 	clearReadingMarks(container, options.excludedContainerSelector);
 	const activeMarks = marks
 		.map((mark, sourceIndex) => ({
@@ -61,6 +67,62 @@ export function renderReadingMarks(
 		.filter((item): item is PlannedReadingMark => item !== null);
 	applyReadingMarkFragments(ranges, plannedMarks, onClick);
 	promoteFullyMarkedInlineCodeElements(container);
+	const hoveredMarkId = hoveredReadingMarkIds.get(feedbackRoot);
+	if (hoveredMarkId) {
+		applyHoveredReadingMarkGroup(feedbackRoot, hoveredMarkId);
+	}
+}
+
+export function getReadingMarkElements(root: ParentNode, markId: string): HTMLElement[] {
+	return Array.from(root.querySelectorAll<HTMLElement>(READING_MARK_SELECTOR))
+		.filter((element) => element.dataset.sideMarkReadingId === markId);
+}
+
+function ensureReadingMarkGroupFeedback(root: HTMLElement): void {
+	if (readingMarkFeedbackRoots.has(root)) {
+		return;
+	}
+	readingMarkFeedbackRoots.add(root);
+	root.addEventListener("mouseover", (event) => {
+		setHoveredReadingMarkGroup(root, findReadingMarkId(event.target, root));
+	});
+	root.addEventListener("mouseout", (event) => {
+		setHoveredReadingMarkGroup(root, findReadingMarkId(event.relatedTarget, root));
+	});
+	root.addEventListener("mouseleave", () => {
+		setHoveredReadingMarkGroup(root, null);
+	});
+}
+
+function findReadingMarkId(target: EventTarget | null, root: HTMLElement): string | null {
+	const ElementConstructor = root.ownerDocument.defaultView?.Element;
+	if (!ElementConstructor || !(target instanceof ElementConstructor)) {
+		return null;
+	}
+	const wrapper = (target as Element).closest<HTMLElement>(READING_MARK_SELECTOR);
+	return wrapper && root.contains(wrapper) ? wrapper.dataset.sideMarkReadingId || null : null;
+}
+
+function setHoveredReadingMarkGroup(root: HTMLElement, markId: string | null): void {
+	const currentMarkId = hoveredReadingMarkIds.get(root) || null;
+	if (currentMarkId === markId) {
+		return;
+	}
+	if (markId) {
+		hoveredReadingMarkIds.set(root, markId);
+	} else {
+		hoveredReadingMarkIds.delete(root);
+	}
+	applyHoveredReadingMarkGroup(root, markId);
+}
+
+function applyHoveredReadingMarkGroup(root: HTMLElement, markId: string | null): void {
+	for (const element of Array.from(root.querySelectorAll<HTMLElement>(READING_MARK_SELECTOR))) {
+		element.classList.toggle(
+			READING_MARK_GROUP_HOVER_CLASS,
+			Boolean(markId) && element.dataset.sideMarkReadingId === markId
+		);
+	}
 }
 
 function clearReadingMarks(container: HTMLElement, excludedContainerSelector?: string): void {
