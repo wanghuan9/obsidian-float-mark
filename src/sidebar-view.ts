@@ -7,6 +7,7 @@ import type { I18nKey } from "./i18n";
 import { resolveMarkBackground } from "./mark-appearance";
 import {
 	bindVaultCardNavigation,
+	sortMarksByCreatedAt,
 	summarizeVaultDocuments,
 	toggleSidebarScope,
 	type SidebarScope,
@@ -518,7 +519,7 @@ export class SideMarkSidebarView extends ItemView {
 
 	private getFilteredMarks(marks: SideMark[], tab: SidebarTab = this.activeTab): SideMark[] {
 		const query = this.searchQuery.trim().toLowerCase();
-		return marks.filter((mark) => {
+		return sortMarksByCreatedAt(marks.filter((mark) => {
 			if (this.filter === "active" && mark.status !== "active") {
 				return false;
 			}
@@ -540,7 +541,7 @@ export class SideMarkSidebarView extends ItemView {
 				...(mark.replies || []).map((reply) => reply.content)
 			].join("\n").toLowerCase();
 			return haystack.includes(query);
-		});
+		}));
 	}
 
 	private getTabMarks(marks: SideMark[], tab: SidebarTab = this.activeTab): SideMark[] {

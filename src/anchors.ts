@@ -2,6 +2,11 @@ import type { TextAnchor } from "./types";
 
 const CONTEXT_LENGTH = 40;
 
+export interface RelocateAnchorOptions {
+	trustStoredPosition?: boolean;
+	allowUniqueTextFallback?: boolean;
+}
+
 export function createTextAnchor(source: string, startOffset: number, endOffset: number): TextAnchor {
 	const start = Math.max(0, Math.min(startOffset, endOffset, source.length));
 	const end = Math.max(start, Math.min(Math.max(startOffset, endOffset), source.length));
@@ -22,22 +27,31 @@ export function createTextAnchor(source: string, startOffset: number, endOffset:
 	};
 }
 
-export function relocateAnchor(source: string, anchor: TextAnchor): TextAnchor | null {
+export function relocateAnchor(
+	source: string,
+	anchor: TextAnchor,
+	options: RelocateAnchorOptions = {}
+): TextAnchor | null {
+	const trustStoredPosition = options.trustStoredPosition ?? true;
+	const allowUniqueTextFallback = options.allowUniqueTextFallback ?? true;
 	if (!anchor.selectedText) {
 		return null;
 	}
-	if (source.slice(anchor.startOffset, anchor.endOffset) === anchor.selectedText) {
-		return anchor;
+	if (trustStoredPosition && source.slice(anchor.startOffset, anchor.endOffset) === anchor.selectedText) {
+		return createTextAnchor(source, anchor.startOffset, anchor.endOffset);
 	}
 
 	const contextual = findByContext(source, anchor);
-	if (contextual) {
+	if (contextual !== null) {
 		return createTextAnchor(source, contextual, contextual + anchor.selectedText.length);
+	}
+	if (!allowUniqueTextFallback) {
+		return null;
 	}
 
 	const matches = findExactMatches(source, anchor.selectedText);
 	if (matches.length === 1) {
-		return createTextAnchor(source, matches[0] || 0, (matches[0] || 0) + anchor.selectedText.length);
+		return createTextAnchor(source, matches[0]!, matches[0]! + anchor.selectedText.length);
 	}
 
 	return null;

@@ -31,6 +31,7 @@ class MemoryAdapter {
 	directories = new Set();
 	listCount = 0;
 	readCount = 0;
+	writeCount = 0;
 
 	async exists(path) {
 		return this.files.has(path) || this.directories.has(path);
@@ -58,6 +59,7 @@ class MemoryAdapter {
 	}
 
 	async write(path, value) {
+		this.writeCount += 1;
 		this.files.set(path, value);
 	}
 
@@ -71,7 +73,18 @@ class MemoryAdapter {
 }
 
 class ControlledAdapter extends MemoryAdapter {
+	readGates = new Map();
 	writeGates = new Map();
+
+	blockNextRead(path) {
+		const entered = createDeferred();
+		const release = createDeferred();
+		this.readGates.set(path, { entered, release });
+		return {
+			entered: entered.promise,
+			release: () => release.resolve()
+		};
+	}
 
 	blockNextWrite(path) {
 		const entered = createDeferred();
@@ -81,6 +94,16 @@ class ControlledAdapter extends MemoryAdapter {
 			entered: entered.promise,
 			release: () => release.resolve()
 		};
+	}
+
+	async read(path) {
+		const gate = this.readGates.get(path);
+		if (gate) {
+			this.readGates.delete(path);
+			gate.entered.resolve();
+			await gate.release.promise;
+		}
+		return super.read(path);
 	}
 
 	async write(path, value) {
@@ -211,8 +234,168 @@ assert.equal(adapter.listCount, 1);
 assert.equal(adapter.readCount, 4);
 
 await store.saveDocument(createDocument("new.md"));
-await store.loadAllDocuments();
-assert.equal(adapter.listCount, 2);
+const documentsAfterSave = await store.loadAllDocuments();
+assert.equal(adapter.listCount, 1);
+assert.equal(adapter.readCount, 4);
+assert.deepEqual(documentsAfterSave.map((document) => document.filePath), ["a.md", "folder/b.md", "new.md"]);
+
+const anchorMergeAdapter = new MemoryAdapter();
+const anchorMergeStore = createStore(anchorMergeAdapter);
+const currentTrackedMark = {
+	...createMark("tracked", "merge.md"),
+	mark: {
+		kind: "comment",
+		color: "blue",
+		textColor: "green",
+		backgroundColor: "blue-light"
+	},
+	note: {
+		content: "new note",
+		createdAt: "2026-07-12T00:00:00.000Z",
+		updatedAt: "2026-07-13T00:00:00.000Z"
+	},
+	remote: {
+		status: "synced",
+		larkCommentId: "comment-1"
+	}
+};
+const currentNewMark = createMark("new-mark", "merge.md");
+await anchorMergeStore.saveDocument(createDocument("merge.md", [currentTrackedMark, currentNewMark]));
+const staleAnchorUpdate = {
+	...currentTrackedMark.anchor,
+	startOffset: 12,
+	endOffset: 16,
+	position: { lineStart: 2, lineEnd: 2, columnStart: 3, columnEnd: 7 }
+};
+const statusChangeResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: staleAnchorUpdate,
+	expectedStatus: "active",
+	status: "orphaned"
+}]);
+assert.equal(statusChangeResult.changed, true);
+assert.equal(statusChangeResult.statusChanged, true);
+const anchorMergedDocument = await anchorMergeStore.loadDocument("merge.md");
+const anchorMergedMark = anchorMergedDocument.marks.find((mark) => mark.id === "tracked");
+assert.deepEqual(anchorMergedDocument.marks.map((mark) => mark.id), ["new-mark", "tracked"]);
+assert.deepEqual(anchorMergedMark.anchor, staleAnchorUpdate);
+assert.equal(anchorMergedMark.status, "orphaned");
+assert.deepEqual(anchorMergedMark.mark, currentTrackedMark.mark);
+assert.deepEqual(anchorMergedMark.note, currentTrackedMark.note);
+assert.deepEqual(anchorMergedMark.remote, currentTrackedMark.remote);
+
+const offsetOnlyAnchorUpdate = {
+	...staleAnchorUpdate,
+	startOffset: 14,
+	endOffset: 18,
+	position: { lineStart: 2, lineEnd: 2, columnStart: 5, columnEnd: 9 }
+};
+const offsetOnlyResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: offsetOnlyAnchorUpdate,
+	expectedStatus: "orphaned",
+	status: "orphaned"
+}]);
+assert.equal(offsetOnlyResult.changed, true);
+assert.equal(offsetOnlyResult.statusChanged, false);
+
+const resolvedTrackedMark = { ...currentTrackedMark, status: "resolved" };
+await anchorMergeStore.saveDocument(createDocument("merge.md", [resolvedTrackedMark, currentNewMark]));
+const writesBeforeStatusConflict = anchorMergeAdapter.writeCount;
+const revisionBeforeStatusConflict = anchorMergeStore.getRevision();
+const statusConflictResult = await anchorMergeStore.updateMarkAnchors("merge.md", [{
+	id: "tracked",
+	anchor: staleAnchorUpdate,
+	expectedStatus: "active",
+	status: "orphaned"
+}]);
+assert.equal(statusConflictResult.changed, false);
+assert.equal(statusConflictResult.statusChanged, false);
+assert.equal(anchorMergeAdapter.writeCount, writesBeforeStatusConflict);
+assert.equal(anchorMergeStore.getRevision(), revisionBeforeStatusConflict);
+const statusConflictDocument = await anchorMergeStore.loadDocument("merge.md");
+const statusConflictMark = statusConflictDocument.marks.find((mark) => mark.id === "tracked");
+assert.equal(statusConflictMark.status, "resolved");
+assert.deepEqual(statusConflictMark.anchor, currentTrackedMark.anchor);
+
+const relocationAdapter = new ControlledAdapter();
+const relocationDataDir = ".relocation-fast-path";
+const unchangedFilePath = "unchanged.md";
+const changedFilePath = "changed.md";
+seedDocument(relocationAdapter, relocationDataDir, createDocument(unchangedFilePath));
+const changedMark = {
+	...createMark("changed", changedFilePath),
+	anchor: {
+		startOffset: 7,
+		endOffset: 11,
+		selectedText: "text",
+		prefix: "before ",
+		suffix: " after",
+		position: { lineStart: 1, lineEnd: 1, columnStart: 8, columnEnd: 12 }
+	}
+};
+seedDocument(relocationAdapter, relocationDataDir, createDocument(changedFilePath, [changedMark]));
+const relocationStore = createStore(relocationAdapter, relocationDataDir);
+const unchangedSidecarPath = getSidecarPath(relocationDataDir, unchangedFilePath);
+const unchangedReadGate = relocationAdapter.blockNextRead(unchangedSidecarPath);
+const revisionBeforeNoopRelocation = relocationStore.getRevision();
+const unchangedRelocation = relocationStore.relocateDocument(unchangedFilePath, "text");
+await unchangedReadGate.entered;
+let laterWriteResolved = false;
+const laterWrite = relocationStore.saveDocument(createDocument("later.md")).then(() => {
+	laterWriteResolved = true;
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+const laterWriteResolvedBeforeRelease = laterWriteResolved;
+unchangedReadGate.release();
+await Promise.all([unchangedRelocation, laterWrite]);
+assert.equal(laterWriteResolvedBeforeRelease, true);
+assert.equal(relocationStore.getRevision(), revisionBeforeNoopRelocation + 1);
+
+const changedSidecarPath = getSidecarPath(relocationDataDir, changedFilePath);
+const changedReadGate = relocationAdapter.blockNextRead(changedSidecarPath);
+const changedRelocation = relocationStore.relocateDocument(changedFilePath, "intro before text after");
+await changedReadGate.entered;
+const blueMark = {
+	...changedMark.mark,
+	color: "blue"
+};
+const concurrentColorUpdate = relocationStore.updateMark(changedFilePath, changedMark.id, { mark: blueMark });
+changedReadGate.release();
+await Promise.all([changedRelocation, concurrentColorUpdate]);
+const relocatedDocument = await relocationStore.loadDocument(changedFilePath);
+const relocatedMark = relocatedDocument.marks.find((mark) => mark.id === changedMark.id);
+assert.equal(relocatedMark.anchor.startOffset, 13);
+assert.equal(relocatedMark.anchor.endOffset, 17);
+assert.equal(relocatedMark.mark.color, "blue");
+assert.equal(relocatedMark.status, "active");
+
+const fallbackAdapter = new MemoryAdapter();
+const fallbackDataDir = ".unique-anchor-fallback";
+const fallbackAnchor = {
+	startOffset: 100,
+	endOffset: 106,
+	selectedText: "unique",
+	prefix: "AAAA",
+	suffix: "BBBB",
+	position: { lineStart: 1, lineEnd: 1, columnStart: 101, columnEnd: 107 }
+};
+const uniqueFilePath = "unique.md";
+const uniqueMark = { ...createMark("unique", uniqueFilePath), anchor: fallbackAnchor };
+seedDocument(fallbackAdapter, fallbackDataDir, createDocument(uniqueFilePath, [uniqueMark]));
+const duplicateFilePath = "duplicate.md";
+const duplicateMark = { ...createMark("duplicate", duplicateFilePath), anchor: fallbackAnchor };
+seedDocument(fallbackAdapter, fallbackDataDir, createDocument(duplicateFilePath, [duplicateMark]));
+const fallbackStore = createStore(fallbackAdapter, fallbackDataDir);
+const uniqueSource = "xxxx unique yyyy";
+const uniqueRelocated = await fallbackStore.relocateDocument(uniqueFilePath, uniqueSource);
+assert.equal(uniqueRelocated.marks[0].status, "active");
+assert.equal(uniqueRelocated.marks[0].anchor.startOffset, uniqueSource.indexOf("unique"));
+const duplicateRelocated = await fallbackStore.relocateDocument(
+	duplicateFilePath,
+	"xxxx unique yyyy unique zzzz"
+);
+assert.equal(duplicateRelocated.marks[0].status, "orphaned");
 
 await store.saveDocument(createDocument("old.md", [createMark("renamed", "old.md")]));
 await store.renameDocument("old.md", "renamed/new.md");

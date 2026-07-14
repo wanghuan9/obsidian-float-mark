@@ -26,6 +26,20 @@ export function toggleSidebarScope(scope: SidebarScope): SidebarScope {
 	return scope === "current" ? "vault" : "current";
 }
 
+export function sortMarksByCreatedAt(marks: SideMark[]): SideMark[] {
+	return [...marks].sort((left, right) => {
+		const leftTime = Date.parse(left.note.createdAt);
+		const rightTime = Date.parse(right.note.createdAt);
+		if (Number.isNaN(leftTime)) {
+			return Number.isNaN(rightTime) ? 0 : -1;
+		}
+		if (Number.isNaN(rightTime)) {
+			return 1;
+		}
+		return leftTime - rightTime;
+	});
+}
+
 export function summarizeVaultDocuments(
 	documents: SideMarkDocument[],
 	options: VaultFilterOptions
@@ -49,7 +63,7 @@ export function summarizeVaultDocuments(
 			}
 		}
 		if (marks.length > 0) {
-			groups.push({ filePath: document.filePath, marks });
+			groups.push({ filePath: document.filePath, marks: sortMarksByCreatedAt(marks) });
 		}
 	}
 	groups.sort((left, right) => left.filePath.localeCompare(right.filePath));

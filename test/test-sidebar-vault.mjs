@@ -12,7 +12,13 @@ await esbuild.build({
 	outdir: "test/.tmp"
 });
 
-const { bindVaultCardNavigation, filterVaultDocuments, summarizeVaultDocuments, toggleSidebarScope } = await import("./.tmp/sidebar-logic.js");
+const {
+	bindVaultCardNavigation,
+	filterVaultDocuments,
+	sortMarksByCreatedAt,
+	summarizeVaultDocuments,
+	toggleSidebarScope
+} = await import("./.tmp/sidebar-logic.js");
 const { NavigationGuard } = await import("./.tmp/navigation-guard.js");
 const { normalizeScopeControlStyle } = await import("./.tmp/types.js");
 
@@ -25,17 +31,72 @@ assert.equal(normalizeScopeControlStyle("unknown"), "dropdown");
 assert.equal(toggleSidebarScope("current"), "vault");
 assert.equal(toggleSidebarScope("vault"), "current");
 
-function createMark(id, kind, selectedText, note, replies = [], status = "active", color = "yellow") {
+function createMark(
+	id,
+	kind,
+	selectedText,
+	note,
+	replies = [],
+	status = "active",
+	color = "yellow",
+	createdAt = "2026-07-13T00:00:00.000Z"
+) {
 	return {
 		id,
 		filePath: "",
 		anchor: { selectedText },
 		mark: { kind, color },
-		note: { content: note },
+		note: { content: note, createdAt, updatedAt: createdAt },
 		replies,
 		status
 	};
 }
+
+const createdThird = createMark(
+	"third",
+	"highlight",
+	"third",
+	"",
+	[],
+	"active",
+	"yellow",
+	"2026-07-13T00:00:03.000Z"
+);
+const createdFirst = createMark(
+	"first",
+	"highlight",
+	"first",
+	"",
+	[],
+	"active",
+	"yellow",
+	"2026-07-13T00:00:01.000Z"
+);
+const createdSecond = createMark(
+	"second",
+	"highlight",
+	"second",
+	"",
+	[],
+	"active",
+	"yellow",
+	"2026-07-13T00:00:02.000Z"
+);
+const storedOrderMarks = [createdThird, createdFirst, createdSecond];
+assert.deepEqual(sortMarksByCreatedAt(storedOrderMarks).map((mark) => mark.id), ["first", "second", "third"]);
+assert.deepEqual(storedOrderMarks.map((mark) => mark.id), ["third", "first", "second"]);
+
+const sameTimeMarks = [
+	createMark("same-a", "comment", "same-a", "", [], "active", "yellow", "2026-07-13T00:00:00.000Z"),
+	createMark("same-b", "comment", "same-b", "", [], "active", "yellow", "2026-07-13T00:00:00.000Z")
+];
+assert.deepEqual(sortMarksByCreatedAt(sameTimeMarks).map((mark) => mark.id), ["same-a", "same-b"]);
+
+const invalidTimeMarks = [
+	createMark("legacy-a", "comment", "legacy-a", "", [], "active", "yellow", ""),
+	createMark("legacy-b", "comment", "legacy-b", "", [], "active", "yellow", "invalid")
+];
+assert.deepEqual(sortMarksByCreatedAt(invalidTimeMarks).map((mark) => mark.id), ["legacy-a", "legacy-b"]);
 
 const documents = [
 	{
@@ -71,6 +132,12 @@ const blue = filterVaultDocuments(documents, { ...options, query: "", color: "bl
 assert.deepEqual(blue.flatMap((group) => group.marks.map((mark) => mark.id)), ["reference"]);
 const marks = filterVaultDocuments(documents, { ...options, tab: "marks", query: "", color: "red" });
 assert.deepEqual(marks.flatMap((group) => group.marks.map((mark) => mark.id)), ["mark"]);
+
+const orderedVaultGroups = filterVaultDocuments([{
+	filePath: "Ordered.md",
+	marks: storedOrderMarks
+}], { ...options, tab: "marks", query: "" });
+assert.deepEqual(orderedVaultGroups[0].marks.map((mark) => mark.id), ["first", "second", "third"]);
 
 const allDocuments = [documents[0], documents[1], {
 	filePath: "Aardvark.md",
@@ -179,6 +246,7 @@ assert.match(sidebarSource, /private restoreScopeFocus/);
 assert.match(sidebarSource, /data-side-mark-scope-control/);
 assert.match(sidebarSource, /showAtPosition/);
 assert.match(sidebarSource, /aria-expanded/);
+assert.match(sidebarSource, /return sortMarksByCreatedAt\(marks\.filter/);
 
 const typesSource = await readFile("src/types.ts", "utf8");
 assert.match(typesSource, /scopeControlStyle: "dropdown"/);

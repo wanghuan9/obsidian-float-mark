@@ -6,6 +6,21 @@ import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type Mar
 
 const SIDECAR_READ_CONCURRENCY = 8;
 
+export interface MarkAnchorUpdate extends Pick<SideMark, "id" | "anchor" | "status"> {
+	expectedStatus: SideMark["status"];
+}
+
+export interface MarkAnchorUpdateResult {
+	document: SideMarkDocument;
+	changed: boolean;
+	statusChanged: boolean;
+}
+
+interface RelocatedMarks {
+	marks: SideMark[];
+	changed: boolean;
+}
+
 export class SideMarkStore {
 	private allDocumentsCache: SideMarkDocument[] | null = null;
 	private allDocumentsLoad: Promise<SideMarkDocument[]> | null = null;
@@ -18,6 +33,10 @@ export class SideMarkStore {
 	updateSettings(settings: SideMarkSettings): void {
 		this.settings = settings;
 		this.invalidateAllDocumentsCache();
+	}
+
+	getRevision(): number {
+		return this.allDocumentsRevision;
 	}
 
 	async loadDocument(filePath: string): Promise<SideMarkDocument> {
@@ -51,6 +70,30 @@ export class SideMarkStore {
 
 	async saveDocument(document: SideMarkDocument): Promise<SideMarkDocument> {
 		return this.enqueueMutation(() => this.writeDocument(document));
+	}
+
+	async updateMarkAnchors(filePath: string, updates: MarkAnchorUpdate[]): Promise<MarkAnchorUpdateResult> {
+		return this.enqueueMutation(async () => {
+			const document = await this.readDocument(normalizePath(filePath));
+			const updatesById = new Map(updates.map((update) => [update.id, update]));
+			let changed = false;
+			let statusChanged = false;
+			const marks = document.marks.map((mark) => {
+				const update = updatesById.get(mark.id);
+				if (!update || mark.status !== update.expectedStatus
+					|| hasSameAnchor(mark.anchor, update.anchor) && mark.status === update.status) {
+					return mark;
+				}
+				changed = true;
+				statusChanged ||= mark.status !== update.status;
+				return { ...mark, anchor: update.anchor, status: update.status };
+			});
+			if (!changed) {
+				return { document, changed: false, statusChanged: false };
+			}
+			const updatedDocument = await this.writeDocument({ ...document, marks });
+			return { document: updatedDocument, changed: true, statusChanged };
+		});
 	}
 
 	async renameDocument(oldFilePath: string, newFilePath: string): Promise<void> {
@@ -177,8 +220,20 @@ export class SideMarkStore {
 		const sidecarPath = this.getSidecarPath(normalizedPath);
 		await this.app.vault.adapter.mkdir(this.getFilesDir());
 		await this.app.vault.adapter.write(sidecarPath, JSON.stringify(next, null, 2));
-		this.invalidateAllDocumentsCache();
+		this.updateAllDocumentsCache(next);
 		return next;
+	}
+
+	private updateAllDocumentsCache(document: SideMarkDocument): void {
+		this.allDocumentsRevision += 1;
+		this.allDocumentsLoad = null;
+		if (!this.allDocumentsCache) {
+			return;
+		}
+		this.allDocumentsCache = [
+			...this.allDocumentsCache.filter((item) => item.filePath !== document.filePath),
+			document
+		].sort((left, right) => left.filePath.localeCompare(right.filePath));
 	}
 
 	async addReply(filePath: string, markId: string, content: string): Promise<SideMarkDocument> {
@@ -286,40 +341,65 @@ export class SideMarkStore {
 	}
 
 	async relocateDocument(filePath: string, source: string): Promise<SideMarkDocument> {
+		const normalizedPath = normalizePath(filePath);
+		const document = await this.readStableDocument(normalizedPath);
+		const relocated = this.relocateMarks(document, source);
+		if (!relocated.changed) {
+			return document;
+		}
+
 		return this.enqueueMutation(async () => {
-			const document = await this.readDocument(normalizePath(filePath));
-			let changed = false;
-			const marks = document.marks.map((mark) => {
-				const anchor = relocateAnchor(source, mark.anchor);
-				if (!anchor) {
-					if (mark.status === "orphaned") {
-						return mark;
-					}
-					changed = true;
-					return { ...mark, status: "orphaned" as const };
-				}
-				if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset && mark.status !== "orphaned") {
+			const latestDocument = await this.readDocument(normalizedPath);
+			const latestRelocated = this.relocateMarks(latestDocument, source);
+			return latestRelocated.changed
+				? this.writeDocument({ ...latestDocument, marks: latestRelocated.marks })
+				: latestDocument;
+		});
+	}
+
+	private relocateMarks(document: SideMarkDocument, source: string): RelocatedMarks {
+		let changed = false;
+		const marks = document.marks.map((mark) => {
+			const anchor = relocateAnchor(source, mark.anchor, {
+				trustStoredPosition: mark.status !== "orphaned",
+				allowUniqueTextFallback: true
+			});
+			if (!anchor) {
+				if (mark.status === "orphaned") {
 					return mark;
 				}
 				changed = true;
-				return {
-					...mark,
-					anchor,
-					status: mark.status === "orphaned" ? "active" as const : mark.status
-				};
-			});
-
-			if (!changed) {
-				return document;
+				return { ...mark, status: "orphaned" as const };
 			}
-			return this.writeDocument({ ...document, marks });
+			if (anchor.startOffset === mark.anchor.startOffset && anchor.endOffset === mark.anchor.endOffset
+				&& mark.status !== "orphaned") {
+				return mark;
+			}
+			changed = true;
+			return {
+				...mark,
+				anchor,
+				status: mark.status === "orphaned" ? "active" as const : mark.status
+			};
 		});
+		return { marks, changed };
 	}
 
 	private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
 		const result = this.mutationTail.then(mutation, mutation);
 		this.mutationTail = result.then(() => undefined, () => undefined);
 		return result;
+	}
+
+	private async readStableDocument(normalizedPath: string): Promise<SideMarkDocument> {
+		while (true) {
+			const mutationTail = this.mutationTail;
+			await mutationTail;
+			const document = await this.readDocument(normalizedPath);
+			if (this.mutationTail === mutationTail) {
+				return document;
+			}
+		}
 	}
 
 	private async readDocument(normalizedPath: string): Promise<SideMarkDocument> {
@@ -453,6 +533,18 @@ export class SideMarkStore {
 			updatedAt: now
 		};
 	}
+}
+
+function hasSameAnchor(left: SideMark["anchor"], right: SideMark["anchor"]): boolean {
+	return left.startOffset === right.startOffset
+		&& left.endOffset === right.endOffset
+		&& left.selectedText === right.selectedText
+		&& left.prefix === right.prefix
+		&& left.suffix === right.suffix
+		&& left.position.lineStart === right.position.lineStart
+		&& left.position.lineEnd === right.position.lineEnd
+		&& left.position.columnStart === right.position.columnStart
+		&& left.position.columnEnd === right.position.columnEnd;
 }
 
 export function hashPath(filePath: string): string {

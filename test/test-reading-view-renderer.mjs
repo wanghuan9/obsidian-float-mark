@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import esbuild from "esbuild";
 import { JSDOM } from "jsdom";
 
@@ -15,6 +15,7 @@ await esbuild.build({
 const {
 	buildSourceLineStarts,
 	findReadingMatchForTest,
+	getReadingMarkElements,
 	getReadingMarksForSection,
 	renderReadingMarks
 } = await import("./.tmp/reading-view-renderer.mjs");
@@ -116,6 +117,20 @@ assert.equal(listSectionMarks.length, 1);
 assert.equal(listSectionMarks[0].anchor.selectedText, "- `PERM_CONTACT` 依赖 `VIEW_PHONE`\n- 前端不参与最终校验");
 assert.equal(listSectionMarks[0].anchor.position.lineStart, 1);
 
+const duplicateSource = "- 第一个 Task 6\n\n| 第二个 Task 6 |";
+const tableStart = duplicateSource.indexOf("| 第二个");
+const tableTask = duplicateSource.lastIndexOf("Task 6");
+const duplicateMark = createMark({
+	id: "table-task-6",
+	selectedText: "Task 6",
+	startOffset: tableTask,
+	endOffset: tableTask + 6,
+	lineStart: 3
+});
+assert.equal(getReadingMarksForSection(duplicateSource, [duplicateMark], 0, 0).length, 0);
+assert.equal(getReadingMarksForSection(duplicateSource, [duplicateMark], 2, 2).length, 1);
+assert.ok(tableStart < tableTask);
+
 const crossBlockSource = [
 	"**依赖关系**：",
 	"- `PERM_CONTACT` 依赖 `VIEW_PHONE`",
@@ -145,6 +160,25 @@ assert.equal(crossBlockRoot.querySelectorAll(".side-mark-reading p, .side-mark-r
 assert.ok(crossBlockRoot.querySelectorAll(".side-mark-reading").length >= 8);
 renderReadingMarks(crossBlockRoot, crossBlockSource, [], () => undefined);
 assert.equal(crossBlockRoot.innerHTML, crossBlockOriginalHtml);
+
+const groupedMarkDom = new JSDOM(`
+	<div class="markdown-preview-view" id="preview">
+		<p id="first">first</p>
+		<p id="second">second</p>
+	</div>
+`);
+const groupedMarkPreview = groupedMarkDom.window.document.querySelector("#preview");
+const groupedMarkFirst = groupedMarkDom.window.document.querySelector("#first");
+const groupedMarkSecond = groupedMarkDom.window.document.querySelector("#second");
+renderReadingMarks(groupedMarkFirst, "first", [createMark({
+	id: "grouped-mark",
+	selectedText: "first"
+})], () => undefined);
+renderReadingMarks(groupedMarkSecond, "second", [createMark({
+	id: "grouped-mark",
+	selectedText: "second"
+})], () => undefined);
+assert.equal(getReadingMarkElements(groupedMarkPreview, "grouped-mark").length, 2);
 
 const boundaryDom = new JSDOM("<div id=\"root\"><p>first<strong>second</strong></p></div>");
 const boundaryRoot = boundaryDom.window.document.querySelector("#root");
@@ -731,5 +765,17 @@ assert.equal(partialStyleClickCount, 0);
 partialStyleSelection.removeAllRanges();
 partialStyleInnerWrapper.dispatchEvent(new partialStyleDom.window.MouseEvent("click", { bubbles: true }));
 assert.equal(partialStyleClickCount, 1);
+
+const readingRendererSource = await readFile("src/reading-view-renderer.ts", "utf8");
+const stylesSource = await readFile("styles.css", "utf8");
+assert.doesNotMatch(
+	readingRendererSource,
+	/READING_MARK_GROUP_HOVER_CLASS|readingMarkFeedbackRoots|hoveredReadingMarkIds|ensureReadingMarkGroupFeedback|setHoveredReadingMarkGroup|applyHoveredReadingMarkGroup/
+);
+assert.doesNotMatch(stylesSource, /\.side-mark-reading\.is-group-hovered/);
+assert.match(
+	stylesSource,
+	/\.side-mark-reading\.side-mark-reading-continuous-paint\s*\{\s*border-radius:\s*0;\s*\}/
+);
 
 console.log("reading view renderer tests passed");
