@@ -32,13 +32,18 @@ interface NodeMarkSegment {
 	items: PlannedReadingMark[];
 }
 
+export interface ReadingRenderOptions {
+	excludedContainerSelector?: string;
+}
+
 export function renderReadingMarks(
 	container: HTMLElement,
 	source: string,
 	marks: SideMark[],
-	onClick: (markId: string, rect: DOMRect) => void
+	onClick: (markId: string, rect: DOMRect) => void,
+	options: ReadingRenderOptions = {}
 ): void {
-	clearReadingMarks(container);
+	clearReadingMarks(container, options.excludedContainerSelector);
 	const activeMarks = marks
 		.map((mark, sourceIndex) => ({
 			mark,
@@ -46,7 +51,7 @@ export function renderReadingMarks(
 			specificityMark: originalReadingMarks.get(mark) || mark
 		}))
 		.filter(({ mark }) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText);
-	const ranges = collectTextNodes(container);
+	const ranges = collectTextNodes(container, options.excludedContainerSelector);
 	const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
 	const plannedMarks = activeMarks
 		.map(({ mark, sourceIndex, specificityMark }) => {
@@ -58,19 +63,33 @@ export function renderReadingMarks(
 	promoteFullyMarkedInlineCodeElements(container);
 }
 
-function clearReadingMarks(container: HTMLElement): void {
-	const inlineElements = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading-inline-content"));
+function clearReadingMarks(container: HTMLElement, excludedContainerSelector?: string): void {
+	const isExcluded = (element: HTMLElement): boolean => Boolean(
+		excludedContainerSelector && element.closest(excludedContainerSelector)
+	);
+	const inlineElements = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading-inline-content"))
+		.filter((element) => !isExcluded(element));
 	for (const element of inlineElements) {
 		element.classList.remove("side-mark-reading-inline-content");
 		if (!element.className) {
 			element.removeAttribute("class");
 		}
 	}
-	const wrappers = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading"));
+	const wrappers = Array.from(container.querySelectorAll<HTMLElement>(".side-mark-reading"))
+		.filter((wrapper) => !isExcluded(wrapper));
+	const normalizeTargets = new Set<HTMLElement>();
 	for (const wrapper of wrappers.reverse()) {
+		const parent = wrapper.parentElement;
 		wrapper.replaceWith(...Array.from(wrapper.childNodes));
+		if (parent) {
+			normalizeTargets.add(parent);
+		}
 	}
-	container.normalize();
+	for (const target of normalizeTargets) {
+		if (container.contains(target)) {
+			target.normalize();
+		}
+	}
 }
 
 function applyReadingMarkFragments(
@@ -252,7 +271,7 @@ function createReadingMarkWrapper(
 	return wrapper;
 }
 
-function collectTextNodes(container: HTMLElement): TextNodeRange[] {
+function collectTextNodes(container: HTMLElement, excludedContainerSelector?: string): TextNodeRange[] {
 	const nodes: TextNodeRange[] = [];
 	const nodeFilter = container.ownerDocument.defaultView?.NodeFilter;
 	if (!nodeFilter) {
@@ -262,6 +281,9 @@ function collectTextNodes(container: HTMLElement): TextNodeRange[] {
 		acceptNode(node) {
 			const parent = node.parentElement;
 			if (!parent || parent.closest(".side-mark-reading")) {
+				return nodeFilter.FILTER_REJECT;
+			}
+			if (excludedContainerSelector && parent.closest(excludedContainerSelector)) {
 				return nodeFilter.FILTER_REJECT;
 			}
 			if (parent.closest("script, style")) {

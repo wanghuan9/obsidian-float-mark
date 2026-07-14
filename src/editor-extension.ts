@@ -4,6 +4,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type SideMarkPlugin from "./main";
 import { getActiveSelection, isHtmlElement } from "./dom-utils";
 import { buildEditorDecorationLayers, type EditorDecorationLayers } from "./editor-decorations";
+import { EditorTableMarkRenderer } from "./editor-table-renderer";
 import { shouldOpenMarkForSelection } from "./mark-click-guard";
 
 export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension {
@@ -17,12 +18,26 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			private readonly mousemoveHandler: (event: MouseEvent) => void;
 			private readonly mouseleaveHandler: () => void;
 			private readonly scrollHandler: () => void;
+			private readonly tableMarkRenderer: EditorTableMarkRenderer;
 			private selectionTimer: number | null = null;
 
 			constructor(private readonly view: EditorView) {
 				const layers = this.buildDecorationLayers();
 				this.decorations = layers.decorations;
 				this.outerDecorations = layers.outerDecorations;
+				this.tableMarkRenderer = new EditorTableMarkRenderer(
+					view,
+					() => {
+						const filePath = this.getFilePath();
+						return filePath && plugin.currentDocument?.filePath === filePath
+							? plugin.currentDocument.marks
+							: [];
+					},
+					(markId, rect) => {
+						plugin.setActiveEditorView(this.view);
+						void plugin.openMark(markId, rect);
+					}
+				);
 				this.mouseupHandler = () => this.scheduleSelectionCheck();
 				this.keyupHandler = () => this.scheduleSelectionCheck();
 				this.clickHandler = (event) => this.handleMarkClick(event);
@@ -48,6 +63,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 					const layers = this.buildDecorationLayers();
 					this.decorations = layers.decorations;
 					this.outerDecorations = layers.outerDecorations;
+					this.tableMarkRenderer.schedule();
 					if (update.viewportChanged) {
 						plugin.hideBlockToolbar();
 					}
@@ -58,6 +74,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 
 			destroy(): void {
+				this.tableMarkRenderer.destroy();
 				this.view.dom.removeEventListener("mouseup", this.mouseupHandler);
 				this.view.dom.removeEventListener("keyup", this.keyupHandler);
 				this.view.dom.removeEventListener("click", this.clickHandler);
