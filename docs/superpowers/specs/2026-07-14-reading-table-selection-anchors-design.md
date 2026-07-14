@@ -87,6 +87,25 @@ Do not strip arbitrary Unicode control or format characters. Do not lower the di
 
 This is preferred over stripping every control character, which could alter authored content, and over DOM-node coordinate mapping, which would duplicate Obsidian rendering behavior and add substantially more surface area.
 
+## Preview Block Boundary Compatibility
+
+A browser `Range` can end at offset `0` of the preview block immediately after the visible highlight. `Range.intersectsNode()` reports that next block as intersecting even though the selection contains none of its rendered content. The confirmed heading failure has this shape: the selection visibly contains only `3.2 留货直销单状态机`, while its end boundary is the root of the following rendered table at offset `0`. The current section collector includes both blocks and rejects them before source-candidate matching because their reported source lines are not adjacent.
+
+Selections that genuinely span a heading and its following content expose a second issue. Markdown commonly contains a blank source line between a heading and a paragraph, list, or table. Requiring each selected preview section to begin no later than one line after the previous section ends therefore rejects a continuous visible selection such as a heading followed by a multiline paragraph containing inline code.
+
+Treat the selection as an ordered interval of rendered preview blocks:
+
+- Remove a trailing preview block when the `Range` ends at offset `0` of that block root, because the block contributes no selected content.
+- Remove a leading preview block when the `Range` starts at the end offset of that block root, because the block contributes no selected content.
+- Retain a boundary block when the selection endpoint is inside it or otherwise selects any of its rendered content. A selection that genuinely enters a following table must therefore keep the table block.
+- Require retained blocks to be contiguous in the preview renderer's section array.
+- Require source locations of retained blocks to remain monotonically ordered so renderer metadata cannot move the source scope backwards.
+- Do not require source line numbers to be adjacent; blank Markdown lines between contiguous rendered blocks are valid.
+
+This logic applies to all preview blocks rather than checking heading tags. It covers heading-only, heading-to-heading, heading-plus-paragraph, heading-plus-list, heading-plus-table, and ordinary cross-block selections without broadening source candidate acceptance. Candidate discovery, context scoring, duplicate rejection, anchor storage, and relocation remain unchanged.
+
+This is preferred over a heading-only exception, which would reproduce the same failure for other block combinations, and over relaxing only the source-line adjacency check, which would still include boundary-only blocks and produce an unnecessarily broad source scope.
+
 ## Verification
 
 - Add a JSDOM regression test using the reported table row and an actual selection spanning multiple inline-code nodes inside one cell.
@@ -97,6 +116,12 @@ This is preferred over stripping every control character, which could alter auth
 - Add a heading fixture whose exact source scope contains only the heading while its DOM context and rendered offset describe surrounding blocks; require the unique exact candidate to resolve.
 - Add a heading fixture with a leading `U+200B` and deliberately incompatible DOM context; require the sanitized exact-source candidate to resolve.
 - Add the reported full table-cell fixture with a trailing `U+FFFC`; require the returned source range to span the embedded Markdown backticks and exclude adjacent cells.
+- Add a heading-only fixture whose `Range` ends at offset `0` of the following table root; require the table section to be excluded and the heading to resolve.
+- Add a heading-plus-paragraph fixture whose source blocks are separated by a blank Markdown line; require both preview sections to be retained.
+- Add a heading-plus-multiline-paragraph fixture containing inline code; require the complete visible selection to resolve to the ordered source interval.
+- Add a fixture that genuinely selects content inside the following table; require the table section to remain in the selected interval.
+- Add leading and trailing boundary-only fixtures; require blocks that contribute no selected content to be excluded.
+- Keep reordered or non-monotonic preview sections unresolved.
 - Keep a repeated-heading fixture unresolved when context cannot distinguish its occurrences.
 - Keep a repeated-heading fixture with DOM sentinels unresolved when context cannot distinguish its occurrences.
 - Keep a distant rendered-only candidate unresolved.
@@ -111,6 +136,10 @@ This is preferred over stripping every control character, which could alter auth
 - Common rendered/source syntax differences resolve only when their candidate is unique and positionally near.
 - A unique exact source occurrence resolves even when Obsidian reports incompatible DOM wrapper context.
 - Known non-rendering DOM sentinels do not prevent a visually exact heading or table-cell selection from resolving.
+- A preview block touched only at the exact start or end boundary is not included in the source scope.
+- Contiguous rendered blocks can resolve across blank Markdown source lines.
+- A selection that genuinely enters an adjacent paragraph, list, or table retains that block in the source scope.
+- Reordered or backwards-moving source sections remain unresolved.
 - Repeated exact occurrences still require unique contextual disambiguation.
 - Non-table reading selections retain their current results.
 - No global threshold is lowered and no ambiguous candidate is accepted.
