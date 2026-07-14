@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-float-mark",
-	"version": "0.1.12",
+	"version": "0.1.13",
 	"description": "Feishu-style floating selection actions, visual text highlights, side comments, and optional Lark sync support.",
 	"main": "main.js",
 	"type": "module",
