@@ -1,10 +1,10 @@
 # Reading Table Selection Anchors Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Map reading-mode selections inside rendered Markdown table cells back to exact source offsets while preserving ambiguous-selection rejection.
+**Goal:** Map reading-mode selections across common rendered/source Markdown differences back to exact source offsets while preserving ambiguous-selection rejection.
 
-**Architecture:** Extend the existing rendered-source index with a precomputed set of table-only syntax offsets. Table detection and pipe classification remain pure helpers in `reading-selection.ts`; the existing candidate search, scoring, and storage path stay unchanged.
+**Architecture:** Extend the rendered-source index with table syntax offsets and explicit source end offsets for multi-character escapes and entities. Keep the existing context scorer for multiple candidates, with a bounded nearby fallback only when the confirmed preview section contains one candidate.
 
 **Tech Stack:** TypeScript, Node.js, JSDOM, esbuild, Obsidian plugin build tooling.
 
@@ -27,7 +27,7 @@
 - Consumes: `findSourceRangeForReadingSelection(source, selectedText, scope)` and `getReadingSelectionContext(containers, range)`.
 - Produces: Regression fixtures for reported, repeated, optional-outer-pipe, escaped-pipe, and inline-code-pipe table selections.
 
-- [ ] **Step 1: Add the reported table selection fixture**
+- [x] **Step 1: Add the reported table selection fixture**
 
 Create a JSDOM table whose source row is:
 
@@ -41,23 +41,23 @@ Select from the first inline-code text node through the closing Chinese parenthe
 `partner_account` 主账号 `name`（`account_type=1`）
 ```
 
-- [ ] **Step 2: Add table disambiguation and syntax fixtures**
+- [x] **Step 2: Add table disambiguation and syntax fixtures**
 
 Add assertions that:
 
 ```js
 // The second repeated recycle_order.partner_id maps to the second source row.
-assert.equal(source.slice(repeatedRange.from, repeatedRange.to), "`recycle_order.partner_id");
+assert.equal(source.slice(repeatedRange.from, repeatedRange.to), "recycle_order.partner_id");
 
 // A table without optional outer pipes still maps the selected cell.
-assert.equal(source.slice(noOuterRange.from, noOuterRange.to), "`partner_account");
+assert.equal(source.slice(noOuterRange.from, noOuterRange.to), "partner_account");
 
 // Escaped and inline-code pipes remain visible rather than being treated as cell separators.
 assert.equal(source.slice(escapedRange.from, escapedRange.to), "A\\|B");
-assert.equal(source.slice(codePipeRange.from, codePipeRange.to), "`left|right");
+assert.equal(source.slice(codePipeRange.from, codePipeRange.to), "left|right");
 ```
 
-- [ ] **Step 3: Run the focused test and verify failure**
+- [x] **Step 3: Run the focused test and verify failure**
 
 Run: `rtk node test/test-reading-selection.mjs`
 
@@ -75,7 +75,7 @@ Expected: FAIL on the first new table assertion because the current source conte
 - Consumes: Markdown source passed to `buildRenderedSourceIndex(source, sourceStartOffset)`.
 - Produces: `findTableSyntaxOffsets(source): Set<number>` used only by rendered-source indexing.
 
-- [ ] **Step 1: Precompute ignored table syntax offsets**
+- [x] **Step 1: Precompute ignored table syntax offsets**
 
 At the start of `buildRenderedSourceIndex()`, calculate:
 
@@ -92,7 +92,7 @@ if (tableSyntaxOffsets.has(index)) {
 }
 ```
 
-- [ ] **Step 2: Detect table blocks without parsing unrelated Markdown**
+- [x] **Step 2: Detect table blocks without parsing unrelated Markdown**
 
 Implement pure helpers that split source into offset-bearing lines, identify a delimiter row whose cells match `^:?-{3,}:?$`, require a pipe-delimited header immediately above it, and collect the header plus contiguous following pipe-delimited rows.
 
@@ -110,7 +110,7 @@ interface TablePipeScan {
 
 Reject delimiter candidates inside fenced code blocks and lines indented as code. Mark every character in a confirmed delimiter row as ignored.
 
-- [ ] **Step 3: Classify visible and structural pipes**
+- [x] **Step 3: Classify visible and structural pipes**
 
 Scan each table row while tracking matching backtick-run lengths:
 
@@ -126,13 +126,13 @@ if (char === "|" && codeRunLength === 0) {
 
 Ignore structural pipe offsets and only the escaping backslash for `\\|`. Preserve pipes inside inline code and preserve the pipe character of an escaped pipe.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `rtk node test/test-reading-selection.mjs`
 
 Expected: PASS with `reading selection tests passed`.
 
-- [ ] **Step 5: Run existing renderer and anchor regression tests**
+- [x] **Step 5: Run existing renderer and anchor regression tests**
 
 Run:
 
@@ -146,22 +146,22 @@ Expected: all three commands pass without changed snapshots or anchor behavior.
 
 ---
 
-### Task 3: Audit Similar Rendered/source Mismatches
+### Task 3: Handle and Audit Similar Rendered/source Mismatches
 
 **Files:**
-- Inspect: `src/reading-selection.ts`
-- Inspect: `test/test-reading-selection.mjs`
+- Modify: `src/reading-selection.ts`
+- Modify: `test/test-reading-selection.mjs`
 
 **Interfaces:**
 - Consumes: the completed table-aware `findSourceRangeForReadingSelection()` behavior.
-- Produces: a verified list of remaining supported and unsupported Markdown constructs; no speculative production changes.
+- Produces: verified handling for nearby unique candidates, escaped punctuation, HTML entities, inline-code literals, headings, links, autolinks, inline HTML, task lists, fenced code, and Callout content.
 
-- [ ] **Step 1: Probe common mismatch constructs**
+- [x] **Step 1: Probe common mismatch constructs**
 
 Use JSDOM ranges and exact Markdown source for:
 
 ```text
-Task list:       - [ ] 待处理内容
+Task list:       - [x] 待处理内容
 Markdown link:  [显示文本](https://example.com)
 Autolink:       <https://example.com>
 Escaped text:   \*字面星号\*
@@ -172,7 +172,7 @@ Callout:        > [!note] 标题
 
 For each case, record whether the candidate is found, rejected by context score, or mapped to an incorrect source range.
 
-- [ ] **Step 2: Classify findings**
+- [x] **Step 2: Classify findings**
 
 Use these categories:
 
@@ -183,9 +183,9 @@ Mis-anchor risk: selection returns a different occurrence or excludes required M
 Not selectable: rendered element exposes no text range.
 ```
 
-Do not alter production normalization for findings that are outside the approved table scope. Report concrete reproductions and recommended follow-up priority.
+Use explicit source end offsets for escapes and entities. Accept a single candidate only when its normalized rendered distance is at most eight characters; keep the context threshold and unique-best-score requirement for multiple candidates.
 
-- [ ] **Step 3: Run complete verification**
+- [x] **Step 3: Run complete verification**
 
 Run:
 
@@ -199,6 +199,88 @@ python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standards/s
 
 Expected: tests, build, TypeScript compilation, diff check, and changed-line format check all pass.
 
-- [ ] **Step 4: Review the final diff**
+- [x] **Step 4: Review the final diff**
 
 Confirm that only the approved plan, `src/reading-selection.ts`, and `test/test-reading-selection.mjs` changed, apart from generated `main.js` if the repository build intentionally updates it. Verify no unrelated `.superpowers/` files are staged.
+
+---
+
+### Task 4: Accept Unique Exact-source Candidates with Incompatible DOM Context
+
+**Files:**
+- Modify: `src/reading-selection.ts`
+- Test: `test/test-reading-selection.mjs`
+
+**Interfaces:**
+- Consumes: direct substring ranges and rendered-source ranges produced by `findSourceCandidates()`.
+- Produces: `SourceCandidate.isExactSource`, preserving exact-source provenance through rendered-offset deduplication.
+
+- [ ] **Step 1: Add exact-source and safety regression tests**
+
+Add a heading fixture whose source scope contains only:
+
+```markdown
+### 3.4 业务标签
+```
+
+Select `3.4 业务标签`, pass deliberately incompatible `prefix`, `suffix`, and a large `renderedOffset`, and assert the exact source range is returned. Keep a repeated identical-heading assertion that returns `null`. Change the distant unique fixture to a rendered-only selection such as source `**目**标` with selected text `目标`, and continue asserting `null`.
+
+- [ ] **Step 2: Run the focused test and verify failure**
+
+Run: `rtk node test/test-reading-selection.mjs`
+
+Expected: FAIL on the unique exact heading assertion because the only candidate exceeds `MAX_UNIQUE_RENDERED_DISTANCE` and has incompatible context.
+
+- [ ] **Step 3: Preserve candidate provenance and accept a unique exact source match**
+
+Add the provenance field:
+
+```ts
+interface SourceCandidate {
+	from: number;
+	to: number;
+	isExactSource: boolean;
+	renderedDistance: number;
+	contextScore: number;
+}
+```
+
+Map direct ranges with `isExactSource: true` and rendered ranges with `isExactSource: false`. Keep direct ranges first so deduplication preserves exact provenance. Update the single-candidate rule to:
+
+```ts
+const only = candidates[0];
+if (
+	candidates.length === 1
+	&& (only?.isExactSource || only?.renderedDistance <= MAX_UNIQUE_RENDERED_DISTANCE)
+) {
+	return only;
+}
+```
+
+Do not change multiple-candidate scoring or acceptance.
+
+- [ ] **Step 4: Run focused and complete verification**
+
+Run:
+
+```bash
+rtk node test/test-reading-selection.mjs
+rtk npm test
+rtk npx tsc --noEmit
+rtk npm run build
+rtk git diff --check
+rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standards/scripts/format-check.py --git-diff
+```
+
+Expected: focused tests, full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
+
+- [ ] **Step 5: Install and verify in both Obsidian vaults**
+
+Copy the built `main.js` to:
+
+```text
+/Users/wanghuan/Documents/opt-knowledge/.obsidian/plugins/float-mark/main.js
+/Users/wanghuan/Documents/obsidian/.obsidian/plugins/float-mark/main.js
+```
+
+Verify both installed files have the same SHA-256 as the build output. Reload Obsidian, select `3.4 业务标签` in the reported document, and confirm the `高亮标注` and `评论` actions appear without creating a mark.
