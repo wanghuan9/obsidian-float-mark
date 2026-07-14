@@ -215,7 +215,7 @@ Confirm that only the approved plan, `src/reading-selection.ts`, and `test/test-
 - Consumes: direct substring ranges and rendered-source ranges produced by `findSourceCandidates()`.
 - Produces: `SourceCandidate.isExactSource`, preserving exact-source provenance through rendered-offset deduplication.
 
-- [ ] **Step 1: Add exact-source and safety regression tests**
+- [x] **Step 1: Add exact-source and safety regression tests**
 
 Add a heading fixture whose source scope contains only:
 
@@ -225,13 +225,13 @@ Add a heading fixture whose source scope contains only:
 
 Select `3.4 业务标签`, pass deliberately incompatible `prefix`, `suffix`, and a large `renderedOffset`, and assert the exact source range is returned. Keep a repeated identical-heading assertion that returns `null`. Change the distant unique fixture to a rendered-only selection such as source `**目**标` with selected text `目标`, and continue asserting `null`.
 
-- [ ] **Step 2: Run the focused test and verify failure**
+- [x] **Step 2: Run the focused test and verify failure**
 
 Run: `rtk node test/test-reading-selection.mjs`
 
 Expected: FAIL on the unique exact heading assertion because the only candidate exceeds `MAX_UNIQUE_RENDERED_DISTANCE` and has incompatible context.
 
-- [ ] **Step 3: Preserve candidate provenance and accept a unique exact source match**
+- [x] **Step 3: Preserve candidate provenance and accept a unique exact source match**
 
 Add the provenance field:
 
@@ -259,7 +259,7 @@ if (
 
 Do not change multiple-candidate scoring or acceptance.
 
-- [ ] **Step 4: Run focused and complete verification**
+- [x] **Step 4: Run focused and complete verification**
 
 Run:
 
@@ -274,7 +274,7 @@ rtk python3 /Users/wanghuan/.skilldock/skills/code-standards/skills/code-standar
 
 Expected: focused tests, full tests, TypeScript compilation, production build, diff check, and changed-line format check all pass.
 
-- [ ] **Step 5: Install and verify in both Obsidian vaults**
+- [x] **Step 5: Install and verify in both Obsidian vaults**
 
 Copy the built `main.js` to:
 
