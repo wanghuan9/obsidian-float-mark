@@ -2228,6 +2228,7 @@ var ReadingSelectionToolbar = class {
     this.t = t;
     this.hideTimer = null;
     this.hideAnimationTimer = null;
+    this.showAnimationFrame = null;
     this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
     this.el.hide();
     this.el.addEventListener("mousedown", (event) => event.preventDefault());
@@ -2256,6 +2257,7 @@ var ReadingSelectionToolbar = class {
     var _a, _b, _c, _d;
     this.cancelHide();
     this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.show();
     this.el.removeClass("is-visible");
     const width = this.el.offsetWidth;
@@ -2271,11 +2273,15 @@ var ReadingSelectionToolbar = class {
     const top = clamp4(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
-    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+    this.showAnimationFrame = window.requestAnimationFrame(() => {
+      this.showAnimationFrame = null;
+      this.el.addClass("is-visible");
+    });
   }
   hide() {
     this.cancelHide();
     this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.removeClass("is-visible");
     this.hideAnimationTimer = window.setTimeout(() => {
       this.hideAnimationTimer = null;
@@ -2287,6 +2293,7 @@ var ReadingSelectionToolbar = class {
   destroy() {
     this.cancelHide();
     this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.remove();
   }
   scheduleHide() {
@@ -2303,6 +2310,12 @@ var ReadingSelectionToolbar = class {
     if (this.hideAnimationTimer !== null) {
       window.clearTimeout(this.hideAnimationTimer);
       this.hideAnimationTimer = null;
+    }
+  }
+  cancelShowAnimationFrame() {
+    if (this.showAnimationFrame !== null) {
+      window.cancelAnimationFrame(this.showAnimationFrame);
+      this.showAnimationFrame = null;
     }
   }
 };

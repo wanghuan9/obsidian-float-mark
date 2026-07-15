@@ -20,6 +20,7 @@ export class ReadingSelectionToolbar {
 	private readonly el: HTMLDivElement;
 	private hideTimer: number | null = null;
 	private hideAnimationTimer: number | null = null;
+	private showAnimationFrame: number | null = null;
 
 	constructor(private readonly onAction: (action: ReadingSelectionAction) => void, private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
@@ -50,6 +51,7 @@ export class ReadingSelectionToolbar {
 	show(rect: DOMRect, boundary?: DOMRect): void {
 		this.cancelHide();
 		this.cancelHideAnimation();
+		this.cancelShowAnimationFrame();
 		this.el.show();
 		this.el.removeClass("is-visible");
 		const width = this.el.offsetWidth;
@@ -65,12 +67,16 @@ export class ReadingSelectionToolbar {
 		const top = clamp(preferredTop, minTop, maxTop);
 		this.el.style.left = `${left}px`;
 		this.el.style.top = `${top}px`;
-		window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+		this.showAnimationFrame = window.requestAnimationFrame(() => {
+			this.showAnimationFrame = null;
+			this.el.addClass("is-visible");
+		});
 	}
 
 	hide(): void {
 		this.cancelHide();
 		this.cancelHideAnimation();
+		this.cancelShowAnimationFrame();
 		this.el.removeClass("is-visible");
 		this.hideAnimationTimer = window.setTimeout(() => {
 			this.hideAnimationTimer = null;
@@ -83,6 +89,7 @@ export class ReadingSelectionToolbar {
 	destroy(): void {
 		this.cancelHide();
 		this.cancelHideAnimation();
+		this.cancelShowAnimationFrame();
 		this.el.remove();
 	}
 
@@ -102,6 +109,13 @@ export class ReadingSelectionToolbar {
 		if (this.hideAnimationTimer !== null) {
 			window.clearTimeout(this.hideAnimationTimer);
 			this.hideAnimationTimer = null;
+		}
+	}
+
+	private cancelShowAnimationFrame(): void {
+		if (this.showAnimationFrame !== null) {
+			window.cancelAnimationFrame(this.showAnimationFrame);
+			this.showAnimationFrame = null;
 		}
 	}
 }

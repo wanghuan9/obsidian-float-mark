@@ -31,14 +31,20 @@ const dom = new JSDOM("<body></body>");
 const activeWindow = dom.window;
 const activeDocument = activeWindow.document;
 const timers = new Map();
-const animationFrames = [];
+const animationFrames = new Map();
 let nextTimerId = 1;
 let nextFrameId = 1;
 
 activeWindow.setTimeout = (callback, delay) => {
 	const timerId = nextTimerId;
 	nextTimerId += 1;
-	timers.set(timerId, { callback, delay });
+	timers.set(timerId, {
+		callback: () => {
+			timers.delete(timerId);
+			callback();
+		},
+		delay
+	});
 	return timerId;
 };
 activeWindow.clearTimeout = (timerId) => {
@@ -47,8 +53,11 @@ activeWindow.clearTimeout = (timerId) => {
 activeWindow.requestAnimationFrame = (callback) => {
 	const frameId = nextFrameId;
 	nextFrameId += 1;
-	animationFrames.push(callback);
+	animationFrames.set(frameId, callback);
 	return frameId;
+};
+activeWindow.cancelAnimationFrame = (frameId) => {
+	animationFrames.delete(frameId);
 };
 
 activeWindow.HTMLElement.prototype.createDiv = function createDiv(options = {}) {
@@ -100,12 +109,23 @@ assert.equal(Array.from(timers.values())[0].delay, 140);
 
 toolbar.show(new activeWindow.DOMRect(100, 100, 50, 20));
 assert.equal(timers.size, 0);
+assert.equal(animationFrames.size, 1);
 assert.equal(toolbarEl.style.display, "");
 assert.equal(toolbarEl.classList.contains("is-visible"), false);
 
-for (const callback of animationFrames.splice(0)) {
+toolbar.hide();
+assert.equal(animationFrames.size, 0);
+const hideTimer = Array.from(timers.values())[0];
+assert.ok(hideTimer);
+hideTimer.callback();
+assert.equal(toolbarEl.style.display, "none");
+assert.equal(toolbarEl.classList.contains("is-visible"), false);
+
+toolbar.show(new activeWindow.DOMRect(100, 100, 50, 20));
+for (const callback of animationFrames.values()) {
 	callback();
 }
+animationFrames.clear();
 assert.equal(toolbarEl.classList.contains("is-visible"), true);
 
 toolbar.destroy();
