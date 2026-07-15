@@ -1,6 +1,6 @@
 # FloatMark
 
-[简体中文](./README.md) | [English](./README.en.md)
+[简体中文](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.md) | [English](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.en.md)
 
 FloatMark is an Obsidian plugin for inline marks, comments, and floating quick-action toolbars, bringing a Feishu / Lark Docs-like experience to local notes.
 

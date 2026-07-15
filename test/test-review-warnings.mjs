@@ -85,9 +85,9 @@ const readmeSource = await readFile("README.md", "utf8");
 const englishReadmeSource = await readFile("README.en.md", "utf8");
 assert.match(readmeSource, /FloatMark 是 Obsidian/);
 assert.match(readmeSource, /FloatMark is an Obsidian plugin/);
-assert.match(readmeSource, /\[English\]\(\.\/README\.en\.md\)/);
+assert.match(readmeSource, /\[English\]\(https:\/\/github\.com\/wanghuan9\/obsidian-float-mark\/blob\/main\/README\.en\.md\)/);
 assert.match(englishReadmeSource, /FloatMark is an Obsidian plugin/);
-assert.match(englishReadmeSource, /\[简体中文\]\(\.\/README\.md\)/);
+assert.match(englishReadmeSource, /\[简体中文\]\(https:\/\/github\.com\/wanghuan9\/obsidian-float-mark\/blob\/main\/README\.md\)/);
 
 const stylesSource = await readFile("styles.css", "utf8");
 assert.doesNotMatch(stylesSource, /important/);
