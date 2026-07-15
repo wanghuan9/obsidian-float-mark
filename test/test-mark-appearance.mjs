@@ -186,7 +186,11 @@ assert.match(
 );
 assert.match(
 	stylesSource,
-	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview::before\s*\{[^}]*background: var\(--side-mark-marker-preview-accent\)/
+	/\.side-mark-sidebar\.side-mark-theme-retroma \.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview\s*\{[^}]*color-mix\(in srgb, var\(--side-mark-marker-preview-accent\) 18%, var\(--background-primary\)\)/
+);
+assert.match(
+	stylesSource,
+	/\.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview::before\s*\{[^}]*background-color: var\(--side-mark-marker-preview-accent\)/
 );
 assert.doesNotMatch(stylesSource, /\.side-mark-marker-card\.is-background-(?!none)[\w-]+/);
 

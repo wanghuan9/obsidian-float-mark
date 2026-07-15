@@ -3576,6 +3576,8 @@ function matchesCommonFilters(mark, filePath, options, query) {
 
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
+var RETROMA_THEME_CLASS = "side-mark-theme-retroma";
+var RETROMA_THEME_PROPERTY = "--retroma-folder-bg-color";
 var MARK_COLORS = [
   { color: "yellow", labelKey: "sidebar.yellow" },
   { color: "blue", labelKey: "sidebar.blue" },
@@ -3612,7 +3614,13 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   t(key, params) {
     return this.plugin.t(key, params);
   }
+  updateThemeCompatibilityClass() {
+    const view = this.contentEl.ownerDocument.defaultView;
+    const retromaThemeProperty = view == null ? void 0 : view.getComputedStyle(this.contentEl).getPropertyValue(RETROMA_THEME_PROPERTY);
+    this.contentEl.toggleClass(RETROMA_THEME_CLASS, Boolean(retromaThemeProperty == null ? void 0 : retromaThemeProperty.trim()));
+  }
   async onOpen() {
+    this.registerEvent(this.app.workspace.on("css-change", () => this.updateThemeCompatibilityClass()));
     await this.render();
   }
   focusMark(markId) {
@@ -3630,6 +3638,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const container = this.contentEl;
     container.empty();
     container.addClass("side-mark-sidebar");
+    this.updateThemeCompatibilityClass();
     const header = container.createDiv({ cls: "side-mark-sidebar-header" });
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
     titleRow.createEl("h3", { text: this.t("sidebar.title") });

@@ -10,20 +10,20 @@
 	--side-mark-icon-stroke: var(--icon-m-stroke-width, 1.75px);
 }
 
-.side-mark-toolbar svg.svg-icon,
-.side-mark-selection-menu svg.svg-icon,
-.side-mark-block-pill svg.svg-icon,
-.side-mark-block-menu svg.svg-icon,
-.side-mark-comment-popover svg.svg-icon,
-.side-mark-style-popover svg.svg-icon,
-.side-mark-sidebar svg.svg-icon {
+body .side-mark-toolbar svg.svg-icon,
+body .side-mark-selection-menu svg.svg-icon,
+body .side-mark-block-pill svg.svg-icon,
+body .side-mark-block-menu svg.svg-icon,
+body .side-mark-comment-popover svg.svg-icon,
+body .side-mark-style-popover svg.svg-icon,
+body .side-mark-sidebar svg.svg-icon {
 	display: block;
 	flex-shrink: 0;
-	width: var(--side-mark-icon-size) !important;
-	height: var(--side-mark-icon-size) !important;
+	width: var(--side-mark-icon-size);
+	height: var(--side-mark-icon-size);
 	min-width: var(--side-mark-icon-size);
 	min-height: var(--side-mark-icon-size);
-	stroke-width: var(--side-mark-icon-stroke) !important;
+	stroke-width: var(--side-mark-icon-stroke);
 	color: currentColor;
 	stroke: currentColor;
 	fill: none;
@@ -205,21 +205,21 @@
 	transform: translateY(0) scale(1);
 }
 
-.side-mark-selection-menu .side-mark-selection-menu-row {
+body .side-mark-selection-menu .side-mark-selection-menu-row {
 	display: grid;
 	grid-template-columns: 28px minmax(0, 1fr) 16px;
 	align-items: center;
 	box-sizing: border-box;
-	width: 100% !important;
+	width: 100%;
 	max-width: none;
 	min-width: 0;
 	min-height: 30px;
 	margin: 0;
-	padding: 0 8px !important;
-	border: 0 !important;
-	border-radius: 6px !important;
-	background: transparent !important;
-	box-shadow: none !important;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-normal);
 	text-align: left;
 	cursor: pointer;
@@ -228,13 +228,13 @@
 	line-height: 1;
 }
 
-.side-mark-selection-menu .side-mark-selection-menu-row:hover {
-	background: var(--background-modifier-hover) !important;
+body .side-mark-selection-menu .side-mark-selection-menu-row:hover {
+	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.side-mark-selection-menu .side-mark-selection-menu-row.is-active {
-	background: hsla(var(--color-accent-hsl, 220 85% 55%), 0.1) !important;
+body .side-mark-selection-menu .side-mark-selection-menu-row.is-active {
+	background: hsla(var(--color-accent-hsl, 220 85% 55%), 0.1);
 	color: var(--text-accent, var(--interactive-accent, #2f6df6));
 }
 
@@ -416,22 +416,22 @@
 	display: none;
 }
 
-.side-mark-block-menu .side-mark-block-menu-compact,
-.side-mark-block-menu .side-mark-block-menu-row {
+body .side-mark-block-menu .side-mark-block-menu-compact,
+body .side-mark-block-menu .side-mark-block-menu-row {
 	display: grid;
 	grid-template-columns: 28px minmax(0, 1fr) 16px;
 	align-items: center;
 	box-sizing: border-box;
-	width: 100% !important;
+	width: 100%;
 	max-width: none;
 	min-width: 0;
 	min-height: 30px;
 	margin: 0;
-	padding: 0 8px !important;
-	border: 0 !important;
-	border-radius: 6px !important;
-	background: transparent !important;
-	box-shadow: none !important;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-normal);
 	font-size: 13px;
 	font-weight: 400;
@@ -440,9 +440,9 @@
 	text-align: left;
 }
 
-.side-mark-block-menu .side-mark-block-menu-compact:hover,
-.side-mark-block-menu .side-mark-block-menu-row:hover {
-	background: var(--background-modifier-hover) !important;
+body .side-mark-block-menu .side-mark-block-menu-compact:hover,
+body .side-mark-block-menu .side-mark-block-menu-row:hover {
+	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
@@ -483,8 +483,8 @@
 	color: var(--text-muted);
 }
 
-.side-mark-block-menu-row.is-disabled:hover {
-	background: transparent !important;
+body .side-mark-block-menu-row.is-disabled:hover {
+	background: transparent;
 }
 
 .side-mark-block-menu-row.is-danger {
@@ -583,72 +583,92 @@
 	grid-auto-flow: row;
 }
 
-.side-mark-style-text-color,
-.side-mark-style-background-color {
+body .side-mark-style-popover .side-mark-style-text-row button.side-mark-style-text-color,
+body .side-mark-style-popover .side-mark-style-background-grid button.side-mark-style-background-color {
+	--button-border-radius: 5px;
+	--border-width: 1px;
+	--outline-color: var(--background-modifier-border);
+	--box-shadow: none;
+	--box-shadow-active: none;
+	--button-normal: var(--side-mark-style-background, var(--background-primary));
+	--button-hover: var(--side-mark-style-background, var(--background-primary));
+	--button-active: var(--side-mark-style-background, var(--background-primary));
+	--text-muted: var(--side-mark-style-color, var(--text-normal));
+	--font-bold: inherit;
+	appearance: none;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	width: 28px;
 	height: 28px;
-	min-height: 0;
+	min-width: 28px;
+	min-height: 28px;
+	max-width: 28px;
+	max-height: 28px;
 	padding: 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 5px;
 	background: var(--background-primary);
+	background-color: var(--side-mark-style-background, var(--background-primary));
+	background-image: none;
 	box-shadow: none;
-	color: var(--text-normal);
+	color: var(--side-mark-style-color, var(--text-normal));
 	cursor: pointer;
+	flex: 0 0 28px;
 	font-size: 17px;
 	line-height: 1;
 }
 
-.side-mark-style-text-color:hover,
-.side-mark-style-text-color.is-active,
-.side-mark-style-background-color:hover,
-.side-mark-style-background-color.is-active {
+body .side-mark-style-popover .side-mark-style-text-row button.side-mark-style-text-color:hover,
+body .side-mark-style-popover .side-mark-style-text-row button.side-mark-style-text-color.is-active,
+body .side-mark-style-popover .side-mark-style-background-grid button.side-mark-style-background-color:hover,
+body .side-mark-style-popover .side-mark-style-background-grid button.side-mark-style-background-color.is-active {
+	--outline-color: #2f6df6;
+	--box-shadow: inset 0 0 0 1px #2f6df6, 0 0 0 2px rgba(47, 109, 246, 0.14);
+	--box-shadow-active: inset 0 0 0 1px #2f6df6, 0 0 0 2px rgba(47, 109, 246, 0.14);
 	border-color: #2f6df6;
-	box-shadow: inset 0 0 0 1px #2f6df6, 0 0 0 2px rgba(47, 109, 246, 0.14);
+	box-shadow: var(--box-shadow);
 }
 
-.side-mark-style-text-color.is-default {
-	color: var(--text-normal);
+body .side-mark-style-popover button.side-mark-style-text-color.is-default {
+	--side-mark-style-color: var(--text-normal);
 }
 
-.side-mark-style-text-color.is-gray {
-	color: #8f959e;
+body .side-mark-style-popover button.side-mark-style-text-color.is-gray {
+	--side-mark-style-color: #8f959e;
 }
 
-.side-mark-style-text-color.is-red {
-	color: #e53935;
+body .side-mark-style-popover button.side-mark-style-text-color.is-red {
+	--side-mark-style-color: #e53935;
 }
 
-.side-mark-style-text-color.is-orange {
-	color: #ef7d00;
+body .side-mark-style-popover button.side-mark-style-text-color.is-orange {
+	--side-mark-style-color: #ef7d00;
 }
 
-.side-mark-style-text-color.is-yellow {
-	color: #d79a00;
+body .side-mark-style-popover button.side-mark-style-text-color.is-yellow {
+	--side-mark-style-color: #d79a00;
 }
 
-.side-mark-style-text-color.is-green {
-	color: #2ca01c;
+body .side-mark-style-popover button.side-mark-style-text-color.is-green {
+	--side-mark-style-color: #2ca01c;
 }
 
-.side-mark-style-text-color.is-blue {
-	color: #245bff;
+body .side-mark-style-popover button.side-mark-style-text-color.is-blue {
+	--side-mark-style-color: #245bff;
 }
 
-.side-mark-style-text-color.is-purple {
-	color: #6f35d8;
+body .side-mark-style-popover button.side-mark-style-text-color.is-purple {
+	--side-mark-style-color: #6f35d8;
 }
 
-.side-mark-style-background-color.is-none {
+body .side-mark-style-popover button.side-mark-style-background-color.is-none {
 	position: relative;
-	background: var(--background-primary);
 	overflow: hidden;
+	--side-mark-style-background: var(--background-primary);
 }
 
-.side-mark-style-background-color.is-none::after {
+body .side-mark-style-popover button.side-mark-style-background-color.is-none::after {
 	content: "";
 	position: absolute;
 	left: 1px;
@@ -661,73 +681,107 @@
 	transform-origin: left center;
 }
 
-.side-mark-style-background-color.is-gray-light {
-	background: #f0f1f3;
+body .side-mark-style-popover button.side-mark-style-background-color.is-gray-light {
+	--side-mark-style-background: #f0f1f3;
 }
 
-.side-mark-style-background-color.is-red-light {
-	background: #f8b8b8;
+body .side-mark-style-popover button.side-mark-style-background-color.is-red-light {
+	--side-mark-style-background: #f8b8b8;
 }
 
-.side-mark-style-background-color.is-orange-light {
-	background: #ffd8ad;
+body .side-mark-style-popover button.side-mark-style-background-color.is-orange-light {
+	--side-mark-style-background: #ffd8ad;
 }
 
-.side-mark-style-background-color.is-yellow-light {
-	background: #fff17a;
+body .side-mark-style-popover button.side-mark-style-background-color.is-yellow-light {
+	--side-mark-style-background: #fff17a;
 }
 
-.side-mark-style-background-color.is-green-light {
-	background: #c8f0c4;
+body .side-mark-style-popover button.side-mark-style-background-color.is-green-light {
+	--side-mark-style-background: #c8f0c4;
 }
 
-.side-mark-style-background-color.is-blue-light {
-	background: #cdd9ff;
+body .side-mark-style-popover button.side-mark-style-background-color.is-blue-light {
+	--side-mark-style-background: #cdd9ff;
 }
 
-.side-mark-style-background-color.is-purple-light {
-	background: #decaff;
+body .side-mark-style-popover button.side-mark-style-background-color.is-purple-light {
+	--side-mark-style-background: #decaff;
 }
 
-.side-mark-style-background-color.is-gray {
-	background: #d7dadf;
+body .side-mark-style-popover button.side-mark-style-background-color.is-gray {
+	--side-mark-style-background: #d7dadf;
 }
 
-.side-mark-style-background-color.is-red {
-	background: #f45f5f;
+body .side-mark-style-popover button.side-mark-style-background-color.is-red {
+	--side-mark-style-background: #f45f5f;
 }
 
-.side-mark-style-background-color.is-orange {
-	background: #ff9f3a;
+body .side-mark-style-popover button.side-mark-style-background-color.is-orange {
+	--side-mark-style-background: #ff9f3a;
 }
 
-.side-mark-style-background-color.is-yellow {
-	background: #ffe11c;
+body .side-mark-style-popover button.side-mark-style-background-color.is-yellow {
+	--side-mark-style-background: #ffe11c;
 }
 
-.side-mark-style-background-color.is-green {
-	background: #5fca50;
+body .side-mark-style-popover button.side-mark-style-background-color.is-green {
+	--side-mark-style-background: #5fca50;
 }
 
-.side-mark-style-background-color.is-blue {
-	background: #91aaff;
+body .side-mark-style-popover button.side-mark-style-background-color.is-blue {
+	--side-mark-style-background: #91aaff;
 }
 
-.side-mark-style-background-color.is-purple {
-	background: #b695f0;
+body .side-mark-style-popover button.side-mark-style-background-color.is-purple {
+	--side-mark-style-background: #b695f0;
 }
 
-.side-mark-style-reset {
+body .side-mark-style-popover button.side-mark-style-reset {
+	--button-border-radius: 5px;
+	--border-width: 1px;
+	--outline-color: var(--background-modifier-border);
+	--box-shadow: none;
+	--box-shadow-active: none;
+	--button-normal: var(--background-primary);
+	--button-hover: var(--background-primary);
+	--button-active: var(--background-primary);
+	--text-muted: var(--text-normal);
+	--font-bold: inherit;
+	appearance: none;
 	width: 100%;
 	min-height: 34px;
 	margin-top: 10px;
+	padding: 0 10px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 5px;
 	background: var(--background-primary);
+	background-color: var(--background-primary);
+	background-image: none;
 	box-shadow: none;
 	color: var(--text-normal);
 	font-size: 13px;
 	cursor: pointer;
+}
+
+body .side-mark-style-popover .side-mark-style-popover-header button.side-mark-icon-button {
+	--button-border-radius: 5px;
+	--border-width: 0px;
+	--outline-color: transparent;
+	--box-shadow: none;
+	--box-shadow-active: none;
+	--button-normal: transparent;
+	--button-hover: var(--background-modifier-hover);
+	--button-active: var(--background-modifier-hover);
+	--text-muted: var(--text-normal);
+	--font-bold: inherit;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	color: var(--text-normal);
 }
 
 .side-mark-comment-textarea {
@@ -990,7 +1044,7 @@
 	gap: 16px;
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-button {
+body .side-mark-sidebar button.side-mark-sidebar-scope-button {
 	position: relative;
 	display: inline-flex;
 	align-items: center;
@@ -998,10 +1052,10 @@
 	min-height: 24px;
 	padding: 3px 0 5px;
 	appearance: none;
-	border: 0 !important;
+	border: 0;
 	border-radius: 0;
-	background: transparent !important;
-	box-shadow: none !important;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-muted);
 	font-size: 11px;
 	font-weight: 600;
@@ -1011,12 +1065,12 @@
 	transition: color 120ms ease;
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-button:hover,
-.side-mark-sidebar button.side-mark-sidebar-scope-button:focus,
-.side-mark-sidebar button.side-mark-sidebar-scope-button:active {
-	border: 0 !important;
-	background-image: none !important;
-	box-shadow: none !important;
+body .side-mark-sidebar button.side-mark-sidebar-scope-button:hover,
+body .side-mark-sidebar button.side-mark-sidebar-scope-button:focus,
+body .side-mark-sidebar button.side-mark-sidebar-scope-button:active {
+	border: 0;
+	background-image: none;
+	box-shadow: none;
 }
 
 .side-mark-sidebar button.side-mark-sidebar-scope-button:not(.is-active):hover {
@@ -1030,14 +1084,14 @@
 	outline-offset: 3px;
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-button.is-active,
-.side-mark-sidebar button.side-mark-sidebar-scope-button[aria-pressed="true"],
-.side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:hover,
-.side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:focus,
-.side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:active {
-	background-color: transparent !important;
-	color: var(--text-accent) !important;
-	box-shadow: none !important;
+body .side-mark-sidebar button.side-mark-sidebar-scope-button.is-active,
+body .side-mark-sidebar button.side-mark-sidebar-scope-button[aria-pressed="true"],
+body .side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:hover,
+body .side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:focus,
+body .side-mark-sidebar button.side-mark-sidebar-scope-button.is-active:active {
+	background-color: transparent;
+	color: var(--text-accent);
+	box-shadow: none;
 }
 
 .side-mark-sidebar-scope-button.is-active::after {
@@ -1051,29 +1105,29 @@
 	content: "";
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-dropdown {
+body .side-mark-sidebar button.side-mark-sidebar-scope-dropdown {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	min-height: 26px;
 	padding: 3px 4px 3px 7px;
 	appearance: none;
-	border: 0 !important;
+	border: 0;
 	border-radius: 6px;
-	background: transparent !important;
-	box-shadow: none !important;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-muted);
 	font-size: 11px;
 	font-weight: 600;
 	cursor: pointer;
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-dropdown:hover,
-.side-mark-sidebar button.side-mark-sidebar-scope-dropdown:focus,
-.side-mark-sidebar button.side-mark-sidebar-scope-dropdown:active {
-	border: 0 !important;
-	background: var(--background-modifier-hover) !important;
-	box-shadow: none !important;
+body .side-mark-sidebar button.side-mark-sidebar-scope-dropdown:hover,
+body .side-mark-sidebar button.side-mark-sidebar-scope-dropdown:focus,
+body .side-mark-sidebar button.side-mark-sidebar-scope-dropdown:active {
+	border: 0;
+	background: var(--background-modifier-hover);
+	box-shadow: none;
 	color: var(--text-normal);
 }
 
@@ -1164,16 +1218,16 @@
 	color: var(--text-normal);
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-switch {
+body .side-mark-sidebar button.side-mark-sidebar-scope-switch {
 	position: relative;
 	width: 34px;
 	height: 24px;
 	min-width: 34px;
 	min-height: 24px;
 	padding: 0;
-	border: 0 !important;
-	background: transparent !important;
-	box-shadow: none !important;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
 	cursor: pointer;
 }
 
@@ -1205,12 +1259,12 @@
 	transform: translateX(16px);
 }
 
-.side-mark-sidebar button.side-mark-sidebar-scope-switch:hover,
-.side-mark-sidebar button.side-mark-sidebar-scope-switch:focus,
-.side-mark-sidebar button.side-mark-sidebar-scope-switch:active {
-	border: 0 !important;
-	background: transparent !important;
-	box-shadow: none !important;
+body .side-mark-sidebar button.side-mark-sidebar-scope-switch:hover,
+body .side-mark-sidebar button.side-mark-sidebar-scope-switch:focus,
+body .side-mark-sidebar button.side-mark-sidebar-scope-switch:active {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
 }
 
 .side-mark-sidebar button.side-mark-sidebar-scope-switch:hover .side-mark-sidebar-scope-switch-track,
@@ -1562,20 +1616,20 @@
 	z-index: 2;
 }
 
-.side-mark-color-option.is-yellow {
-	background: #f5be2a !important;
+body .side-mark-card .side-mark-color-menu .side-mark-color-option.is-yellow {
+	--side-mark-color-option-background: #f5be2a;
 }
 
-.side-mark-color-option.is-blue {
-	background: #4b96ff !important;
+body .side-mark-card .side-mark-color-menu .side-mark-color-option.is-blue {
+	--side-mark-color-option-background: #4b96ff;
 }
 
-.side-mark-color-option.is-green {
-	background: #44b87b !important;
+body .side-mark-card .side-mark-color-menu .side-mark-color-option.is-green {
+	--side-mark-color-option-background: #44b87b;
 }
 
-.side-mark-color-option.is-red {
-	background: #f25757 !important;
+body .side-mark-card .side-mark-color-menu .side-mark-color-option.is-red {
+	--side-mark-color-option-background: #f25757;
 }
 
 .side-mark-color-menu {
@@ -1593,37 +1647,47 @@
 	box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
 }
 
-.side-mark-color-menu .side-mark-color-option {
+body .side-mark-card .side-mark-color-menu button.side-mark-color-option {
+	--button-border-radius: 50%;
+	--border-width: 2px;
+	--outline-color: transparent;
+	--box-shadow: none;
+	--box-shadow-active: none;
+	--button-normal: var(--side-mark-color-option-background);
+	--button-hover: var(--side-mark-color-option-background);
+	--button-active: var(--side-mark-color-option-background);
+	--text-muted: rgba(15, 23, 42, 0.72);
+	--font-bold: inherit;
+	appearance: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
-	width: 20px !important;
-	height: 20px !important;
-	min-width: 20px !important;
-	min-height: 20px !important;
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	min-height: 20px;
 	margin: 0;
-	padding: 0 !important;
-	border: 2px solid transparent !important;
-	border-radius: 50% !important;
-	background-image: none !important;
-	box-shadow: none !important;
-	flex: none !important;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: 50%;
+	background-color: var(--side-mark-color-option-background);
+	background-image: none;
+	box-shadow: none;
+	flex: none;
 	color: rgba(15, 23, 42, 0.72);
 	cursor: pointer;
 	--side-mark-icon-size: 12px;
 	--side-mark-icon-stroke: 3px;
 }
 
-.side-mark-sidebar .side-mark-color-menu button.side-mark-color-option {
-	background-image: none !important;
-	box-shadow: none !important;
-}
-
-.side-mark-color-menu .side-mark-color-option:hover,
-.side-mark-color-menu .side-mark-color-option.is-active {
-	border-color: var(--background-primary) !important;
-	box-shadow: 0 0 0 2px var(--interactive-accent, rgba(47, 109, 246, 0.45)) !important;
+body .side-mark-card .side-mark-color-menu button.side-mark-color-option:hover,
+body .side-mark-card .side-mark-color-menu button.side-mark-color-option.is-active {
+	--outline-color: var(--background-primary);
+	--box-shadow: 0 0 0 2px var(--interactive-accent, rgba(47, 109, 246, 0.45));
+	--box-shadow-active: 0 0 0 2px var(--interactive-accent, rgba(47, 109, 246, 0.45));
+	border-color: var(--background-primary);
+	box-shadow: var(--box-shadow);
 }
 
 .side-mark-card-toolbar {
@@ -1670,12 +1734,23 @@
 	--side-mark-icon-stroke: var(--icon-xs-stroke-width, 2px);
 }
 
-.side-mark-sidebar button.side-mark-card-icon-button {
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button {
+	--button-border-radius: 5px;
+	--border-width: 0px;
+	--outline-color: transparent;
+	--box-shadow: none;
+	--box-shadow-active: none;
+	--button-normal: transparent;
+	--button-hover: transparent;
+	--button-active: transparent;
+	--font-bold: inherit;
 	border: 0;
+	border-radius: 5px;
 	background: transparent;
 	background-color: transparent;
 	background-image: none;
 	box-shadow: none;
+	color: var(--text-muted);
 }
 
 .side-mark-card-icon-button:hover {
@@ -1684,12 +1759,15 @@
 	color: var(--text-normal);
 }
 
-.side-mark-sidebar button.side-mark-card-icon-button:hover,
-.side-mark-sidebar button.side-mark-card-icon-button:focus,
-.side-mark-sidebar button.side-mark-card-icon-button:active {
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button:hover,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button:focus,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button:active {
+	--text-muted: var(--text-normal);
 	border: 0;
+	background-color: transparent;
 	background-image: none;
 	box-shadow: none;
+	color: var(--text-normal);
 }
 
 .side-mark-card-icon-button.is-confirming {
@@ -1909,21 +1987,27 @@
 	background: rgba(242, 87, 87, 0.07);
 }
 
-.side-mark-marker-card.is-background-none .side-mark-card-quote::before {
+body .side-mark-sidebar .side-mark-marker-card.is-background-none .side-mark-card-quote::before {
 	background: var(--background-modifier-border);
+	background-color: var(--background-modifier-border);
 }
 
-.side-mark-marker-card.is-background-none .side-mark-card-quote {
+body .side-mark-sidebar .side-mark-marker-card.is-background-none .side-mark-card-quote {
 	background: var(--background-secondary);
+	background-color: var(--background-secondary);
 }
 
-.side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview {
+body .side-mark-sidebar .side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview {
 	--side-mark-marker-preview-accent: var(--side-mark-marker-accent-color, var(--side-mark-background-color));
-	background: color-mix(in srgb, var(--side-mark-marker-preview-accent) 8%, var(--background-primary));
+	background-color: color-mix(in srgb, var(--side-mark-marker-preview-accent) 8%, var(--background-primary));
 }
 
-.side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview::before {
-	background: var(--side-mark-marker-preview-accent);
+body .side-mark-sidebar.side-mark-theme-retroma .side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview {
+	background-color: color-mix(in srgb, var(--side-mark-marker-preview-accent) 18%, var(--background-primary));
+}
+
+body .side-mark-sidebar .side-mark-marker-card:not(.is-background-none) .side-mark-marker-preview::before {
+	background-color: var(--side-mark-marker-preview-accent);
 }
 
 .side-mark-card-quote-text {
@@ -1995,7 +2079,7 @@
 	margin-top: 6px;
 }
 
-.side-mark-marker-swatch {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch {
 	display: inline-flex;
 	width: 10px;
 	height: 10px;
@@ -2022,92 +2106,93 @@
 	line-height: 16px;
 }
 
-.side-mark-marker-swatch.is-text-default,
-.side-mark-marker-swatch.is-background-none {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-default,
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-none {
 	background: var(--background-primary);
+	background-color: var(--background-primary);
 }
 
-.side-mark-marker-swatch.is-text-gray {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-gray {
 	background: #8f959e;
 }
 
-.side-mark-marker-swatch.is-text-red {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-red {
 	background: #e53935;
 }
 
-.side-mark-marker-swatch.is-text-orange {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-orange {
 	background: #ef7d00;
 }
 
-.side-mark-marker-swatch.is-text-yellow {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-yellow {
 	background: #d79a00;
 }
 
-.side-mark-marker-swatch.is-text-green {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-green {
 	background: #2ca01c;
 }
 
-.side-mark-marker-swatch.is-text-blue {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-blue {
 	background: #245bff;
 }
 
-.side-mark-marker-swatch.is-text-purple {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-text-purple {
 	background: #6f35d8;
 }
 
-.side-mark-marker-swatch.is-background-gray-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-gray-light {
 	background: #f0f1f3;
 }
 
-.side-mark-marker-swatch.is-background-red-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-red-light {
 	background: #f8b8b8;
 }
 
-.side-mark-marker-swatch.is-background-orange-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-orange-light {
 	background: #ffd8ad;
 }
 
-.side-mark-marker-swatch.is-background-yellow-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-yellow-light {
 	background: #fff17a;
 }
 
-.side-mark-marker-swatch.is-background-green-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-green-light {
 	background: #c8f0c4;
 }
 
-.side-mark-marker-swatch.is-background-blue-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-blue-light {
 	background: #cdd9ff;
 }
 
-.side-mark-marker-swatch.is-background-purple-light {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-purple-light {
 	background: #decaff;
 }
 
-.side-mark-marker-swatch.is-background-gray {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-gray {
 	background: #d7dadf;
 }
 
-.side-mark-marker-swatch.is-background-red {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-red {
 	background: #f45f5f;
 }
 
-.side-mark-marker-swatch.is-background-orange {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-orange {
 	background: #ff9f3a;
 }
 
-.side-mark-marker-swatch.is-background-yellow {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-yellow {
 	background: #ffe11c;
 }
 
-.side-mark-marker-swatch.is-background-green {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-green {
 	background: #5fca50;
 }
 
-.side-mark-marker-swatch.is-background-blue {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-blue {
 	background: #91aaff;
 }
 
-.side-mark-marker-swatch.is-background-purple {
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-purple {
 	background: #b695f0;
 }
 

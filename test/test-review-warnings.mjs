@@ -90,10 +90,12 @@ assert.match(englishReadmeSource, /FloatMark is an Obsidian plugin/);
 assert.match(englishReadmeSource, /\[简体中文\]\(\.\/README\.md\)/);
 
 const stylesSource = await readFile("styles.css", "utf8");
-const importantCount = stylesSource.match(/!important/g)?.length || 0;
-assert.equal(importantCount, 58);
-assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-color:/);
-assert.doesNotMatch(stylesSource, /background: transparent !important;\s*background-image:/);
-assert.doesNotMatch(stylesSource, /background: (#[0-9a-f]+) !important;\s*background-color: \1/i);
+assert.doesNotMatch(stylesSource, /important/);
+assert.match(stylesSource, /--button-normal: var\(--side-mark-style-background, var\(--background-primary\)\)/);
+assert.match(stylesSource, /--button-normal: var\(--side-mark-color-option-background\)/);
+assert.match(
+	stylesSource,
+	/body \.side-mark-sidebar\.side-mark-theme-retroma \.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview[\s\S]*?18%/
+);
 
 console.log("review warning tests passed");

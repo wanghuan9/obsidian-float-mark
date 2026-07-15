@@ -247,6 +247,9 @@ assert.match(sidebarSource, /data-side-mark-scope-control/);
 assert.match(sidebarSource, /showAtPosition/);
 assert.match(sidebarSource, /aria-expanded/);
 assert.match(sidebarSource, /return sortMarksByCreatedAt\(marks\.filter/);
+assert.match(sidebarSource, /RETROMA_THEME_PROPERTY = "--retroma-folder-bg-color"/);
+assert.match(sidebarSource, /this\.app\.workspace\.on\("css-change"/);
+assert.match(sidebarSource, /this\.contentEl\.toggleClass\(RETROMA_THEME_CLASS/);
 
 const typesSource = await readFile("src/types.ts", "utf8");
 assert.match(typesSource, /scopeControlStyle: "dropdown"/);
