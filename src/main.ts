@@ -39,7 +39,7 @@ import { getDefaultCommentAuthorName, getInitialPluginLanguage, normalizePluginL
 import { NavigationGuard } from "./navigation-guard";
 import { resolvePreviewSectionBounds, selectPreviewSections, type PreviewSectionBounds } from "./preview-sections";
 
-const READING_SELECTION_TOOLBAR_DELAY_MS = 100;
+const READING_SELECTION_TOOLBAR_DELAY_MS = 260;
 const READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 const EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 

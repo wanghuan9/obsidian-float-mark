@@ -2221,11 +2221,13 @@ var READING_BUTTONS = [
   { id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
   { id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
+var READING_TOOLBAR_HIDE_ANIMATION_MS = 140;
 var ReadingSelectionToolbar = class {
   constructor(onAction, t) {
     this.onAction = onAction;
     this.t = t;
     this.hideTimer = null;
+    this.hideAnimationTimer = null;
     this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
     this.el.hide();
     this.el.addEventListener("mousedown", (event) => event.preventDefault());
@@ -2253,6 +2255,7 @@ var ReadingSelectionToolbar = class {
   show(rect, boundary) {
     var _a, _b, _c, _d;
     this.cancelHide();
+    this.cancelHideAnimation();
     this.el.show();
     this.el.removeClass("is-visible");
     const width = this.el.offsetWidth;
@@ -2272,15 +2275,18 @@ var ReadingSelectionToolbar = class {
   }
   hide() {
     this.cancelHide();
+    this.cancelHideAnimation();
     this.el.removeClass("is-visible");
-    window.setTimeout(() => {
+    this.hideAnimationTimer = window.setTimeout(() => {
+      this.hideAnimationTimer = null;
       if (!this.el.hasClass("is-visible")) {
         this.el.hide();
       }
-    }, 140);
+    }, READING_TOOLBAR_HIDE_ANIMATION_MS);
   }
   destroy() {
     this.cancelHide();
+    this.cancelHideAnimation();
     this.el.remove();
   }
   scheduleHide() {
@@ -2291,6 +2297,12 @@ var ReadingSelectionToolbar = class {
     if (this.hideTimer !== null) {
       window.clearTimeout(this.hideTimer);
       this.hideTimer = null;
+    }
+  }
+  cancelHideAnimation() {
+    if (this.hideAnimationTimer !== null) {
+      window.clearTimeout(this.hideAnimationTimer);
+      this.hideAnimationTimer = null;
     }
   }
 };
@@ -6064,7 +6076,7 @@ function readNumber(value) {
 }
 
 // src/main.ts
-var READING_SELECTION_TOOLBAR_DELAY_MS = 100;
+var READING_SELECTION_TOOLBAR_DELAY_MS = 260;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 var EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 var SideMarkPlugin = class extends import_obsidian10.Plugin {

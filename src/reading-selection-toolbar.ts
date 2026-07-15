@@ -14,10 +14,12 @@ const READING_BUTTONS: ReadingButton[] = [
 	{ id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
 	{ id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
+const READING_TOOLBAR_HIDE_ANIMATION_MS = 140;
 
 export class ReadingSelectionToolbar {
 	private readonly el: HTMLDivElement;
 	private hideTimer: number | null = null;
+	private hideAnimationTimer: number | null = null;
 
 	constructor(private readonly onAction: (action: ReadingSelectionAction) => void, private readonly t: (key: I18nKey) => string) {
 		this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
@@ -47,6 +49,7 @@ export class ReadingSelectionToolbar {
 
 	show(rect: DOMRect, boundary?: DOMRect): void {
 		this.cancelHide();
+		this.cancelHideAnimation();
 		this.el.show();
 		this.el.removeClass("is-visible");
 		const width = this.el.offsetWidth;
@@ -67,16 +70,19 @@ export class ReadingSelectionToolbar {
 
 	hide(): void {
 		this.cancelHide();
+		this.cancelHideAnimation();
 		this.el.removeClass("is-visible");
-		window.setTimeout(() => {
+		this.hideAnimationTimer = window.setTimeout(() => {
+			this.hideAnimationTimer = null;
 			if (!this.el.hasClass("is-visible")) {
 				this.el.hide();
 			}
-		}, 140);
+		}, READING_TOOLBAR_HIDE_ANIMATION_MS);
 	}
 
 	destroy(): void {
 		this.cancelHide();
+		this.cancelHideAnimation();
 		this.el.remove();
 	}
 
@@ -89,6 +95,13 @@ export class ReadingSelectionToolbar {
 		if (this.hideTimer !== null) {
 			window.clearTimeout(this.hideTimer);
 			this.hideTimer = null;
+		}
+	}
+
+	private cancelHideAnimation(): void {
+		if (this.hideAnimationTimer !== null) {
+			window.clearTimeout(this.hideAnimationTimer);
+			this.hideAnimationTimer = null;
 		}
 	}
 }
