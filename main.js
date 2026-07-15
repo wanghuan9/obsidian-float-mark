@@ -199,7 +199,10 @@ function relocateAnchor(source, anchor, options = {}) {
   }
   const matches = findExactMatches(source, anchor.selectedText);
   if (matches.length === 1) {
-    return createTextAnchor(source, matches[0], matches[0] + anchor.selectedText.length);
+    const match = matches[0];
+    if (match !== void 0) {
+      return createTextAnchor(source, match, match + anchor.selectedText.length);
+    }
   }
   return null;
 }
@@ -2218,11 +2221,14 @@ var READING_BUTTONS = [
   { id: "highlight", icon: "highlighter", titleKey: "toolbar.highlight" },
   { id: "comment", icon: "message-square-text", titleKey: "toolbar.comment" }
 ];
+var READING_TOOLBAR_HIDE_ANIMATION_MS = 140;
 var ReadingSelectionToolbar = class {
   constructor(onAction, t) {
     this.onAction = onAction;
     this.t = t;
     this.hideTimer = null;
+    this.hideAnimationTimer = null;
+    this.showAnimationFrame = null;
     this.el = getActiveBody().createDiv({ cls: "side-mark-toolbar side-mark-reading-selection-toolbar" });
     this.el.hide();
     this.el.addEventListener("mousedown", (event) => event.preventDefault());
@@ -2250,6 +2256,8 @@ var ReadingSelectionToolbar = class {
   show(rect, boundary) {
     var _a, _b, _c, _d;
     this.cancelHide();
+    this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.show();
     this.el.removeClass("is-visible");
     const width = this.el.offsetWidth;
@@ -2265,19 +2273,27 @@ var ReadingSelectionToolbar = class {
     const top = clamp4(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
-    window.requestAnimationFrame(() => this.el.addClass("is-visible"));
+    this.showAnimationFrame = window.requestAnimationFrame(() => {
+      this.showAnimationFrame = null;
+      this.el.addClass("is-visible");
+    });
   }
   hide() {
     this.cancelHide();
+    this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.removeClass("is-visible");
-    window.setTimeout(() => {
+    this.hideAnimationTimer = window.setTimeout(() => {
+      this.hideAnimationTimer = null;
       if (!this.el.hasClass("is-visible")) {
         this.el.hide();
       }
-    }, 140);
+    }, READING_TOOLBAR_HIDE_ANIMATION_MS);
   }
   destroy() {
     this.cancelHide();
+    this.cancelHideAnimation();
+    this.cancelShowAnimationFrame();
     this.el.remove();
   }
   scheduleHide() {
@@ -2288,6 +2304,18 @@ var ReadingSelectionToolbar = class {
     if (this.hideTimer !== null) {
       window.clearTimeout(this.hideTimer);
       this.hideTimer = null;
+    }
+  }
+  cancelHideAnimation() {
+    if (this.hideAnimationTimer !== null) {
+      window.clearTimeout(this.hideAnimationTimer);
+      this.hideAnimationTimer = null;
+    }
+  }
+  cancelShowAnimationFrame() {
+    if (this.showAnimationFrame !== null) {
+      window.cancelAnimationFrame(this.showAnimationFrame);
+      this.showAnimationFrame = null;
     }
   }
 };
@@ -3573,6 +3601,8 @@ function matchesCommonFilters(mark, filePath, options, query) {
 
 // src/sidebar-view.ts
 var SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
+var RETROMA_THEME_CLASS = "side-mark-theme-retroma";
+var RETROMA_THEME_PROPERTY = "--retroma-folder-bg-color";
 var MARK_COLORS = [
   { color: "yellow", labelKey: "sidebar.yellow" },
   { color: "blue", labelKey: "sidebar.blue" },
@@ -3609,7 +3639,13 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   t(key, params) {
     return this.plugin.t(key, params);
   }
+  updateThemeCompatibilityClass() {
+    const view = this.contentEl.ownerDocument.defaultView;
+    const retromaThemeProperty = view == null ? void 0 : view.getComputedStyle(this.contentEl).getPropertyValue(RETROMA_THEME_PROPERTY);
+    this.contentEl.toggleClass(RETROMA_THEME_CLASS, Boolean(retromaThemeProperty == null ? void 0 : retromaThemeProperty.trim()));
+  }
   async onOpen() {
+    this.registerEvent(this.app.workspace.on("css-change", () => this.updateThemeCompatibilityClass()));
     await this.render();
   }
   focusMark(markId) {
@@ -3627,6 +3663,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     const container = this.contentEl;
     container.empty();
     container.addClass("side-mark-sidebar");
+    this.updateThemeCompatibilityClass();
     const header = container.createDiv({ cls: "side-mark-sidebar-header" });
     const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
     titleRow.createEl("h3", { text: this.t("sidebar.title") });
@@ -4711,9 +4748,7 @@ function formatReplyTime(value, t) {
 }
 
 // src/lark-bridge.ts
-var import_child_process = require("child_process");
 var import_obsidian9 = require("obsidian");
-var import_util = require("util");
 
 // src/block-map.ts
 var LARK_BINDING_KEYS = /* @__PURE__ */ new Set([
@@ -4894,10 +4929,47 @@ function createLineStarts(markdown) {
   return starts;
 }
 
+// src/lark-cli-bridge.ts
+async function executeLarkCliCommand(syncPlugin, args, missingCommandMessage) {
+  const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
+  if (!runLarkCliCommand) {
+    throw new Error(missingCommandMessage);
+  }
+  return await runLarkCliCommand.call(syncPlugin, args);
+}
+function buildLarkReplyListArgs(fileToken, commentId) {
+  return [
+    "drive",
+    "file.comment.replys",
+    "list",
+    "--as",
+    "user",
+    "--file-token",
+    fileToken,
+    "--file-type",
+    "docx",
+    "--comment-id",
+    commentId,
+    "--page-size",
+    "100",
+    "--json"
+  ];
+}
+function getLarkReplyIds(result) {
+  var _a;
+  const items = ((_a = result.data) == null ? void 0 : _a.items) || result.items || [];
+  return items.map((item) => item.reply_id || "").filter(Boolean);
+}
+function assertLarkCommandOk(result, fallbackMessage) {
+  var _a, _b;
+  if (result.ok === false) {
+    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || fallbackMessage);
+  }
+}
+
 // src/lark-bridge.ts
 var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
-var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 async function syncMarkToLark(plugin, file, source, mark) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const binding = readLarkBinding(source);
@@ -5041,10 +5113,6 @@ function getDeleteAllLarkReplyIds(remote) {
 }
 function getStoredLarkReplyIdList(remote) {
   return ((remote == null ? void 0 : remote.larkReplyIds) || []).filter(isNonEmptyString);
-}
-function getLarkReplyItems(result) {
-  var _a;
-  return ((_a = result.data) == null ? void 0 : _a.items) || result.items || [];
 }
 function isNonEmptyString(value) {
   return Boolean(value);
@@ -5308,25 +5376,10 @@ async function runLarkPatchComment(plugin, input) {
 }
 async function findLarkReplyIds(plugin, doc, commentId) {
   try {
-    const result = await runRawLarkCliViaSyncPlugin(plugin, [
-      "drive",
-      "file.comment.replys",
-      "list",
-      "--as",
-      "user",
-      "--file-token",
-      extractDocumentToken(doc),
-      "--file-type",
-      "docx",
-      "--comment-id",
-      commentId,
-      "--page-size",
-      "100",
-      "--json"
-    ]);
+    const args = buildLarkReplyListArgs(extractDocumentToken(doc), commentId);
+    const result = await runLarkCliViaSyncPlugin(plugin, args);
     assertLarkCommandOk(result, plugin.t("error.larkGetRepliesFailed"));
-    const items = getLarkReplyItems(result);
-    return items.map((item) => item.reply_id || "").filter(Boolean);
+    return getLarkReplyIds(result);
   } catch (error) {
     const message = getExecErrorMessage(error);
     if (message) {
@@ -5334,23 +5387,6 @@ async function findLarkReplyIds(plugin, doc, commentId) {
     }
     throw error;
   }
-}
-async function runRawLarkCliViaSyncPlugin(plugin, args) {
-  var _a, _b;
-  const status = getLarkSyncPluginStatus(plugin);
-  if (status !== "enabled") {
-    throw new Error(plugin.t("error.larkPluginUnavailable", {
-      status: getLarkSyncPluginStatusText(status, plugin.settings.language)
-    }));
-  }
-  const syncPlugin = getLarkSyncPluginBridge(plugin);
-  const executable = await ((_a = syncPlugin == null ? void 0 : syncPlugin.resolveLarkCliPath) == null ? void 0 : _a.call(syncPlugin)) || "lark-cli";
-  const env = await ((_b = syncPlugin == null ? void 0 : syncPlugin.buildCommandEnvironment) == null ? void 0 : _b.call(syncPlugin, executable)) || process.env;
-  const { stdout } = await execFileAsync(executable, args, {
-    env,
-    maxBuffer: 20 * 1024 * 1024
-  });
-  return JSON.parse(stdout.toString());
 }
 async function runLarkDeleteReply(plugin, input) {
   try {
@@ -5387,17 +5423,7 @@ async function runLarkCliViaSyncPlugin(plugin, args) {
     }));
   }
   const syncPlugin = getLarkSyncPluginBridge(plugin);
-  const runLarkCliCommand = (syncPlugin == null ? void 0 : syncPlugin.runLarkCliCommand) || (syncPlugin == null ? void 0 : syncPlugin.runLarkCli);
-  if (!runLarkCliCommand) {
-    throw new Error(plugin.t("error.larkPluginNoCli"));
-  }
-  return await runLarkCliCommand.call(syncPlugin, args);
-}
-function assertLarkCommandOk(result, fallbackMessage) {
-  var _a, _b;
-  if (result.ok === false) {
-    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || fallbackMessage);
-  }
+  return await executeLarkCliCommand(syncPlugin, args, plugin.t("error.larkPluginNoCli"));
 }
 function getExecErrorMessage(error) {
   if (!error || typeof error !== "object") {
@@ -6063,7 +6089,7 @@ function readNumber(value) {
 }
 
 // src/main.ts
-var READING_SELECTION_TOOLBAR_DELAY_MS = 100;
+var READING_SELECTION_TOOLBAR_DELAY_MS = 260;
 var READING_SELECTION_HIGHLIGHT_NAME = "side-mark-reading-selection";
 var EDITOR_DOCUMENT_SAVE_DELAY_MS = 150;
 var SideMarkPlugin = class extends import_obsidian10.Plugin {

@@ -1,10 +1,12 @@
 # FloatMark
 
-[简体中文](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.md) | [English](https://github.com/wanghuan9/obsidian-float-mark/blob/main/README.en.md)
+[简体中文](./README.md) | [English](./README.en.md)
 
 FloatMark 是 Obsidian 的标注、评论与浮动快速操作工具栏插件，在本地笔记中提供类似飞书 / Lark 文档的操作体验。
 
 它围绕三个核心场景：给正文做高亮标注，在侧边栏管理评论讨论，以及通过选区浮窗和块左侧菜单快速处理文本与内容块。评论也可按需同步到飞书 / Lark。
+
+FloatMark is an Obsidian plugin for inline highlights, comments, and floating quick-action toolbars. It brings a Feishu / Lark Docs-like workflow to local notes, with optional comment synchronization to Feishu / Lark.
 
 ## 功能
 

@@ -1,14 +1,19 @@
-import { execFile } from "child_process";
 import { FileSystemAdapter, TFile } from "obsidian";
-import { promisify } from "util";
 import type SideMarkPlugin from "./main";
 import { findRemoteBlockId, type RemoteUnit } from "./block-map";
+import {
+	assertLarkCommandOk,
+	buildLarkReplyListArgs,
+	executeLarkCliCommand,
+	getLarkReplyIds,
+	type LarkCliResult,
+	type LarkSyncPluginBridge
+} from "./lark-cli-bridge";
 import type { RemoteSyncState, SideMark } from "./types";
 import { translate, type PluginLanguage } from "./i18n";
 
 export const LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 const SYNC_STATE_FILE = "lark-sync-state.json";
-const execFileAsync = promisify(execFile);
 
 export type LarkSyncPluginStatus = "enabled" | "disabled" | "not-installed" | "unknown";
 
@@ -20,26 +25,6 @@ interface LarkSyncStateFile {
 		titleBlockId?: string;
 		units: RemoteUnit[];
 	}>;
-}
-
-interface LarkCliResult {
-	ok?: boolean;
-	data?: {
-		comment_id?: string;
-		reply_id?: string;
-		items?: Array<{
-			reply_id?: string;
-		}>;
-	};
-	items?: Array<{
-		reply_id?: string;
-	}>;
-	comment_id?: string;
-	reply_id?: string;
-	error?: {
-		message?: string;
-		hint?: string;
-	};
 }
 
 interface LarkReply {
@@ -57,13 +42,6 @@ interface ObsidianPluginManager {
 
 interface AppWithPluginManager {
 	plugins?: ObsidianPluginManager;
-}
-
-interface LarkSyncPluginBridge {
-	runLarkCliCommand?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
-	runLarkCli?: (args: string[], options?: { cwd?: string }) => Promise<LarkCliResult>;
-	resolveLarkCliPath?: () => Promise<string>;
-	buildCommandEnvironment?: (executable: string) => Promise<NodeJS.ProcessEnv>;
 }
 
 export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source: string, mark: SideMark): Promise<RemoteSyncState> {
@@ -534,27 +512,10 @@ async function runLarkPatchComment(plugin: SideMarkPlugin, input: { doc: string;
 
 async function findLarkReplyIds(plugin: SideMarkPlugin, doc: string, commentId: string): Promise<string[]> {
 	try {
-		const result = await runRawLarkCliViaSyncPlugin(plugin, [
-			"drive",
-			"file.comment.replys",
-			"list",
-			"--as",
-			"user",
-			"--file-token",
-			extractDocumentToken(doc),
-			"--file-type",
-			"docx",
-			"--comment-id",
-			commentId,
-			"--page-size",
-			"100",
-			"--json"
-		]);
+		const args = buildLarkReplyListArgs(extractDocumentToken(doc), commentId);
+		const result = await runLarkCliViaSyncPlugin(plugin, args);
 		assertLarkCommandOk(result, plugin.t("error.larkGetRepliesFailed"));
-		const items = getLarkReplyItems(result);
-		return items
-			.map((item) => item.reply_id || "")
-			.filter(Boolean);
+		return getLarkReplyIds(result);
 	} catch (error) {
 		const message = getExecErrorMessage(error);
 		if (message) {
@@ -562,23 +523,6 @@ async function findLarkReplyIds(plugin: SideMarkPlugin, doc: string, commentId: 
 		}
 		throw error;
 	}
-}
-
-async function runRawLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): Promise<LarkCliResult> {
-	const status = getLarkSyncPluginStatus(plugin);
-	if (status !== "enabled") {
-		throw new Error(plugin.t("error.larkPluginUnavailable", {
-			status: getLarkSyncPluginStatusText(status, plugin.settings.language)
-		}));
-	}
-	const syncPlugin = getLarkSyncPluginBridge(plugin);
-	const executable = await syncPlugin?.resolveLarkCliPath?.() || "lark-cli";
-	const env = await syncPlugin?.buildCommandEnvironment?.(executable) || process.env;
-	const { stdout } = await execFileAsync(executable, args, {
-		env,
-		maxBuffer: 20 * 1024 * 1024
-	});
-	return JSON.parse(stdout.toString()) as LarkCliResult;
 }
 
 async function runLarkDeleteReply(plugin: SideMarkPlugin, input: { doc: string; commentId: string; replyId: string }): Promise<LarkCliResult> {
@@ -617,17 +561,7 @@ async function runLarkCliViaSyncPlugin(plugin: SideMarkPlugin, args: string[]): 
 		}));
 	}
 	const syncPlugin = getLarkSyncPluginBridge(plugin);
-	const runLarkCliCommand = syncPlugin?.runLarkCliCommand || syncPlugin?.runLarkCli;
-	if (!runLarkCliCommand) {
-		throw new Error(plugin.t("error.larkPluginNoCli"));
-	}
-	return await runLarkCliCommand.call(syncPlugin, args);
-}
-
-function assertLarkCommandOk(result: LarkCliResult, fallbackMessage: string): void {
-	if (result.ok === false) {
-		throw new Error(result.error?.message || result.error?.hint || fallbackMessage);
-	}
+	return await executeLarkCliCommand(syncPlugin, args, plugin.t("error.larkPluginNoCli"));
 }
 
 function getExecErrorMessage(error: unknown): string {

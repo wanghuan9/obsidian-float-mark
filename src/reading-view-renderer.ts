@@ -309,7 +309,7 @@ function collectTextNodes(container: HTMLElement, excludedContainerSelector?: st
 		textNodes.push(node as Text);
 		node = walker.nextNode();
 	}
-	const nextContentBlocks: Array<Element | null> = new Array(textNodes.length).fill(null);
+	const nextContentBlocks = new Array<Element | null>(textNodes.length).fill(null);
 	let nextContentBlock: Element | null = null;
 	for (let index = textNodes.length - 1; index >= 0; index -= 1) {
 		nextContentBlocks[index] = nextContentBlock;
@@ -651,7 +651,7 @@ function stripInlineCodeSyntax(
 	const closingRuns = buildClosingCodeRuns(text, removableRuns);
 	let result = "";
 	let index = 0;
-	const prefixStart = truncatedRuns.prefixClosingStarts.values().next().value as number | undefined;
+	const prefixStart = truncatedRuns.prefixClosingStarts.values().next().value;
 	if (prefixStart !== undefined) {
 		result += protectContent(text.slice(0, prefixStart));
 		index = prefixStart + countCodeTicks(text, prefixStart);

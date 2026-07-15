@@ -19,6 +19,8 @@ import {
 export const SIDE_MARK_VIEW_TYPE = "side-mark-sidebar";
 
 type SideMarkTagFilter = "all";
+const RETROMA_THEME_CLASS = "side-mark-theme-retroma";
+const RETROMA_THEME_PROPERTY = "--retroma-folder-bg-color";
 const MARK_COLORS: Array<{ color: MarkColor; labelKey: I18nKey }> = [
 	{ color: "yellow", labelKey: "sidebar.yellow" },
 	{ color: "blue", labelKey: "sidebar.blue" },
@@ -61,7 +63,14 @@ export class SideMarkSidebarView extends ItemView {
 		return this.plugin.t(key, params);
 	}
 
+	private updateThemeCompatibilityClass(): void {
+		const view = this.contentEl.ownerDocument.defaultView;
+		const retromaThemeProperty = view?.getComputedStyle(this.contentEl).getPropertyValue(RETROMA_THEME_PROPERTY);
+		this.contentEl.toggleClass(RETROMA_THEME_CLASS, Boolean(retromaThemeProperty?.trim()));
+	}
+
 	async onOpen(): Promise<void> {
+		this.registerEvent(this.app.workspace.on("css-change", () => this.updateThemeCompatibilityClass()));
 		await this.render();
 	}
 
@@ -80,6 +89,7 @@ export class SideMarkSidebarView extends ItemView {
 		const container = this.contentEl;
 		container.empty();
 		container.addClass("side-mark-sidebar");
+		this.updateThemeCompatibilityClass();
 		const header = container.createDiv({ cls: "side-mark-sidebar-header" });
 		const titleRow = header.createDiv({ cls: "side-mark-sidebar-title-row" });
 		titleRow.createEl("h3", { text: this.t("sidebar.title") });
