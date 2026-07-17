@@ -2,7 +2,7 @@ import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
 import type { I18nKey } from "./i18n";
 import { calculatePopoverPosition } from "./popover-position";
-import type { MarkBackgroundColor, MarkTextColor } from "./types";
+import { getCustomMarkBackgroundHex, normalizeMarkBackgroundColor, type MarkBackgroundColor, type MarkTextColor } from "./types";
 
 export interface MarkStyleChoice {
 	textColor: MarkTextColor;
@@ -52,6 +52,9 @@ export class MarkStylePopover {
 	private readonly el: HTMLDivElement;
 	private readonly textColorButtons = new Map<MarkTextColor, HTMLButtonElement>();
 	private readonly backgroundColorButtons = new Map<MarkBackgroundColor, HTMLButtonElement>();
+	private customBackgroundControl!: HTMLLabelElement;
+	private customBackgroundInput!: HTMLInputElement;
+	private customBackgroundPickerOpen = false;
 	private textColor: MarkTextColor = "default";
 	private backgroundColor: MarkBackgroundColor = "none";
 	private onChange: ((choice: MarkStyleChoice) => void) | null = null;
@@ -106,6 +109,7 @@ export class MarkStylePopover {
 
 	hide(): void {
 		this.cancelHide();
+		this.customBackgroundPickerOpen = false;
 		this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
 		this.el.removeClass("is-visible");
 		this.onChange = null;
@@ -162,6 +166,46 @@ export class MarkStylePopover {
 			});
 			this.backgroundColorButtons.set(item.color, button);
 		}
+		const customLabel = this.t("style.background.custom");
+		this.customBackgroundControl = grid.createEl("label", {
+			cls: "side-mark-style-custom-color",
+			attr: { title: customLabel }
+		});
+		this.customBackgroundControl.createSpan({
+			cls: "side-mark-style-custom-color-preview",
+			attr: { "aria-hidden": "true" }
+		});
+		this.customBackgroundInput = this.customBackgroundControl.createEl("input", {
+			cls: "side-mark-style-custom-color-input",
+			attr: { type: "color", value: "#ff6600", "aria-label": customLabel }
+		});
+		this.customBackgroundInput.addEventListener("focus", () => this.cancelHide());
+		this.customBackgroundInput.addEventListener("blur", () => this.scheduleHide());
+		this.customBackgroundInput.addEventListener("click", () => {
+			this.customBackgroundPickerOpen = true;
+			this.cancelHide();
+		});
+		this.customBackgroundInput.addEventListener("input", () => {
+			this.applyCustomBackgroundInput();
+		});
+		this.customBackgroundInput.addEventListener("cancel", () => {
+			this.customBackgroundPickerOpen = false;
+			this.renderActiveState();
+		});
+		this.customBackgroundInput.addEventListener("change", () => {
+			this.customBackgroundPickerOpen = false;
+			this.applyCustomBackgroundInput();
+		});
+	}
+
+	private applyCustomBackgroundInput(): void {
+		const nextBackgroundColor = normalizeMarkBackgroundColor(`custom-${this.customBackgroundInput.value}`);
+		if (nextBackgroundColor === this.backgroundColor) {
+			return;
+		}
+		this.backgroundColor = nextBackgroundColor;
+		this.renderActiveState();
+		this.emitChange();
 	}
 
 	private renderResetButton(): void {
@@ -185,6 +229,14 @@ export class MarkStylePopover {
 		for (const [color, button] of this.backgroundColorButtons) {
 			button.toggleClass("is-active", color === this.backgroundColor);
 		}
+		const customBackground = getCustomMarkBackgroundHex(this.backgroundColor);
+		this.customBackgroundControl.toggleClass("is-active", customBackground !== null);
+		if (customBackground) {
+			this.customBackgroundInput.value = customBackground;
+			this.customBackgroundControl.style.setProperty("--side-mark-custom-picker-color", customBackground);
+		} else {
+			this.customBackgroundControl.style.removeProperty("--side-mark-custom-picker-color");
+		}
 	}
 
 	private emitChange(): void {
@@ -195,6 +247,9 @@ export class MarkStylePopover {
 	}
 
 	private scheduleHide(): void {
+		if (this.customBackgroundPickerOpen || this.el.doc.activeElement === this.customBackgroundInput) {
+			return;
+		}
 		this.cancelHide();
 		this.hideTimer = window.setTimeout(() => this.hide(), 420);
 	}

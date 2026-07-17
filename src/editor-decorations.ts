@@ -1,7 +1,7 @@
 import { RangeSet, type Range } from "@codemirror/state";
 import { Decoration, type DecorationSet } from "@codemirror/view";
-import { hasContinuousMarkPaint } from "./mark-appearance";
-import type { SideMark } from "./types";
+import { getMarkBackgroundClass, hasContinuousMarkPaint } from "./mark-appearance";
+import { getCustomMarkBackgroundHex, type SideMark } from "./types";
 
 export interface PendingEditorSelection {
 	from: number;
@@ -31,6 +31,14 @@ export function buildEditorDecorationLayers(
 		}
 		const hasContinuousPaint = hasContinuousMarkPaint(mark);
 		const regularBackground = hasContinuousPaint ? "none" : mark.mark.backgroundColor;
+		const customBackground = getCustomMarkBackgroundHex(mark.mark.backgroundColor);
+		const attributes: Record<string, string> = {
+			"data-side-mark-id": mark.id,
+			title: mark.note.content || "FloatMark"
+		};
+		if (customBackground) {
+			attributes.style = `--side-mark-background-color: ${customBackground}`;
+		}
 		regularRanges.push(Decoration.mark({
 			class: [
 				"side-mark",
@@ -38,16 +46,16 @@ export function buildEditorDecorationLayers(
 				`side-mark--${mark.mark.kind}`,
 				`side-mark--${mark.mark.color}`,
 				`side-mark--text-${mark.mark.textColor}`,
-				`side-mark--background-${regularBackground}`
+				getMarkBackgroundClass(regularBackground)
 			].filter(Boolean).join(" "),
-			attributes: {
-				"data-side-mark-id": mark.id,
-				title: mark.note.content || "FloatMark"
-			}
+			attributes
 		}).range(from, to));
 		if (hasContinuousPaint) {
 			outerRanges.push(Decoration.mark({
-				class: buildOuterPaintClasses(mark)
+				class: buildOuterPaintClasses(mark),
+				attributes: customBackground
+					? { style: `--side-mark-background-color: ${customBackground}` }
+					: undefined
 			}).range(from, to));
 		}
 	}
@@ -61,7 +69,7 @@ export function buildEditorDecorationLayers(
 function buildOuterPaintClasses(mark: SideMark): string {
 	const paintClass = mark.mark.kind === "comment"
 		? `side-mark--${mark.mark.color}`
-		: `side-mark--background-${mark.mark.backgroundColor}`;
+		: getMarkBackgroundClass(mark.mark.backgroundColor);
 	return [
 		"side-mark-editor-background",
 		`side-mark--${mark.mark.kind}`,

@@ -51,7 +51,60 @@ function isInputEvent(event) {
 var import_state = require("@codemirror/state");
 var import_view = require("@codemirror/view");
 
+// src/types.ts
+var DATA_DIR = ".obsidian-float-marks";
+var PRESET_MARK_BACKGROUND_COLORS = [
+  "none",
+  "gray-light",
+  "red-light",
+  "orange-light",
+  "yellow-light",
+  "green-light",
+  "blue-light",
+  "purple-light",
+  "gray",
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple"
+];
+var PRESET_MARK_BACKGROUND_COLOR_SET = new Set(PRESET_MARK_BACKGROUND_COLORS);
+var CUSTOM_MARK_BACKGROUND_COLOR_PATTERN = /^custom-#[0-9a-fA-F]{6}$/;
+function normalizeMarkBackgroundColor(value) {
+  if (typeof value !== "string") {
+    return "none";
+  }
+  if (PRESET_MARK_BACKGROUND_COLOR_SET.has(value)) {
+    return value;
+  }
+  return CUSTOM_MARK_BACKGROUND_COLOR_PATTERN.test(value) ? value.toLowerCase() : "none";
+}
+function getCustomMarkBackgroundHex(color) {
+  return CUSTOM_MARK_BACKGROUND_COLOR_PATTERN.test(color) ? color.slice("custom-".length).toLowerCase() : null;
+}
+function normalizeScopeControlStyle(value) {
+  if (value === "tabs" || value === "dropdown" || value === "swap" || value === "switch") {
+    return value;
+  }
+  return "dropdown";
+}
+var DEFAULT_SETTINGS = {
+  dataDir: DATA_DIR,
+  language: void 0,
+  autoOpenSidebar: true,
+  showBlockToolbar: true,
+  autoSyncToLark: false,
+  preferBodyBlockForLark: false,
+  commentAuthorName: "\u6211",
+  scopeControlStyle: "dropdown"
+};
+
 // src/mark-appearance.ts
+function getMarkBackgroundClass(color) {
+  return getCustomMarkBackgroundHex(color) ? "side-mark--background-custom" : `side-mark--background-${color}`;
+}
 function hasContinuousMarkPaint(mark) {
   return mark.mark.kind === "comment" || mark.mark.kind === "highlight" && mark.mark.backgroundColor !== "none";
 }
@@ -104,6 +157,14 @@ function buildEditorDecorationLayers(marks, docLength, pendingSelection) {
     }
     const hasContinuousPaint = hasContinuousMarkPaint(mark);
     const regularBackground = hasContinuousPaint ? "none" : mark.mark.backgroundColor;
+    const customBackground = getCustomMarkBackgroundHex(mark.mark.backgroundColor);
+    const attributes = {
+      "data-side-mark-id": mark.id,
+      title: mark.note.content || "FloatMark"
+    };
+    if (customBackground) {
+      attributes.style = `--side-mark-background-color: ${customBackground}`;
+    }
     regularRanges.push(import_view.Decoration.mark({
       class: [
         "side-mark",
@@ -111,16 +172,14 @@ function buildEditorDecorationLayers(marks, docLength, pendingSelection) {
         `side-mark--${mark.mark.kind}`,
         `side-mark--${mark.mark.color}`,
         `side-mark--text-${mark.mark.textColor}`,
-        `side-mark--background-${regularBackground}`
+        getMarkBackgroundClass(regularBackground)
       ].filter(Boolean).join(" "),
-      attributes: {
-        "data-side-mark-id": mark.id,
-        title: mark.note.content || "FloatMark"
-      }
+      attributes
     }).range(from, to));
     if (hasContinuousPaint) {
       outerRanges.push(import_view.Decoration.mark({
-        class: buildOuterPaintClasses(mark)
+        class: buildOuterPaintClasses(mark),
+        attributes: customBackground ? { style: `--side-mark-background-color: ${customBackground}` } : void 0
       }).range(from, to));
     }
   }
@@ -131,7 +190,7 @@ function buildEditorDecorationLayers(marks, docLength, pendingSelection) {
   };
 }
 function buildOuterPaintClasses(mark) {
-  const paintClass = mark.mark.kind === "comment" ? `side-mark--${mark.mark.color}` : `side-mark--background-${mark.mark.backgroundColor}`;
+  const paintClass = mark.mark.kind === "comment" ? `side-mark--${mark.mark.color}` : getMarkBackgroundClass(mark.mark.backgroundColor);
   return [
     "side-mark-editor-background",
     `side-mark--${mark.mark.kind}`,
@@ -898,8 +957,12 @@ function createReadingMarkWrapper(document, mark, onClick) {
     `side-mark--${mark.mark.kind}`,
     `side-mark--${mark.mark.color}`,
     `side-mark--text-${mark.mark.textColor}`,
-    `side-mark--background-${mark.mark.backgroundColor}`
+    getMarkBackgroundClass(mark.mark.backgroundColor)
   ].filter(Boolean).join(" ");
+  const customBackground = getCustomMarkBackgroundHex(mark.mark.backgroundColor);
+  if (customBackground) {
+    wrapper.style.setProperty("--side-mark-background-color", customBackground);
+  }
   wrapper.dataset.sideMarkReadingId = mark.id;
   wrapper.title = mark.note.content || "FloatMark";
   wrapper.addEventListener("click", (event) => {
@@ -2281,6 +2344,7 @@ var MarkStylePopover = class {
     this.t = t;
     this.textColorButtons = /* @__PURE__ */ new Map();
     this.backgroundColorButtons = /* @__PURE__ */ new Map();
+    this.customBackgroundPickerOpen = false;
     this.textColor = "default";
     this.backgroundColor = "none";
     this.onChange = null;
@@ -2325,6 +2389,7 @@ var MarkStylePopover = class {
   }
   hide() {
     this.cancelHide();
+    this.customBackgroundPickerOpen = false;
     this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.removeClass("is-visible");
     this.onChange = null;
@@ -2378,6 +2443,45 @@ var MarkStylePopover = class {
       });
       this.backgroundColorButtons.set(item.color, button);
     }
+    const customLabel = this.t("style.background.custom");
+    this.customBackgroundControl = grid.createEl("label", {
+      cls: "side-mark-style-custom-color",
+      attr: { title: customLabel }
+    });
+    this.customBackgroundControl.createSpan({
+      cls: "side-mark-style-custom-color-preview",
+      attr: { "aria-hidden": "true" }
+    });
+    this.customBackgroundInput = this.customBackgroundControl.createEl("input", {
+      cls: "side-mark-style-custom-color-input",
+      attr: { type: "color", value: "#ff6600", "aria-label": customLabel }
+    });
+    this.customBackgroundInput.addEventListener("focus", () => this.cancelHide());
+    this.customBackgroundInput.addEventListener("blur", () => this.scheduleHide());
+    this.customBackgroundInput.addEventListener("click", () => {
+      this.customBackgroundPickerOpen = true;
+      this.cancelHide();
+    });
+    this.customBackgroundInput.addEventListener("input", () => {
+      this.applyCustomBackgroundInput();
+    });
+    this.customBackgroundInput.addEventListener("cancel", () => {
+      this.customBackgroundPickerOpen = false;
+      this.renderActiveState();
+    });
+    this.customBackgroundInput.addEventListener("change", () => {
+      this.customBackgroundPickerOpen = false;
+      this.applyCustomBackgroundInput();
+    });
+  }
+  applyCustomBackgroundInput() {
+    const nextBackgroundColor = normalizeMarkBackgroundColor(`custom-${this.customBackgroundInput.value}`);
+    if (nextBackgroundColor === this.backgroundColor) {
+      return;
+    }
+    this.backgroundColor = nextBackgroundColor;
+    this.renderActiveState();
+    this.emitChange();
   }
   renderResetButton() {
     const button = this.el.createEl("button", {
@@ -2400,6 +2504,14 @@ var MarkStylePopover = class {
     for (const [color, button] of this.backgroundColorButtons) {
       button.toggleClass("is-active", color === this.backgroundColor);
     }
+    const customBackground = getCustomMarkBackgroundHex(this.backgroundColor);
+    this.customBackgroundControl.toggleClass("is-active", customBackground !== null);
+    if (customBackground) {
+      this.customBackgroundInput.value = customBackground;
+      this.customBackgroundControl.style.setProperty("--side-mark-custom-picker-color", customBackground);
+    } else {
+      this.customBackgroundControl.style.removeProperty("--side-mark-custom-picker-color");
+    }
   }
   emitChange() {
     var _a;
@@ -2409,6 +2521,9 @@ var MarkStylePopover = class {
     });
   }
   scheduleHide() {
+    if (this.customBackgroundPickerOpen || this.el.doc.activeElement === this.customBackgroundInput) {
+      return;
+    }
     this.cancelHide();
     this.hideTimer = window.setTimeout(() => this.hide(), 420);
   }
@@ -2939,6 +3054,7 @@ var TRANSLATIONS = {
     "style.background.green": "\u7EFF\u8272\u80CC\u666F",
     "style.background.blue": "\u84DD\u8272\u80CC\u666F",
     "style.background.purple": "\u7D2B\u8272\u80CC\u666F",
+    "style.background.custom": "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
     "sidebar.title": "\u6B63\u6587\u6807\u6CE8",
     "sidebar.scopeCurrent": "\u5F53\u524D\u6587\u6863",
     "sidebar.scopeVault": "\u5168\u90E8\u6587\u6863",
@@ -3114,6 +3230,7 @@ var TRANSLATIONS = {
     "style.background.green": "Green background",
     "style.background.blue": "Blue background",
     "style.background.purple": "Purple background",
+    "style.background.custom": "Custom background color",
     "sidebar.title": "FloatMark",
     "sidebar.scopeCurrent": "Current document",
     "sidebar.scopeVault": "All documents",
@@ -3244,25 +3361,6 @@ function isChineseLanguage(language) {
   const normalized = language.toLowerCase();
   return normalized === "zh" || normalized.startsWith("zh-") || normalized.startsWith("zh_");
 }
-
-// src/types.ts
-var DATA_DIR = ".obsidian-float-marks";
-function normalizeScopeControlStyle(value) {
-  if (value === "tabs" || value === "dropdown" || value === "swap" || value === "switch") {
-    return value;
-  }
-  return "dropdown";
-}
-var DEFAULT_SETTINGS = {
-  dataDir: DATA_DIR,
-  language: void 0,
-  autoOpenSidebar: true,
-  showBlockToolbar: true,
-  autoSyncToLark: false,
-  preferBodyBlockForLark: false,
-  commentAuthorName: "\u6211",
-  scopeControlStyle: "dropdown"
-};
 
 // src/storage.ts
 var SIDECAR_READ_CONCURRENCY = 8;
@@ -3431,7 +3529,14 @@ var SideMarkStore = class {
       schemaVersion: 1,
       filePath: normalizedPath,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      marks: document.marks.map((mark) => ({ ...mark, filePath: normalizedPath })).sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
+      marks: document.marks.map((mark) => ({
+        ...mark,
+        filePath: normalizedPath,
+        mark: {
+          ...mark.mark,
+          backgroundColor: normalizeMarkBackgroundColor(mark.mark.backgroundColor)
+        }
+      })).sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
     };
     const sidecarPath = this.getSidecarPath(normalizedPath);
     await this.app.vault.adapter.mkdir(this.getFilesDir());
@@ -3675,24 +3780,31 @@ var SideMarkStore = class {
   }
   normalizeMark(mark) {
     var _a, _b, _c;
-    if (mark.mark.kind !== "comment") {
-      const legacyNoteContent = ((_a = mark.note) == null ? void 0 : _a.content) || ((_c = (_b = mark.replies) == null ? void 0 : _b[0]) == null ? void 0 : _c.content) || "";
+    const normalizedMark = {
+      ...mark,
+      mark: {
+        ...mark.mark,
+        backgroundColor: normalizeMarkBackgroundColor(mark.mark.backgroundColor)
+      }
+    };
+    if (normalizedMark.mark.kind !== "comment") {
+      const legacyNoteContent = ((_a = normalizedMark.note) == null ? void 0 : _a.content) || ((_c = (_b = normalizedMark.replies) == null ? void 0 : _b[0]) == null ? void 0 : _c.content) || "";
       return {
-        ...mark,
+        ...normalizedMark,
         replies: [],
         note: {
-          ...mark.note,
+          ...normalizedMark.note,
           content: legacyNoteContent
         }
       };
     }
-    const replies = this.getReplies(mark);
+    const replies = this.getReplies(normalizedMark);
     return {
-      ...mark,
+      ...normalizedMark,
       replies,
       note: {
-        ...mark.note,
-        content: replies.length ? replies.map((reply) => reply.content).join("\n\n") : mark.note.content
+        ...normalizedMark.note,
+        content: replies.length ? replies.map((reply) => reply.content).join("\n\n") : normalizedMark.note.content
       }
     };
   }
@@ -4353,9 +4465,14 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
   }
   renderMarkCard(container, mark, marks) {
     const background = resolveMarkBackground(mark, marks);
+    const customBackground = getCustomMarkBackgroundHex(background.color);
+    const backgroundClass = customBackground ? "custom" : background.color;
     const card = container.createDiv({
-      cls: `side-mark-card side-mark-marker-card is-background-${background.color}${mark.status === "resolved" ? " is-resolved" : ""}`
+      cls: `side-mark-card side-mark-marker-card is-background-${backgroundClass}${mark.status === "resolved" ? " is-resolved" : ""}`
     });
+    if (customBackground) {
+      card.style.setProperty("--side-mark-background-color", customBackground);
+    }
     card.dataset.sideMarkCardId = mark.id;
     if (mark.id === this.focusedMarkId) {
       card.addClass("is-focused");
@@ -4382,7 +4499,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
     const quote = card.createDiv({
-      cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`
+      cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} ${getMarkBackgroundClass(background.color)}`
     });
     quote.createDiv({
       cls: "side-mark-card-quote-text",
@@ -4395,7 +4512,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     meta.createSpan({ text: this.t("sidebar.font") });
     const inheritedClass = background.inherited ? " is-inherited" : "";
     const backgroundSwatch = meta.createSpan({
-      cls: `side-mark-marker-swatch is-background-${background.color}${inheritedClass}`
+      cls: `side-mark-marker-swatch is-background-${backgroundClass}${inheritedClass}`
     });
     backgroundSwatch.setAttr("aria-hidden", "true");
     if (background.inherited) {

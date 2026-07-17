@@ -1,8 +1,14 @@
-import type { MarkBackgroundColor, SideMark } from "./types";
+import { getCustomMarkBackgroundHex, type MarkBackgroundColor, type SideMark } from "./types";
 
 export interface ResolvedMarkBackground {
 	color: MarkBackgroundColor;
 	inherited: boolean;
+}
+
+export function getMarkBackgroundClass(color: MarkBackgroundColor): string {
+	return getCustomMarkBackgroundHex(color)
+		? "side-mark--background-custom"
+		: `side-mark--background-${color}`;
 }
 
 export function hasContinuousMarkPaint(mark: SideMark): boolean {

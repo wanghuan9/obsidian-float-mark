@@ -11,7 +11,7 @@ await esbuild.build({
 	outfile: "test/.tmp/mark-appearance.mjs"
 });
 
-const { hasContinuousMarkPaint, resolveMarkBackground } = await import("./.tmp/mark-appearance.mjs");
+const { getMarkBackgroundClass, hasContinuousMarkPaint, resolveMarkBackground } = await import("./.tmp/mark-appearance.mjs");
 
 function createMark({
 	id,
@@ -42,6 +42,8 @@ function createMark({
 
 const child = createMark({ id: "child", startOffset: 20, endOffset: 24, textColor: "blue" });
 assert.deepEqual(resolveMarkBackground(child, []), { color: "none", inherited: false });
+assert.equal(getMarkBackgroundClass("yellow-light"), "side-mark--background-yellow-light");
+assert.equal(getMarkBackgroundClass("custom-#1a2b3c"), "side-mark--background-custom");
 assert.equal(hasContinuousMarkPaint(child), false);
 
 const redOuter = createMark({ id: "red-outer", startOffset: 0, endOffset: 100, backgroundColor: "red-light" });
@@ -152,10 +154,22 @@ assert.deepEqual(resolveMarkBackground(resolvedChild, [redOuter, resolvedChild])
 const sidebarSource = await readFile("src/sidebar-view.ts", "utf8");
 assert.match(
 	sidebarSource,
-	/side-mark-marker-preview side-mark--highlight side-mark--text-\$\{mark\.mark\.textColor\} side-mark--background-\$\{background\.color\}/
+	/side-mark-marker-preview side-mark--highlight side-mark--text-\$\{mark\.mark\.textColor\} \$\{getMarkBackgroundClass\(background\.color\)\}/
+);
+assert.match(
+	sidebarSource,
+	/card\.style\.setProperty\("--side-mark-background-color", customBackground\)/
 );
 const stylesSource = await readFile("styles.css", "utf8");
 assert.match(stylesSource, /\.side-mark--highlight\.side-mark--text-blue\s*\{\s*color: #245bff;/);
+assert.match(
+	stylesSource,
+	/\.side-mark--highlight\.side-mark--background-custom\s*\{\s*background: var\(--side-mark-background-color\);/
+);
+assert.match(
+	stylesSource,
+	/\.side-mark-marker-swatch\.is-background-custom\s*\{\s*background: var\(--side-mark-background-color\);/
+);
 const backgroundColors = [
 	"gray-light",
 	"red-light",

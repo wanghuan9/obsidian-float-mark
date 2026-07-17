@@ -1,10 +1,10 @@
 import { ItemView, Menu, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type SideMarkPlugin from "./main";
-import type { CommentReply, MarkColor, SideMark, SideMarkDocument } from "./types";
+import { getCustomMarkBackgroundHex, type CommentReply, type MarkColor, type SideMark, type SideMarkDocument } from "./types";
 import { FLOAT_MARK_ICON_ID } from "./icons";
 import { isHtmlElement, isInputEvent } from "./dom-utils";
 import type { I18nKey } from "./i18n";
-import { resolveMarkBackground } from "./mark-appearance";
+import { getMarkBackgroundClass, resolveMarkBackground } from "./mark-appearance";
 import {
 	bindVaultCardNavigation,
 	sortMarksByCreatedAt,
@@ -615,9 +615,14 @@ export class SideMarkSidebarView extends ItemView {
 
 	private renderMarkCard(container: HTMLElement, mark: SideMark, marks: SideMark[]): void {
 		const background = resolveMarkBackground(mark, marks);
+		const customBackground = getCustomMarkBackgroundHex(background.color);
+		const backgroundClass = customBackground ? "custom" : background.color;
 		const card = container.createDiv({
-			cls: `side-mark-card side-mark-marker-card is-background-${background.color}${mark.status === "resolved" ? " is-resolved" : ""}`
+			cls: `side-mark-card side-mark-marker-card is-background-${backgroundClass}${mark.status === "resolved" ? " is-resolved" : ""}`
 		});
+		if (customBackground) {
+			card.style.setProperty("--side-mark-background-color", customBackground);
+		}
 		card.dataset.sideMarkCardId = mark.id;
 		if (mark.id === this.focusedMarkId) {
 			card.addClass("is-focused");
@@ -645,7 +650,7 @@ export class SideMarkSidebarView extends ItemView {
 		this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
 
 		const quote = card.createDiv({
-			cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`
+			cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} ${getMarkBackgroundClass(background.color)}`
 		});
 		quote.createDiv({
 			cls: "side-mark-card-quote-text",
@@ -658,7 +663,7 @@ export class SideMarkSidebarView extends ItemView {
 		meta.createSpan({ text: this.t("sidebar.font") });
 		const inheritedClass = background.inherited ? " is-inherited" : "";
 		const backgroundSwatch = meta.createSpan({
-			cls: `side-mark-marker-swatch is-background-${background.color}${inheritedClass}`
+			cls: `side-mark-marker-swatch is-background-${backgroundClass}${inheritedClass}`
 		});
 		backgroundSwatch.setAttr("aria-hidden", "true");
 		if (background.inherited) {

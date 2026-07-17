@@ -42,6 +42,8 @@ assert.equal(translate("zh-CN", "sidebar.inherited"), "继承");
 assert.equal(translate("en", "sidebar.inherited"), "Inherited");
 assert.equal(translate("zh-CN", "sidebar.inheritedBackground"), "背景继承自覆盖当前文本的标记");
 assert.equal(translate("en", "sidebar.inheritedBackground"), "Background inherited from a mark covering this text");
+assert.equal(translate("zh-CN", "style.background.custom"), "自定义背景颜色");
+assert.equal(translate("en", "style.background.custom"), "Custom background color");
 assert.equal(translate("zh-CN", "sidebar.scopeCurrent"), "当前文档");
 assert.equal(translate("zh-CN", "sidebar.scopeVault"), "全部文档");
 assert.equal(translate("en", "sidebar.scopeCurrent"), "Current document");

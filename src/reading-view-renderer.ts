@@ -1,7 +1,7 @@
 import { createTextAnchor } from "./anchors";
-import type { SideMark } from "./types";
+import { getCustomMarkBackgroundHex, type SideMark } from "./types";
 import { hasNonEmptyDomSelection, shouldOpenMarkForSelection } from "./mark-click-guard";
-import { compareMarkRangeSpecificity, hasContinuousMarkPaint } from "./mark-appearance";
+import { compareMarkRangeSpecificity, getMarkBackgroundClass, hasContinuousMarkPaint } from "./mark-appearance";
 import { buildMarkdownTableMaps, type MarkdownTableMap, type SourceRange } from "./markdown-table-map";
 
 const READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
@@ -377,8 +377,12 @@ function createReadingMarkWrapper(
 		`side-mark--${mark.mark.kind}`,
 		`side-mark--${mark.mark.color}`,
 		`side-mark--text-${mark.mark.textColor}`,
-		`side-mark--background-${mark.mark.backgroundColor}`
+		getMarkBackgroundClass(mark.mark.backgroundColor)
 	].filter(Boolean).join(" ");
+	const customBackground = getCustomMarkBackgroundHex(mark.mark.backgroundColor);
+	if (customBackground) {
+		wrapper.style.setProperty("--side-mark-background-color", customBackground);
+	}
 	wrapper.dataset.sideMarkReadingId = mark.id;
 	wrapper.title = mark.note.content || "FloatMark";
 	wrapper.addEventListener("click", (event) => {

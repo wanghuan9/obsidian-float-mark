@@ -229,6 +229,28 @@ assert.equal(adapter.readCount, 4);
 adapter.files.delete(`${filesDir}/broken.json`);
 adapter.files.delete(`${filesDir}/missing-path.json`);
 
+const customColorAdapter = new MemoryAdapter();
+const customColorDataDir = ".custom-background-colors";
+const validCustomMark = createMark("valid-custom", "custom.md");
+validCustomMark.mark.backgroundColor = "custom-#A1B2C3";
+const invalidCustomMark = createMark("invalid-custom", "custom.md");
+invalidCustomMark.mark.backgroundColor = "custom-red; background: url(file:///tmp/leak)";
+seedDocument(
+	customColorAdapter,
+	customColorDataDir,
+	createDocument("custom.md", [validCustomMark, invalidCustomMark])
+);
+const customColorStore = createStore(customColorAdapter, customColorDataDir);
+const customColorDocument = await customColorStore.loadDocument("custom.md");
+assert.equal(customColorDocument.marks[0].mark.backgroundColor, "custom-#a1b2c3");
+assert.equal(customColorDocument.marks[1].mark.backgroundColor, "none");
+const invalidWriteMark = createMark("invalid-write", "invalid-write.md");
+invalidWriteMark.mark.backgroundColor = "custom-#12345g";
+const normalizedWriteDocument = await customColorStore.saveDocument(
+	createDocument("invalid-write.md", [invalidWriteMark])
+);
+assert.equal(normalizedWriteDocument.marks[0].mark.backgroundColor, "none");
+
 await store.loadAllDocuments();
 assert.equal(adapter.listCount, 1);
 assert.equal(adapter.readCount, 4);

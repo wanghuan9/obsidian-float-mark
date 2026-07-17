@@ -2,7 +2,7 @@ import { App, normalizePath } from "obsidian";
 import { createHash } from "crypto";
 import { createTextAnchor, relocateAnchor } from "./anchors";
 import { translate } from "./i18n";
-import { DEFAULT_SETTINGS, type CommentReply, type MarkBackgroundColor, type MarkColor, type MarkKind, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
+import { DEFAULT_SETTINGS, normalizeMarkBackgroundColor, type CommentReply, type MarkBackgroundColor, type MarkColor, type MarkKind, type MarkTextColor, type SideMark, type SideMarkDocument, type SideMarkSettings } from "./types";
 
 const SIDECAR_READ_CONCURRENCY = 8;
 
@@ -214,7 +214,14 @@ export class SideMarkStore {
 			filePath: normalizedPath,
 			updatedAt: new Date().toISOString(),
 			marks: document.marks
-				.map((mark) => ({ ...mark, filePath: normalizedPath }))
+				.map((mark) => ({
+					...mark,
+					filePath: normalizedPath,
+					mark: {
+						...mark.mark,
+						backgroundColor: normalizeMarkBackgroundColor(mark.mark.backgroundColor)
+					}
+				}))
 				.sort((left, right) => left.anchor.startOffset - right.anchor.startOffset)
 		};
 		const sidecarPath = this.getSidecarPath(normalizedPath);
@@ -490,24 +497,31 @@ export class SideMarkStore {
 	}
 
 	private normalizeMark(mark: SideMark): SideMark {
-		if (mark.mark.kind !== "comment") {
-			const legacyNoteContent = mark.note?.content || mark.replies?.[0]?.content || "";
+		const normalizedMark: SideMark = {
+			...mark,
+			mark: {
+				...mark.mark,
+				backgroundColor: normalizeMarkBackgroundColor(mark.mark.backgroundColor)
+			}
+		};
+		if (normalizedMark.mark.kind !== "comment") {
+			const legacyNoteContent = normalizedMark.note?.content || normalizedMark.replies?.[0]?.content || "";
 			return {
-				...mark,
+				...normalizedMark,
 				replies: [],
 				note: {
-					...mark.note,
+					...normalizedMark.note,
 					content: legacyNoteContent
 				}
 			};
 		}
-		const replies = this.getReplies(mark);
+		const replies = this.getReplies(normalizedMark);
 		return {
-			...mark,
+			...normalizedMark,
 			replies,
 			note: {
-				...mark.note,
-				content: replies.length ? replies.map((reply) => reply.content).join("\n\n") : mark.note.content
+				...normalizedMark.note,
+				content: replies.length ? replies.map((reply) => reply.content).join("\n\n") : normalizedMark.note.content
 			}
 		};
 	}

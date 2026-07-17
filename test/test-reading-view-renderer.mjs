@@ -600,6 +600,7 @@ const repeatedTableMark = createMark({
 	endOffset: repeatedTableMarkStart + "测试数据".length,
 	lineStart: 3,
 	columnStart: 3,
+	backgroundColor: "custom-#2a6fdb",
 	prefix: repeatedTableSource.slice(Math.max(0, repeatedTableMarkStart - 40), repeatedTableMarkStart),
 	suffix: repeatedTableSource.slice(repeatedTableMarkStart + "测试数据".length, repeatedTableMarkStart + "测试数据".length + 40)
 });
@@ -614,6 +615,11 @@ assert.equal(
 	repeatedTableRoot.rows[0]?.cells[2]?.querySelector('[data-side-mark-reading-id="repeated-table-bottom-left"]'),
 	null
 );
+const repeatedTableCustomWrapper = repeatedTableRoot.querySelector(
+	'[data-side-mark-reading-id="repeated-table-bottom-left"]'
+);
+assert.equal(repeatedTableCustomWrapper.classList.contains("side-mark--background-custom"), true);
+assert.equal(repeatedTableCustomWrapper.style.getPropertyValue("--side-mark-background-color"), "#2a6fdb");
 const repeatedTableStarts = [];
 let repeatedTableSearchFrom = 0;
 while (repeatedTableSearchFrom < repeatedTableSource.length) {

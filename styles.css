@@ -2508,3 +2508,52 @@ body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-backg
 	gap: 8px;
 	margin-top: 6px;
 }
+
+.side-mark-style-custom-color {
+	--side-mark-custom-picker-color: conic-gradient(#f45f5f, #ff9f3a, #ffe11c, #5fca50, #91aaff, #b695f0, #f45f5f);
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+	background: var(--background-primary);
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.side-mark-style-custom-color:hover,
+.side-mark-style-custom-color:focus-within,
+.side-mark-style-custom-color.is-active {
+	border-color: #2f6df6;
+	box-shadow: inset 0 0 0 1px #2f6df6, 0 0 0 2px rgba(47, 109, 246, 0.14);
+}
+
+.side-mark-style-custom-color-preview {
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: var(--side-mark-custom-picker-color);
+}
+
+.side-mark-style-custom-color-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.side-mark--highlight.side-mark--background-custom {
+	background: var(--side-mark-background-color);
+}
+
+body .side-mark-sidebar .side-mark-marker-card .side-mark-marker-swatch.is-background-custom {
+	background: var(--side-mark-background-color);
+}

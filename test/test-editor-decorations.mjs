@@ -167,6 +167,20 @@ assert.deepEqual(
 	outerDecorations
 );
 
+const customBackgroundMark = createMark({
+	id: "custom-background",
+	startOffset: 1,
+	endOffset: 9,
+	backgroundColor: "custom-#1a2b3c"
+});
+const customBackgroundLayers = buildEditorDecorationLayers([customBackgroundMark], 10, null);
+const customRegularDecoration = collectDecorations(customBackgroundLayers.decorations, 10)[0];
+const customOuterDecoration = collectDecorations(customBackgroundLayers.outerDecorations, 10)[0];
+assert.match(customRegularDecoration.spec.class, /side-mark--background-none/);
+assert.equal(customRegularDecoration.spec.attributes.style, "--side-mark-background-color: #1a2b3c");
+assert.match(customOuterDecoration.spec.class, /side-mark--background-custom/);
+assert.equal(customOuterDecoration.spec.attributes.style, "--side-mark-background-color: #1a2b3c");
+
 const dom = new JSDOM('<div id="editor"></div>', { pretendToBeVisual: true });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;

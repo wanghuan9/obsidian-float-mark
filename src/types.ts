@@ -5,22 +5,51 @@ export const DATA_DIR = ".obsidian-float-marks";
 export type MarkKind = "highlight" | "underline" | "comment";
 export type MarkColor = "yellow" | "blue" | "green" | "red";
 export type MarkTextColor = "default" | "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
-export type MarkBackgroundColor =
-	| "none"
-	| "gray-light"
-	| "red-light"
-	| "orange-light"
-	| "yellow-light"
-	| "green-light"
-	| "blue-light"
-	| "purple-light"
-	| "gray"
-	| "red"
-	| "orange"
-	| "yellow"
-	| "green"
-	| "blue"
-	| "purple";
+const PRESET_MARK_BACKGROUND_COLORS = [
+	"none",
+	"gray-light",
+	"red-light",
+	"orange-light",
+	"yellow-light",
+	"green-light",
+	"blue-light",
+	"purple-light",
+	"gray",
+	"red",
+	"orange",
+	"yellow",
+	"green",
+	"blue",
+	"purple"
+] as const;
+
+export type PresetMarkBackgroundColor = typeof PRESET_MARK_BACKGROUND_COLORS[number];
+declare const CUSTOM_MARK_BACKGROUND_COLOR_BRAND: unique symbol;
+export type CustomMarkBackgroundColor = `custom-#${string}` & {
+	readonly [CUSTOM_MARK_BACKGROUND_COLOR_BRAND]: true;
+};
+export type MarkBackgroundColor = PresetMarkBackgroundColor | CustomMarkBackgroundColor;
+
+const PRESET_MARK_BACKGROUND_COLOR_SET = new Set<string>(PRESET_MARK_BACKGROUND_COLORS);
+const CUSTOM_MARK_BACKGROUND_COLOR_PATTERN = /^custom-#[0-9a-fA-F]{6}$/;
+
+export function normalizeMarkBackgroundColor(value: unknown): MarkBackgroundColor {
+	if (typeof value !== "string") {
+		return "none";
+	}
+	if (PRESET_MARK_BACKGROUND_COLOR_SET.has(value)) {
+		return value as PresetMarkBackgroundColor;
+	}
+	return CUSTOM_MARK_BACKGROUND_COLOR_PATTERN.test(value)
+		? value.toLowerCase() as CustomMarkBackgroundColor
+		: "none";
+}
+
+export function getCustomMarkBackgroundHex(color: MarkBackgroundColor): `#${string}` | null {
+	return CUSTOM_MARK_BACKGROUND_COLOR_PATTERN.test(color)
+		? color.slice("custom-".length).toLowerCase() as `#${string}`
+		: null;
+}
 export type MarkStatus = "active" | "resolved" | "orphaned";
 export type RemoteSyncStatus = "pending" | "synced" | "failed";
 export type ScopeControlStyle = "tabs" | "dropdown" | "swap" | "switch";
