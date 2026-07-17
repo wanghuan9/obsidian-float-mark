@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
 import type { I18nKey } from "./i18n";
+import { calculatePopoverPosition } from "./popover-position";
 import type { MarkBackgroundColor, MarkTextColor } from "./types";
 
 export interface MarkStyleChoice {
@@ -93,8 +94,11 @@ export class MarkStylePopover {
 		this.el.removeClass("is-visible");
 		this.el.doc.addEventListener("mousedown", this.outsideMouseDownHandler);
 		const width = this.el.offsetWidth;
-		const left = clamp(rect.right + 12, 8, window.innerWidth - width - 8);
-		const top = clamp(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+		const { left, top } = calculatePopoverPosition(
+			rect,
+			{ width, height: this.el.offsetHeight },
+			{ width: window.innerWidth, height: window.innerHeight }
+		);
 		this.el.style.left = `${left}px`;
 		this.el.style.top = `${top}px`;
 		window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -208,8 +212,4 @@ export class MarkStylePopover {
 		}
 		this.hide();
 	}
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.max(min, Math.min(value, Math.max(min, max)));
 }

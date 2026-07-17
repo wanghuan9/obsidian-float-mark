@@ -1,6 +1,8 @@
+import { createTextAnchor } from "./anchors";
 import type { SideMark } from "./types";
 import { hasNonEmptyDomSelection, shouldOpenMarkForSelection } from "./mark-click-guard";
 import { compareMarkRangeSpecificity, hasContinuousMarkPaint } from "./mark-appearance";
+import { buildMarkdownTableMaps, type MarkdownTableMap, type SourceRange } from "./markdown-table-map";
 
 const READING_BLOCK_SELECTOR = "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, dt, dd";
 const READING_MARK_SELECTOR = ".side-mark-reading[data-side-mark-reading-id]";
@@ -35,6 +37,24 @@ interface NodeMarkSegment {
 
 export interface ReadingRenderOptions {
 	excludedContainerSelector?: string;
+	tableSourceRange?: SourceRange;
+}
+
+export interface ReadingMarkMatchTarget {
+	container: HTMLElement;
+	mark: SideMark;
+}
+
+interface ReadingTableRenderMap {
+	table: HTMLTableElement | null;
+	sourceMap: MarkdownTableMap;
+}
+
+interface ReadingTableRenderState {
+	maps: ReadingTableRenderMap[];
+	hasRenderedTables: boolean;
+	hasCompletePairing: boolean;
+	sourceRange: SourceRange;
 }
 
 export function renderReadingMarks(
@@ -54,14 +74,110 @@ export function renderReadingMarks(
 		.filter(({ mark }) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText);
 	const ranges = collectTextNodes(container, options.excludedContainerSelector);
 	const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
+	const tableRenderState = options.tableSourceRange
+		? buildReadingTableRenderState(container, source, options.tableSourceRange)
+		: null;
 	const plannedMarks = activeMarks
-		.map(({ mark, sourceIndex, specificityMark }) => {
+		.flatMap(({ mark, sourceIndex, specificityMark }) => {
+			const matchTargets = tableRenderState
+				? findReadingTableMatchTargets(source, tableRenderState, mark)
+				: undefined;
+			if (matchTargets === null) {
+				return [];
+			}
+			if (matchTargets) {
+				return matchTargets.flatMap((target) => {
+					const match = findRenderedMatchInContainer(ranges, target);
+					return match ? [{ mark, match, sourceIndex, specificityMark }] : [];
+				});
+			}
 			const match = findBestRenderedMatch(fullText, mark);
-			return match ? { mark, match, sourceIndex, specificityMark } : null;
-		})
-		.filter((item): item is PlannedReadingMark => item !== null);
+			return match ? [{ mark, match, sourceIndex, specificityMark }] : [];
+		});
 	applyReadingMarkFragments(ranges, plannedMarks, onClick);
 	promoteFullyMarkedInlineCodeElements(container);
+}
+
+function buildReadingTableRenderState(
+	container: HTMLElement,
+	source: string,
+	sourceRange: SourceRange
+): ReadingTableRenderState {
+	const renderedTables = [
+		...(container.matches("table") ? [container as HTMLTableElement] : []),
+		...Array.from(container.querySelectorAll<HTMLTableElement>("table"))
+	];
+	const sourceMaps = buildMarkdownTableMaps(source, sourceRange);
+	return {
+		maps: sourceMaps.map((sourceMap, index) => ({
+			table: renderedTables[index] || null,
+			sourceMap
+		})),
+		hasRenderedTables: renderedTables.length > 0,
+		hasCompletePairing: renderedTables.length === sourceMaps.length,
+		sourceRange
+	};
+}
+
+function findReadingTableMatchTargets(
+	source: string,
+	state: ReadingTableRenderState,
+	mark: SideMark
+): ReadingMarkMatchTarget[] | null | undefined {
+	const overlappingMaps = state.maps.filter(({ sourceMap }) => markOverlapsRange(mark, sourceMap.range));
+	if (overlappingMaps.length === 0) {
+		return state.hasRenderedTables && !state.hasCompletePairing && markOverlapsRange(mark, state.sourceRange)
+			? null
+			: undefined;
+	}
+	const targets: ReadingMarkMatchTarget[] = [];
+	for (const { table, sourceMap } of overlappingMaps) {
+		if (!table) {
+			return null;
+		}
+		for (const cell of sourceMap.cells) {
+			const from = Math.max(mark.anchor.startOffset, cell.range.from);
+			const to = Math.min(mark.anchor.endOffset, cell.range.to);
+			if (from >= to) {
+				continue;
+			}
+			const row = table.rows.item(cell.rowIndex);
+			const container = row?.cells.item(cell.cellIndex);
+			if (!container) {
+				return null;
+			}
+			const cellSource = source.slice(cell.range.from, cell.range.to);
+			const localizedMark: SideMark = {
+				...mark,
+				anchor: createTextAnchor(cellSource, from - cell.range.from, to - cell.range.from)
+			};
+			originalReadingMarks.set(localizedMark, originalReadingMarks.get(mark) || mark);
+			targets.push({ container, mark: localizedMark });
+		}
+	}
+	return targets.length > 0 ? targets : null;
+}
+
+function markOverlapsRange(mark: SideMark, range: SourceRange): boolean {
+	return mark.anchor.startOffset < range.to && mark.anchor.endOffset > range.from;
+}
+
+function findRenderedMatchInContainer(
+	ranges: TextNodeRange[],
+	target: ReadingMarkMatchTarget
+): RenderedMatch | null {
+	const localRanges = ranges.filter((range) => target.container.contains(range.node));
+	const first = localRanges[0];
+	if (!first) {
+		return null;
+	}
+	const localText = localRanges
+		.map((range, index) => `${index === 0 ? "" : range.separatorBefore}${range.node.data}`)
+		.join("");
+	const localMatch = findBestRenderedMatch(localText, target.mark);
+	return localMatch
+		? { start: first.start + localMatch.start, end: first.start + localMatch.end }
+		: null;
 }
 
 export function getReadingMarkElements(root: ParentNode, markId: string): HTMLElement[] {
@@ -368,17 +484,28 @@ export function getReadingMarksForSection(
 	sectionLineEnd: number,
 	lineStarts = buildSourceLineStarts(source)
 ): SideMark[] {
-	const sectionStartOffset = getLineStartOffset(source, lineStarts, sectionLineStart);
-	const sectionEndOffset = getLineStartOffset(source, lineStarts, sectionLineEnd + 1);
+	const sectionRange = getReadingSectionSourceRange(source, sectionLineStart, sectionLineEnd, lineStarts);
 	return marks.map((mark) => clipMarkToSection(
 		source,
 		lineStarts,
 		mark,
-		sectionStartOffset,
-		sectionEndOffset,
+		sectionRange.from,
+		sectionRange.to,
 		sectionLineStart
 	))
 		.filter((mark): mark is SideMark => mark !== null);
+}
+
+export function getReadingSectionSourceRange(
+	source: string,
+	sectionLineStart: number,
+	sectionLineEnd: number,
+	lineStarts = buildSourceLineStarts(source)
+): SourceRange {
+	return {
+		from: getLineStartOffset(source, lineStarts, sectionLineStart),
+		to: getLineStartOffset(source, lineStarts, sectionLineEnd + 1)
+	};
 }
 
 function clipMarkToSection(

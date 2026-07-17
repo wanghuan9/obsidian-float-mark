@@ -32,12 +32,10 @@ export function renderEditorTableMarks(
 		const startLine = view.state.doc.lineAt(range.from).number - 1;
 		const endLine = view.state.doc.lineAt(range.to - 1).number - 1;
 		const tableMarks = getReadingMarksForSection(source, marks, startLine, endLine, lineStarts);
-		const activeCellRanges = renderActiveTableCellMarks(table, source, range, tableMarks);
-		const staticMarks = tableMarks.filter((mark) => !activeCellRanges.some((activeRange) =>
-			mark.anchor.startOffset < activeRange.to && mark.anchor.endOffset > activeRange.from
-		));
-		renderReadingMarks(table, source, staticMarks, onClick, {
-			excludedContainerSelector: ACTIVE_CELL_EDITOR_SELECTOR
+		renderActiveTableCellMarks(table, source, range, tableMarks);
+		renderReadingMarks(table, source, tableMarks, onClick, {
+			excludedContainerSelector: ACTIVE_CELL_EDITOR_SELECTOR,
+			tableSourceRange: range
 		});
 	}
 }

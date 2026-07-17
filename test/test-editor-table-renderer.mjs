@@ -31,15 +31,15 @@ const {
 const source = [
 	"Before",
 	"",
-	"| 功能 | 核心规则 |",
+	"|  | 核心规则 |",
 	"| --- | --- |",
-	"| R5 | **上拍** `placeOrder` 可从失败继续 |",
+	"| 可从 | **上拍** `placeOrder` 可从失败继续 |",
 	"| R6 | 可从 查询接口 跨行开始 |",
 	"| R7 | 跨行结束 |",
 	"",
 	"After"
 ].join("\n");
-const tableStart = source.indexOf("| 功能");
+const tableStart = source.indexOf("|  |");
 const tableEnd = source.indexOf("\n\nAfter");
 
 class TableWidget extends WidgetType {
@@ -53,9 +53,9 @@ class TableWidget extends WidgetType {
 		const table = document.createElement("table");
 		table.className = "table-editor";
 		table.innerHTML = [
-			"<thead><tr><th>功能</th><th>核心规则</th></tr></thead>",
+			"<thead><tr><th></th><th>核心规则</th></tr></thead>",
 			"<tbody>",
-			"<tr><td>R5</td><td><strong>上拍</strong> <code>placeOrder</code> 可从失败继续</td></tr>",
+			"<tr><td>可从</td><td><strong>上拍</strong> <code>placeOrder</code> 可从失败继续</td></tr>",
 			"<tr><td>R6</td><td>可从 查询接口 跨行开始</td></tr>",
 			"<tr><td>R7</td><td>跨行结束</td></tr>",
 			"</tbody>"
@@ -124,7 +124,16 @@ function restoreCell(cell, html) {
 
 const cellStart = source.indexOf("**上拍**");
 const cellEnd = source.indexOf(" |", cellStart);
+const crossActiveStart = source.indexOf("可从", source.indexOf("| 可从 |"));
+const selectedPlainStart = source.indexOf("可从", cellStart);
 const marks = [
+	createMark({
+		id: "cross-active-cell",
+		selectedText: source.slice(crossActiveStart, cellEnd),
+		startOffset: crossActiveStart,
+		endOffset: cellEnd,
+		backgroundColor: "blue-light"
+	}),
 	createMark({
 		id: "cell-background",
 		selectedText: source.slice(cellStart, cellEnd),
@@ -134,7 +143,13 @@ const marks = [
 	}),
 	createMark({ id: "bold", selectedText: "**上拍**", textColor: "green" }),
 	createMark({ id: "code", selectedText: "`placeOrder`", textColor: "purple" }),
-	createMark({ id: "plain", selectedText: "可从", textColor: "blue" }),
+	createMark({
+		id: "plain",
+		selectedText: "可从",
+		startOffset: selectedPlainStart,
+		endOffset: selectedPlainStart + "可从".length,
+		textColor: "blue"
+	}),
 	createMark({ id: "comment", selectedText: "查询接口", kind: "comment", color: "orange" })
 ];
 
@@ -167,6 +182,55 @@ assert.deepEqual(
 	),
 	{ from: escapedCellStart, to: escapedCellStart + escapedCellSource.length }
 );
+const inlinePipeSource = [
+	"| 功能 | 核心规则 |",
+	"| --- | --- |",
+	"| R1 | `a|b` 后续 |"
+].join("\n");
+const inlinePipeCellSource = "`a|b` 后续";
+const inlinePipeCellStart = inlinePipeSource.indexOf(inlinePipeCellSource);
+assert.deepEqual(
+	findCellSourceRangeForTest(
+		inlinePipeSource,
+		{ from: 0, to: inlinePipeSource.length },
+		1,
+		1,
+		inlinePipeCellSource
+	),
+	{ from: inlinePipeCellStart, to: inlinePipeCellStart + inlinePipeCellSource.length }
+);
+const unclosedCodeSource = [
+	"| 左列 | 右列 |",
+	"| --- | --- |",
+	"| `未闭合 | 目标 |"
+].join("\n");
+const unclosedCodeCellStart = unclosedCodeSource.lastIndexOf("目标");
+assert.deepEqual(
+	findCellSourceRangeForTest(
+		unclosedCodeSource,
+		{ from: 0, to: unclosedCodeSource.length },
+		1,
+		1,
+		"目标"
+	),
+	{ from: unclosedCodeCellStart, to: unclosedCodeCellStart + "目标".length }
+);
+const optionalOuterPipeSource = [
+	"功能 | 核心规则",
+	"--- | ---",
+	"R1 | 目标"
+].join("\n");
+const optionalOuterPipeCellStart = optionalOuterPipeSource.lastIndexOf("目标");
+assert.deepEqual(
+	findCellSourceRangeForTest(
+		optionalOuterPipeSource,
+		{ from: 0, to: optionalOuterPipeSource.length },
+		1,
+		1,
+		"目标"
+	),
+	{ from: optionalOuterPipeCellStart, to: optionalOuterPipeCellStart + "目标".length }
+);
 const clickedMarkIds = [];
 renderEditorTableMarks(view, source, lineStarts, marks, (markId) => clickedMarkIds.push(markId));
 
@@ -186,6 +250,8 @@ const boldWrapper = table.querySelector('[data-side-mark-reading-id="bold"]');
 const codeWrapper = table.querySelector('[data-side-mark-reading-id="code"]');
 assert.equal(plainWrapper.textContent, "可从");
 assert.equal(plainWrapper.classList.contains("side-mark--text-blue"), true);
+assert.equal(plainWrapper.closest("td")?.cellIndex, 1);
+assert.equal(table.rows[1]?.cells[0]?.querySelector('[data-side-mark-reading-id="plain"]'), null);
 assert.equal(boldWrapper.textContent, "上拍");
 assert.equal(boldWrapper.closest("strong") !== null, true);
 assert.equal(codeWrapper.textContent, "placeOrder");
@@ -213,7 +279,12 @@ assert.equal(
 	"可从",
 	activeR5.cell.innerHTML
 );
+assert.ok(activeR5.cell.querySelector('[data-side-mark-id="cross-active-cell"]'));
 assert.equal(activeR5.cell.querySelectorAll("[data-side-mark-reading-id]").length, 0);
+assert.equal(
+	table.rows[1]?.cells[0]?.querySelector('[data-side-mark-reading-id="cross-active-cell"]')?.textContent,
+	"可从"
+);
 assert.equal(table.rows[2]?.cells[1]?.querySelector('[data-side-mark-reading-id="plain"]'), null);
 assert.equal(
 	table.rows[2]?.cells[1]?.querySelector('[data-side-mark-reading-id="comment"]')?.textContent,

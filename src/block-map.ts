@@ -12,6 +12,11 @@ export interface RemoteUnit {
 	blockId: string;
 }
 
+export interface RemoteBlockTarget {
+	blockId: string;
+	kind: string;
+}
+
 const LARK_BINDING_KEYS = new Set([
 	"lark_doc_url",
 	"lark_doc_token",
@@ -88,14 +93,25 @@ export function findRemoteBlockId(
 	endOffset: number,
 	titleBlockId?: string
 ): string | null {
+	return findRemoteBlockTarget(markdown, units, startOffset, endOffset, titleBlockId)?.blockId || null;
+}
+
+export function findRemoteBlockTarget(
+	markdown: string,
+	units: RemoteUnit[],
+	startOffset: number,
+	endOffset: number,
+	titleBlockId?: string
+): RemoteBlockTarget | null {
 	const block = findFirstHitRemoteBlock(markdown, startOffset, endOffset);
 	if (!block) {
 		return null;
 	}
 	if (block.kind === "title") {
-		return titleBlockId || null;
+		return titleBlockId ? { blockId: titleBlockId, kind: block.kind } : null;
 	}
-	return units[block.index]?.blockId || null;
+	const blockId = units[block.index]?.blockId || "";
+	return blockId ? { blockId, kind: block.kind } : null;
 }
 
 function findFirstHitRemoteBlock(markdown: string, startOffset: number, endOffset: number): MarkdownBlock | null {

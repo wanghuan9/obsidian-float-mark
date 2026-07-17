@@ -1,6 +1,6 @@
 import { FileSystemAdapter, TFile } from "obsidian";
 import type SideMarkPlugin from "./main";
-import { findRemoteBlockId, type RemoteUnit } from "./block-map";
+import { findRemoteBlockTarget, type RemoteBlockTarget, type RemoteUnit } from "./block-map";
 import {
 	assertLarkCommandOk,
 	buildLarkReplyListArgs,
@@ -11,9 +11,15 @@ import {
 } from "./lark-cli-bridge";
 import type { RemoteSyncState, SideMark } from "./types";
 import { translate, type PluginLanguage } from "./i18n";
+import {
+	buildLarkTableFetchArgs,
+	findMarkdownTableCellCoordinate,
+	findRemoteTableCellBlockId
+} from "./lark-table-cell";
 
 export const LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 const SYNC_STATE_FILE = "lark-sync-state.json";
+const remoteTableXmlCache = new Map<string, Promise<string>>();
 
 export type LarkSyncPluginStatus = "enabled" | "disabled" | "not-installed" | "unknown";
 
@@ -61,16 +67,24 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		throw new Error(plugin.t("error.noLarkBlockMap"));
 	}
 
-	const blockId = findRemoteBlockId(
+	const blockTarget = findRemoteBlockTarget(
 		source,
 		docState.units,
 		mark.anchor.startOffset,
 		mark.anchor.endOffset,
 		docState.titleBlockId
 	);
-	if (!blockId) {
+	if (!blockTarget) {
 		throw new Error(plugin.t("error.noLarkBlock"));
 	}
+	const blockId = await resolveLarkCommentBlockId(
+		plugin,
+		binding.doc,
+		docState.revisionId,
+		source,
+		mark,
+		blockTarget
+	);
 
 	const [firstReply, ...restReplies] = replies.length
 		? replies
@@ -112,6 +126,72 @@ export async function syncMarkToLark(plugin: SideMarkPlugin, file: TFile, source
 		syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
 		syncedAt: new Date().toISOString()
 	};
+}
+
+async function resolveLarkCommentBlockId(
+	plugin: SideMarkPlugin,
+	doc: string,
+	revisionId: number | undefined,
+	source: string,
+	mark: SideMark,
+	target: RemoteBlockTarget
+): Promise<string> {
+	if (target.kind !== "table") {
+		return target.blockId;
+	}
+	const coordinate = findMarkdownTableCellCoordinate(
+		source,
+		mark.anchor.startOffset,
+		mark.anchor.endOffset
+	);
+	if (!coordinate) {
+		throw new Error(plugin.t("error.noLarkTableCellBlock"));
+	}
+	const xml = await getRemoteTableXml(plugin, doc, revisionId, target.blockId);
+	const blockId = findRemoteTableCellBlockId(xml, coordinate.rowIndex, coordinate.cellIndex);
+	if (!blockId) {
+		throw new Error(plugin.t("error.noLarkTableCellBlock"));
+	}
+	return blockId;
+}
+
+async function getRemoteTableXml(
+	plugin: SideMarkPlugin,
+	doc: string,
+	revisionId: number | undefined,
+	tableBlockId: string
+): Promise<string> {
+	const cacheKey = `${extractDocumentToken(doc)}:${revisionId ?? "latest"}:${tableBlockId}`;
+	const cached = remoteTableXmlCache.get(cacheKey);
+	if (cached) {
+		return await cached;
+	}
+	const load = loadRemoteTableXml(plugin, doc, tableBlockId);
+	remoteTableXmlCache.set(cacheKey, load);
+	try {
+		return await load;
+	} catch (error) {
+		if (remoteTableXmlCache.get(cacheKey) === load) {
+			remoteTableXmlCache.delete(cacheKey);
+		}
+		throw error;
+	}
+}
+
+async function loadRemoteTableXml(
+	plugin: SideMarkPlugin,
+	doc: string,
+	tableBlockId: string
+): Promise<string> {
+	const result = await runLarkCliViaSyncPlugin(plugin, buildLarkTableFetchArgs(doc, tableBlockId));
+	if (result.ok === false) {
+		throw new Error(result.error?.message || result.error?.hint || plugin.t("error.larkFetchTableFailed"));
+	}
+	const content = result.data?.document?.content || "";
+	if (!content) {
+		throw new Error(plugin.t("error.larkFetchTableFailed"));
+	}
+	return content;
 }
 
 export async function setLarkCommentResolved(plugin: SideMarkPlugin, mark: SideMark, isSolved: boolean): Promise<void> {

@@ -4,6 +4,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type SideMarkPlugin from "./main";
 import { getActiveSelection, isHtmlElement } from "./dom-utils";
 import { buildEditorDecorationLayers, type EditorDecorationLayers } from "./editor-decorations";
+import { resolveEditorSelectionRect } from "./editor-selection-rect";
 import { EditorTableMarkRenderer } from "./editor-table-renderer";
 import { shouldOpenMarkForSelection } from "./mark-click-guard";
 
@@ -108,7 +109,7 @@ export function createSideMarkEditorExtension(plugin: SideMarkPlugin): Extension
 			}
 
 			private getSelectionRect(from: number, to: number): DOMRect | null {
-				const domRect = getDomSelectionRect(this.view.dom);
+				const domRect = resolveEditorSelectionRect(this.view.dom, getActiveSelection(), "start");
 				if (domRect) {
 					return domRect;
 				}
@@ -254,27 +255,4 @@ function getLineLabel(lineText: string): string {
 		return "Quote";
 	}
 	return "T";
-}
-
-function getDomSelectionRect(editorDom: HTMLElement): DOMRect | null {
-	const selection = getActiveSelection();
-	if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-		return null;
-	}
-	const range = selection.getRangeAt(0);
-	const common = range.commonAncestorContainer;
-	const element = isHtmlElement(common) ? common : common.parentElement;
-	if (!element || !editorDom.contains(element)) {
-		return null;
-	}
-	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-	if (rects.length === 0) {
-		const rect = range.getBoundingClientRect();
-		return rect.width > 0 && rect.height > 0 ? rect : null;
-	}
-	const first = rects[0];
-	if (!first) {
-		return null;
-	}
-	return new DOMRect(first.left, first.top, first.width, first.height);
 }

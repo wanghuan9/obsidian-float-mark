@@ -580,6 +580,100 @@ renderReadingMarks(repeatedRoot, "same\nsame\nsame", [repeatedMark], () => undef
 const repeatedWrapper = repeatedRoot.querySelector("[data-side-mark-reading-id=\"repeated\"]");
 assert.equal(repeatedWrapper.parentElement, repeatedRoot.querySelectorAll("p")[1]);
 
+const repeatedTableSource = [
+	"| 测试数据 | 测试数据 | 测试数据 |",
+	"| --- | --- | --- |",
+	"| 测试数据 | 测试数据 | 测试数据 |"
+].join("\n");
+const repeatedTableDom = new JSDOM([
+	"<table id=\"root\">",
+	"<thead><tr><th>测试数据</th><th>测试数据</th><th>测试数据</th></tr></thead>",
+	"<tbody><tr><td>测试数据</td><td>测试数据</td><td>测试数据</td></tr></tbody>",
+	"</table>"
+].join(""));
+const repeatedTableRoot = repeatedTableDom.window.document.querySelector("#root");
+const repeatedTableMarkStart = repeatedTableSource.lastIndexOf("\n") + 3;
+const repeatedTableMark = createMark({
+	id: "repeated-table-bottom-left",
+	selectedText: "测试数据",
+	startOffset: repeatedTableMarkStart,
+	endOffset: repeatedTableMarkStart + "测试数据".length,
+	lineStart: 3,
+	columnStart: 3,
+	prefix: repeatedTableSource.slice(Math.max(0, repeatedTableMarkStart - 40), repeatedTableMarkStart),
+	suffix: repeatedTableSource.slice(repeatedTableMarkStart + "测试数据".length, repeatedTableMarkStart + "测试数据".length + 40)
+});
+renderReadingMarks(repeatedTableRoot, repeatedTableSource, [repeatedTableMark], () => undefined, {
+	tableSourceRange: { from: 0, to: repeatedTableSource.length }
+});
+assert.equal(
+	repeatedTableRoot.rows[1]?.cells[0]?.querySelector('[data-side-mark-reading-id="repeated-table-bottom-left"]')?.textContent,
+	"测试数据"
+);
+assert.equal(
+	repeatedTableRoot.rows[0]?.cells[2]?.querySelector('[data-side-mark-reading-id="repeated-table-bottom-left"]'),
+	null
+);
+const repeatedTableStarts = [];
+let repeatedTableSearchFrom = 0;
+while (repeatedTableSearchFrom < repeatedTableSource.length) {
+	const start = repeatedTableSource.indexOf("测试数据", repeatedTableSearchFrom);
+	if (start < 0) {
+		break;
+	}
+	repeatedTableStarts.push(start);
+	repeatedTableSearchFrom = start + "测试数据".length;
+}
+const repeatedTableMarks = repeatedTableStarts.map((start, index) => createMark({
+	id: `repeated-table-${index}`,
+	selectedText: "测试数据",
+	startOffset: start,
+	endOffset: start + "测试数据".length
+}));
+renderReadingMarks(repeatedTableRoot, repeatedTableSource, repeatedTableMarks, () => undefined, {
+	tableSourceRange: { from: 0, to: repeatedTableSource.length }
+});
+for (let rowIndex = 0; rowIndex < 2; rowIndex += 1) {
+	for (let cellIndex = 0; cellIndex < 3; cellIndex += 1) {
+		const markId = `repeated-table-${rowIndex * 3 + cellIndex}`;
+		assert.equal(
+			repeatedTableRoot.rows[rowIndex]?.cells[cellIndex]?.querySelector(`[data-side-mark-reading-id="${markId}"]`)?.textContent,
+			"测试数据"
+		);
+		assert.equal(repeatedTableRoot.querySelectorAll(`[data-side-mark-reading-id="${markId}"]`).length, 1);
+	}
+}
+
+const crossCellSource = [
+	"| 左列 | 右列 |",
+	"| --- | --- |",
+	"| 左侧文本 | 右侧文本 |"
+].join("\n");
+const crossCellDom = new JSDOM([
+	"<table id=\"root\">",
+	"<thead><tr><th>左列</th><th>右列</th></tr></thead>",
+	"<tbody><tr><td>左侧文本</td><td>右侧文本</td></tr></tbody>",
+	"</table>"
+].join(""));
+const crossCellRoot = crossCellDom.window.document.querySelector("#root");
+const crossCellStart = crossCellSource.indexOf("侧文本");
+const crossCellEnd = crossCellSource.indexOf("右侧文本") + "右侧".length;
+const crossCellMark = createMark({
+	id: "cross-cell",
+	selectedText: crossCellSource.slice(crossCellStart, crossCellEnd),
+	startOffset: crossCellStart,
+	endOffset: crossCellEnd,
+	lineStart: 3,
+	lineEnd: 3
+});
+renderReadingMarks(crossCellRoot, crossCellSource, [crossCellMark], () => undefined, {
+	tableSourceRange: { from: 0, to: crossCellSource.length }
+});
+assert.deepEqual(
+	Array.from(crossCellRoot.querySelectorAll('[data-side-mark-reading-id="cross-cell"]')).map((element) => element.textContent),
+	["侧文本", "右侧"]
+);
+
 const softBreakDom = new JSDOM("<div id=\"root\"><p>same<br>same<br>same</p></div>");
 const softBreakRoot = softBreakDom.window.document.querySelector("#root");
 const softBreakMark = createMark({ id: "soft-break", selectedText: "same", lineStart: 2 });

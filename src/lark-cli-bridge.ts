@@ -3,6 +3,9 @@ export interface LarkCliResult {
 	data?: {
 		comment_id?: string;
 		reply_id?: string;
+		document?: {
+			content?: string;
+		};
 		items?: Array<{
 			reply_id?: string;
 		}>;
