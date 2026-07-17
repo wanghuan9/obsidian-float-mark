@@ -1,7 +1,7 @@
 import { setIcon } from "obsidian";
 import { getActiveBody } from "./dom-utils";
 import type { I18nKey } from "./i18n";
-import { calculatePopoverPosition } from "./popover-position";
+import { calculatePopoverPosition, type PopoverPlacement } from "./popover-position";
 import { getCustomMarkBackgroundHex, normalizeMarkBackgroundColor, type MarkBackgroundColor, type MarkTextColor } from "./types";
 
 export interface MarkStyleChoice {
@@ -85,7 +85,8 @@ export class MarkStylePopover {
 		rect: DOMRect,
 		choice: MarkStyleChoice,
 		onChange: (choice: MarkStyleChoice) => void,
-		onReset: () => void
+		onReset: () => void,
+		placement: PopoverPlacement = "side"
 	): void {
 		this.cancelHide();
 		this.textColor = choice.textColor;
@@ -100,7 +101,8 @@ export class MarkStylePopover {
 		const { left, top } = calculatePopoverPosition(
 			rect,
 			{ width, height: this.el.offsetHeight },
-			{ width: window.innerWidth, height: window.innerHeight }
+			{ width: window.innerWidth, height: window.innerHeight },
+			placement
 		);
 		this.el.style.left = `${left}px`;
 		this.el.style.top = `${top}px`;

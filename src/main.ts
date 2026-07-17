@@ -8,6 +8,7 @@ import { mergePendingEditorAnchorUpdates, reconcileEditorMarks } from "./editor-
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
 import { MarkStylePopover, type MarkStyleChoice } from "./mark-style-popover";
+import type { PopoverPlacement } from "./popover-position";
 import { ReadingSelectionToolbar } from "./reading-selection-toolbar";
 import { SelectionToolbar, type SelectionFormatAction, type ToolbarAction } from "./selection-toolbar";
 import { type MarkAnchorUpdate, SideMarkStore } from "./storage";
@@ -570,7 +571,7 @@ export default class SideMarkPlugin extends Plugin {
 		await this.refreshMarkViews(file.path, mark);
 	}
 
-	async openMark(markId: string, rect: DOMRect): Promise<void> {
+	async openMark(markId: string, rect: DOMRect, placement: PopoverPlacement = "side"): Promise<void> {
 		const mark = this.currentDocument?.marks.find((item) => item.id === markId);
 		if (!mark) return;
 		if (mark.mark.kind !== "highlight") {
@@ -584,7 +585,7 @@ export default class SideMarkPlugin extends Plugin {
 			void this.updateMarkAppearance(mark.id, choice);
 		}, () => {
 			void this.deleteMark(mark.id);
-		});
+		}, placement);
 	}
 
 	async deleteMark(markId: string): Promise<void> {

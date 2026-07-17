@@ -28,5 +28,17 @@ assert.deepEqual(
 	calculatePopoverPosition(new DOMRect(100, 750, 50, 20), { width: 286, height: 180 }, { width: 1000, height: 800 }),
 	{ left: 156, top: 612 }
 );
+assert.deepEqual(
+	calculatePopoverPosition(new DOMRect(700, 100, 24, 24), { width: 312, height: 220 }, { width: 1000, height: 800 }, "below"),
+	{ left: 420, top: 130 }
+);
+assert.deepEqual(
+	calculatePopoverPosition(new DOMRect(700, 700, 24, 24), { width: 312, height: 220 }, { width: 1000, height: 800 }, "below"),
+	{ left: 420, top: 474 }
+);
+assert.deepEqual(
+	calculatePopoverPosition(new DOMRect(120, 100, 24, 24), { width: 312, height: 220 }, { width: 1000, height: 800 }, "below"),
+	{ left: 8, top: 130 }
+);
 
 console.log("popover position tests passed");

@@ -1910,7 +1910,18 @@ var import_obsidian2 = require("obsidian");
 // src/popover-position.ts
 var POPOVER_GAP = 6;
 var VIEWPORT_PADDING = 8;
-function calculatePopoverPosition(anchor, popover, viewport) {
+var BELOW_HORIZONTAL_OFFSET = 8;
+function calculatePopoverPosition(anchor, popover, viewport, placement = "side") {
+  if (placement === "below") {
+    const maxLeft2 = viewport.width - popover.width - VIEWPORT_PADDING;
+    const preferredTop = anchor.bottom + POPOVER_GAP;
+    const fallbackTop = anchor.top - popover.height - POPOVER_GAP;
+    const maxTop2 = viewport.height - popover.height - VIEWPORT_PADDING;
+    return {
+      left: clamp(anchor.right - popover.width + BELOW_HORIZONTAL_OFFSET, VIEWPORT_PADDING, maxLeft2),
+      top: preferredTop <= maxTop2 ? preferredTop : fallbackTop >= VIEWPORT_PADDING ? fallbackTop : clamp(preferredTop, VIEWPORT_PADDING, maxTop2)
+    };
+  }
   const preferredLeft = anchor.right + POPOVER_GAP;
   const fallbackLeft = anchor.left - popover.width - POPOVER_GAP;
   const maxLeft = viewport.width - popover.width - VIEWPORT_PADDING;
@@ -2367,7 +2378,7 @@ var MarkStylePopover = class {
     this.renderBackgroundColors();
     this.renderResetButton();
   }
-  show(rect, choice, onChange, onReset) {
+  show(rect, choice, onChange, onReset, placement = "side") {
     this.cancelHide();
     this.textColor = choice.textColor;
     this.backgroundColor = choice.backgroundColor;
@@ -2381,7 +2392,8 @@ var MarkStylePopover = class {
     const { left, top } = calculatePopoverPosition(
       rect,
       { width, height: this.el.offsetHeight },
-      { width: window.innerWidth, height: window.innerHeight }
+      { width: window.innerWidth, height: window.innerHeight },
+      placement
     );
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
@@ -4488,9 +4500,11 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     });
     const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
     this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
-    this.addIconAction(toolbar, "palette", this.t("sidebar.style"), () => {
-      const rect = card.getBoundingClientRect();
-      void this.plugin.openMark(mark.id, rect);
+    this.addIconAction(toolbar, "palette", this.t("sidebar.style"), (event) => {
+      if (!isHtmlElement(event.currentTarget)) {
+        return;
+      }
+      void this.plugin.openMark(mark.id, event.currentTarget.getBoundingClientRect(), "below");
     });
     this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? this.t("sidebar.editNote") : this.t("sidebar.addNote"), (event) => {
       event.preventDefault();
@@ -7037,7 +7051,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     });
     await this.refreshMarkViews(file.path, mark);
   }
-  async openMark(markId, rect) {
+  async openMark(markId, rect, placement = "side") {
     var _a;
     const mark = (_a = this.currentDocument) == null ? void 0 : _a.marks.find((item) => item.id === markId);
     if (!mark) return;
@@ -7052,7 +7066,7 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       void this.updateMarkAppearance(mark.id, choice);
     }, () => {
       void this.deleteMark(mark.id);
-    });
+    }, placement);
   }
   async deleteMark(markId) {
     var _a;

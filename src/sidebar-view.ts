@@ -638,9 +638,11 @@ export class SideMarkSidebarView extends ItemView {
 		});
 		const toolbar = card.createDiv({ cls: "side-mark-card-toolbar" });
 		this.addIconAction(toolbar, "chevrons-up", this.t("sidebar.locate"), () => void this.plugin.jumpToMark(mark.id));
-		this.addIconAction(toolbar, "palette", this.t("sidebar.style"), () => {
-			const rect = card.getBoundingClientRect();
-			void this.plugin.openMark(mark.id, rect);
+		this.addIconAction(toolbar, "palette", this.t("sidebar.style"), (event) => {
+			if (!isHtmlElement(event.currentTarget)) {
+				return;
+			}
+			void this.plugin.openMark(mark.id, event.currentTarget.getBoundingClientRect(), "below");
 		});
 		this.addIconAction(toolbar, "sticky-note", mark.note.content.trim() ? this.t("sidebar.editNote") : this.t("sidebar.addNote"), (event) => {
 			event.preventDefault();
