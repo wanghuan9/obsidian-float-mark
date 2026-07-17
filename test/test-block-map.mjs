@@ -11,7 +11,7 @@ await esbuild.build({
 	outfile: "test/.tmp/block-map.mjs"
 });
 
-const { findFirstHitBlock, findRemoteBlockId, splitMarkdownBlocks } = await import("./.tmp/block-map.mjs");
+const { findFirstHitBlock, findRemoteBlockId, findRemoteBlockTarget, splitMarkdownBlocks } = await import("./.tmp/block-map.mjs");
 
 const markdown = "# Title\n\nIntro paragraph.\n\n## Section\n\n- first\n- second\n\n```ts\nconst a = 1;\n```\n";
 const blocks = splitMarkdownBlocks(markdown);
@@ -38,6 +38,19 @@ assert.equal(findRemoteBlockId(markdown, remoteUnits, introStart, introStart + 5
 
 const listStart = markdown.indexOf("- second");
 assert.equal(findRemoteBlockId(markdown, remoteUnits, listStart, listStart + 3, "title-block"), "block-3");
+
+const tableMarkdown = "# Title\n\n| 字段 | 值 |\n|---|---|\n| 状态 | 留货中 |";
+const tableTargetStart = tableMarkdown.indexOf("留货中");
+assert.deepEqual(
+	findRemoteBlockTarget(
+		tableMarkdown,
+		[{ kind: "table", hash: "table-hash", blockId: "table-block" }],
+		tableTargetStart,
+		tableTargetStart + "留货中".length,
+		"title-block"
+	),
+	{ blockId: "table-block", kind: "table" }
+);
 
 const markdownWithBinding = [
 	"---",

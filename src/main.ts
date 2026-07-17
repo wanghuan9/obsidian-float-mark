@@ -3,6 +3,7 @@ import type { MarkdownPostProcessorContext } from "obsidian";
 import type { ChangeDesc } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { createSideMarkEditorExtension } from "./editor-extension";
+import { resolveEditorSelectionRect, type EditorSelectionRectPlacement } from "./editor-selection-rect";
 import { mergePendingEditorAnchorUpdates, reconcileEditorMarks } from "./editor-anchor-tracker";
 import { CommentPopover } from "./comment-popover";
 import { HoverBlockToolbar, type HoverBlockAction, type HoverBlockTarget } from "./hover-block-toolbar";
@@ -26,10 +27,12 @@ import {
 	buildSourceLineStarts,
 	getReadingMarkElements,
 	getReadingMarksForSection,
+	getReadingSectionSourceRange,
 	renderReadingMarks
 } from "./reading-view-renderer";
 import {
 	findSourceRangeForReadingSelection,
+	findSourceRangeForReadingTableSelection,
 	getReadingSelectionContext,
 	getReadingSelectionRect
 } from "./reading-selection";
@@ -863,12 +866,24 @@ export default class SideMarkPlugin extends Plugin {
 		const lineStarts = this.getSourceLineStarts(file, source);
 		const firstSection = sections[0];
 		const lastSection = sections[sections.length - 1];
-		const context = getReadingSelectionContext(sections.map((section) => section.el), range);
-		const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
+		const sectionElements = sections.map((section) => section.el);
+		const sourceScope = {
 			sourceStartOffset: firstSection.sourceStartOffset ?? lineStarts[firstSection.lineStart] ?? source.length,
-			sourceEndOffset: lastSection.sourceEndOffset ?? lineStarts[lastSection.lineEnd + 1] ?? source.length,
-			...context
-		});
+			sourceEndOffset: lastSection.sourceEndOffset ?? lineStarts[lastSection.lineEnd + 1] ?? source.length
+		};
+		const tableSourceRange = findSourceRangeForReadingTableSelection(
+			source,
+			selectedText,
+			sectionElements,
+			range,
+			sourceScope
+		);
+		const sourceRange = tableSourceRange === undefined
+			? findSourceRangeForReadingSelection(source, selectedText, {
+				...sourceScope,
+				...getReadingSelectionContext(sectionElements, range)
+			})
+			: tableSourceRange;
 		if (!sourceRange) {
 			this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
 			return;
@@ -943,7 +958,8 @@ export default class SideMarkPlugin extends Plugin {
 			return;
 		}
 		const hasPersistentHighlight = this.showReadingSelectionHighlight(selection);
-		this.commentPopover.show(selection.rect, (content) => {
+		const popoverRect = getReadingSelectionRect(selection.range, "end") || selection.rect;
+		this.commentPopover.show(popoverRect, (content) => {
 			if (!content.trim()) {
 				return;
 			}
@@ -1089,7 +1105,7 @@ export default class SideMarkPlugin extends Plugin {
 
 	private showCommentPopover(view: EditorView): void {
 		const selection = view.state.selection.main;
-		const rect = getEditorSelectionRect(view) || view.coordsAtPos(selection.to);
+		const rect = getEditorSelectionRect(view, "end") || view.coordsAtPos(selection.to);
 		const file = this.getActiveMarkdownFile();
 		if (!rect || selection.empty || !file) return;
 		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
@@ -1110,7 +1126,7 @@ export default class SideMarkPlugin extends Plugin {
 
 	private showMarkStylePopoverForView(view: EditorView): void {
 		const selection = view.state.selection.main;
-		const rect = view.coordsAtPos(selection.to);
+		const rect = getEditorSelectionRect(view, "end") || view.coordsAtPos(selection.to);
 		if (!rect || selection.empty) return;
 		const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
 		this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createMarkFromOffsets(
@@ -1127,7 +1143,8 @@ export default class SideMarkPlugin extends Plugin {
 	private showMarkStylePopoverForReadingSelection(
 		selection: NonNullable<SideMarkPlugin["readingSelection"]>
 	): void {
-		this.showMarkStylePopoverForNewMark(selection.rect, (choice) => this.createReadingMark(
+		const popoverRect = getReadingSelectionRect(selection.range, "end") || selection.rect;
+		this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createReadingMark(
 			selection,
 			"highlight",
 			"",
@@ -1354,7 +1371,9 @@ export default class SideMarkPlugin extends Plugin {
 		const marks = section
 			? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts)
 			: [];
-		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+		renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect), section ? {
+			tableSourceRange: getReadingSectionSourceRange(source, section.lineStart, section.lineEnd, lineStarts)
+		} : {});
 	}
 
 	private getReadingRenderSnapshot(file: TFile): Promise<ReadingRenderSnapshot> {
@@ -1550,7 +1569,14 @@ export default class SideMarkPlugin extends Plugin {
 						section.lineEnd,
 						lineStarts
 					);
-					renderReadingMarks(section.el, source, marks, onClick);
+					renderReadingMarks(section.el, source, marks, onClick, {
+						tableSourceRange: getReadingSectionSourceRange(
+							source,
+							section.lineStart,
+							section.lineEnd,
+							lineStarts
+						)
+					});
 				}
 				return;
 			}
@@ -1747,35 +1773,11 @@ function getSelectionFormat(view: EditorView): SelectionFormatAction {
 	return "paragraph";
 }
 
-function getEditorSelectionRect(view: EditorView): DOMRect | null {
-	const selection = getActiveSelection();
-	if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-		return null;
-	}
-	const range = selection.getRangeAt(0);
-	const common = range.commonAncestorContainer;
-	const element = isHtmlElement(common) ? common : common.parentElement;
-	if (!element || !view.dom.contains(element)) {
-		return null;
-	}
-	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-	if (rects.length === 0) {
-		const rect = range.getBoundingClientRect();
-		return rect.width > 0 && rect.height > 0 ? rect : null;
-	}
-	return getBoundingRect(rects);
-}
-
-function getBoundingRect(rects: DOMRect[]): DOMRect | null {
-	const first = rects[0];
-	if (!first) {
-		return null;
-	}
-	const left = Math.min(...rects.map((rect) => rect.left));
-	const top = Math.min(...rects.map((rect) => rect.top));
-	const right = Math.max(...rects.map((rect) => rect.right));
-	const bottom = Math.max(...rects.map((rect) => rect.bottom));
-	return new DOMRect(left, top, right - left, bottom - top);
+function getEditorSelectionRect(
+	view: EditorView,
+	placement: EditorSelectionRectPlacement = "bounding"
+): DOMRect | null {
+	return resolveEditorSelectionRect(view.dom, getActiveSelection(), placement);
 }
 
 function defaultHighlightAppearance(): MarkStyleChoice {

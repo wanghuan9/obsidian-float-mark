@@ -95,6 +95,14 @@ assert.match(stylesSource, /--button-normal: var\(--side-mark-style-background, 
 assert.match(stylesSource, /--button-normal: var\(--side-mark-color-option-background\)/);
 assert.match(
 	stylesSource,
+	/body \.side-mark-sidebar \.side-mark-card \.side-mark-card-toolbar button\.side-mark-card-icon-button\.is-confirming \{[\s\S]*?border: 1px solid rgba\(214, 76, 76, 0\.28\);[\s\S]*?border-radius: 999px;[\s\S]*?background: rgba\(214, 76, 76, 0\.12\);[\s\S]*?color: var\(--text-error\);/
+);
+assert.match(
+	stylesSource,
+	/body \.side-mark-sidebar \.side-mark-card \.side-mark-card-toolbar button\.side-mark-card-icon-button\.is-confirming:hover,[\s\S]*?button\.side-mark-card-icon-button\.is-confirming:active \{[\s\S]*?background: rgba\(214, 76, 76, 0\.16\);[\s\S]*?color: var\(--text-error\);/
+);
+assert.match(
+	stylesSource,
 	/body \.side-mark-sidebar\.side-mark-theme-retroma \.side-mark-marker-card:not\(\.is-background-none\) \.side-mark-marker-preview[\s\S]*?18%/
 );
 

@@ -219,7 +219,10 @@ assert.equal(await currentNavigation, false, "a vault navigation must cancel cur
 
 const sidebarSource = await readFile("src/sidebar-view.ts", "utf8");
 const vaultCardSource = sidebarSource.match(/private renderVaultCard[\s\S]*?\n\t}\n\n\tprivate renderTabs/)?.[0] || "";
+const markerCardSource = sidebarSource.match(/private renderMarkCard[\s\S]*?\n\t}\n\n\tprivate renderMarkerNote/)?.[0] || "";
 assert.match(vaultCardSource, /jumpToDocumentMark/);
+assert.match(markerCardSource, /addDeleteIconAction/);
+assert.doesNotMatch(markerCardSource, /addMenuAction|sidebar\.more|more-horizontal|side-mark-card-menu/);
 for (const writeEntry of [
 	"renderCardToolbar",
 	"renderThread",

@@ -28,6 +28,7 @@ assert.match(method, /this\.currentDocument\?\.filePath === file\.path/);
 const updateReadingSelectionMethod = readMethod("updateReadingSelectionToolbar");
 const readingToolbarActionMethod = readMethod("async handleReadingToolbarAction");
 const unresolvedReadingSelectionMethod = readMethod("showUnresolvedReadingSelection");
+const editorCommentPopoverMethod = readMethod("showCommentPopover");
 const editorStylePopoverMethod = readMethod("showMarkStylePopoverForView");
 const readingStylePopoverMethod = readMethod("showMarkStylePopoverForReadingSelection");
 const newMarkStylePopoverMethod = readMethod("showMarkStylePopoverForNewMark");
@@ -52,11 +53,17 @@ assert.doesNotMatch(updateReadingSelectionMethod, /new Notice\(this\.t\("notice\
 assert.doesNotMatch(updateReadingSelectionMethod, /this\.app\.vault\.read/);
 assert.match(updateReadingSelectionMethod, /const source = view\.data/);
 assert.match(updateReadingSelectionMethod, /this\.showUnresolvedReadingSelection\(rect,/);
+assert.match(updateReadingSelectionMethod, /findSourceRangeForReadingTableSelection\(/);
+assert.match(updateReadingSelectionMethod, /tableSourceRange === undefined\s*\? findSourceRangeForReadingSelection\(/);
 assert.match(unresolvedReadingSelectionMethod, /this\.readingSelectionUnresolved = true/);
 assert.match(unresolvedReadingSelectionMethod, /this\.readingToolbar\.show\(rect, boundary\)/);
 assert.match(readingToolbarActionMethod, /new Notice\(this\.t\("notice\.readingSelectionUnresolved"\)\)/);
+assert.match(readingToolbarActionMethod, /getReadingSelectionRect\(selection\.range, "end"\) \|\| selection\.rect/);
+assert.match(editorCommentPopoverMethod, /getEditorSelectionRect\(view, "end"\)/);
 assert.match(editorStylePopoverMethod, /this\.showMarkStylePopoverForNewMark\(popoverRect,/);
-assert.match(readingStylePopoverMethod, /this\.showMarkStylePopoverForNewMark\(selection\.rect,/);
+assert.match(editorStylePopoverMethod, /getEditorSelectionRect\(view, "end"\)/);
+assert.match(readingStylePopoverMethod, /getReadingSelectionRect\(selection\.range, "end"\) \|\| selection\.rect/);
+assert.match(readingStylePopoverMethod, /this\.showMarkStylePopoverForNewMark\(popoverRect,/);
 assert.match(newMarkStylePopoverMethod, /let latestChoice = defaultHighlightAppearance\(\)/);
 assert.match(newMarkStylePopoverMethod, /if \(createPromise\) \{\s*return;/);
 assert.match(newMarkStylePopoverMethod, /resetRequested = true/);
@@ -75,6 +82,7 @@ assert.match(
 assert.doesNotMatch(renderReadingModeMarksMethod, /this\.app\.vault\.read/);
 assert.doesNotMatch(renderReadingModeMarksMethod, /this\.store\.relocateDocument/);
 assert.doesNotMatch(renderReadingModeMarksMethod, /this\.getSourceLineStarts/);
+assert.match(renderReadingModeMarksMethod, /tableSourceRange: getReadingSectionSourceRange/);
 assert.match(getReadingRenderSnapshotMethod, /const sourceVersion = `\$\{file\.stat\.mtime\}:\$\{file\.stat\.size\}`/);
 assert.match(getReadingRenderSnapshotMethod, /const storeRevision = this\.store\.getRevision\(\)/);
 assert.match(
@@ -131,6 +139,7 @@ assert.match(
 	renderPreviewMarksForViewMethod,
 	/for \(const section of sectionsToRender\) \{[\s\S]*getReadingMarksForSection\(\s*source,\s*resolvedDocument\.marks,/
 );
+assert.match(renderPreviewMarksForViewMethod, /tableSourceRange: getReadingSectionSourceRange/);
 assert.match(source, /editorDocumentSaveTimers = new Map<string, number>\(\)/);
 assert.match(source, /pendingEditorAnchorUpdatesByFile = new Map<string, Map<string, MarkAnchorUpdate>>\(\)/);
 assert.match(scheduleEditorDocumentSaveMethod, /this\.pendingEditorAnchorUpdatesByFile\.get\(filePath\)/);

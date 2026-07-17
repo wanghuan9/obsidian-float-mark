@@ -12,8 +12,27 @@ await esbuild.build({
 	outfile: "test/.tmp/reading-selection.mjs"
 });
 
-const { findSourceRangeForReadingSelection, getReadingSelectionContext } = await import(
+const {
+	findSourceRangeForReadingSelection,
+	findSourceRangeForReadingTableSelection,
+	getReadingSelectionContext,
+	getReadingSelectionRect
+} = await import(
 	"./.tmp/reading-selection.mjs"
+);
+
+globalThis.DOMRect = new JSDOM().window.DOMRect;
+const firstSelectionRect = new DOMRect(100, 80, 140, 20);
+const lastSelectionRect = new DOMRect(100, 110, 50, 20);
+const renderedRange = {
+	getClientRects: () => [firstSelectionRect, lastSelectionRect],
+	getBoundingClientRect: () => new DOMRect(100, 80, 140, 50)
+};
+assert.deepEqual(getReadingSelectionRect(renderedRange, "start").toJSON(), firstSelectionRect.toJSON());
+assert.deepEqual(getReadingSelectionRect(renderedRange, "end").toJSON(), lastSelectionRect.toJSON());
+assert.deepEqual(
+	getReadingSelectionRect(renderedRange).toJSON(),
+	new DOMRect(100, 80, 140, 50).toJSON()
 );
 
 const source = [
@@ -202,6 +221,77 @@ const repeatedSourceStart = tableSource.lastIndexOf("`recycle_order.partner_id`"
 assert.deepEqual(repeatedSourceRange, {
 	from: repeatedSourceStart + 1,
 	to: repeatedSourceStart + 1 + "recycle_order.partner_id".length
+});
+
+const identicalTableSource = [
+	"| 测试数据 | 测试数据 | 测试数据 | 测试数据 | 测试数据 |",
+	"|---|---|---|---|---|",
+	"| 测试数据 | 测试数据 | 测试数据 | 测试数据 | 测试数据 |",
+	"| 测试数据 | 测试数据 | 测试数据 | 测试数据 | 测试数据 |"
+].join("\n");
+const identicalTableDom = new JSDOM([
+	'<div id="identical-table-section"><table>',
+	'<thead><tr><th>测试数据</th><th>测试数据</th><th>测试数据</th><th>测试数据</th><th>测试数据</th></tr></thead>',
+	'<tbody>',
+	'<tr><td>测试数据</td><td>测试数据</td><td>测试数据</td><td>测试数据</td><td>测试数据</td></tr>',
+	'<tr><td>测试数据</td><td>测试数据</td><td id="identical-target">测试数据</td><td>测试数据</td><td>测试数据</td></tr>',
+	'</tbody></table></div>'
+].join(""));
+const identicalTableSection = identicalTableDom.window.document.querySelector("#identical-table-section");
+const identicalTarget = identicalTableDom.window.document.querySelector("#identical-target").firstChild;
+const identicalRange = identicalTableDom.window.document.createRange();
+identicalRange.setStart(identicalTarget, 0);
+identicalRange.setEnd(identicalTarget, identicalTarget.data.length);
+const identicalSourceRange = findSourceRangeForReadingTableSelection(
+	identicalTableSource,
+	identicalRange.toString(),
+	[identicalTableSection],
+	identicalRange,
+	{ sourceStartOffset: 0, sourceEndOffset: identicalTableSource.length }
+);
+const identicalTargetLineStart = identicalTableSource.lastIndexOf("\n") + 1;
+const identicalFirstTarget = identicalTableSource.indexOf("测试数据", identicalTargetLineStart);
+const identicalSecondTarget = identicalTableSource.indexOf("测试数据", identicalFirstTarget + "测试数据".length);
+const identicalTargetSourceStart = identicalTableSource.indexOf("测试数据", identicalSecondTarget + "测试数据".length);
+assert.deepEqual(identicalSourceRange, {
+	from: identicalTargetSourceStart,
+	to: identicalTargetSourceStart + "测试数据".length
+});
+const identicalBoundaryEndCell = identicalTableDom.window.document.querySelectorAll("tbody tr")[1].cells[3];
+const identicalBoundaryRange = identicalTableDom.window.document.createRange();
+identicalBoundaryRange.setStart(identicalTarget, 0);
+identicalBoundaryRange.setEnd(identicalBoundaryEndCell, 0);
+assert.equal(identicalBoundaryRange.toString().trim(), "测试数据");
+assert.deepEqual(
+	findSourceRangeForReadingTableSelection(
+		identicalTableSource,
+		identicalBoundaryRange.toString().trim(),
+		[identicalTableSection],
+		identicalBoundaryRange,
+		{ sourceStartOffset: 0, sourceEndOffset: identicalTableSource.length }
+	),
+	{
+		from: identicalTargetSourceStart,
+		to: identicalTargetSourceStart + "测试数据".length
+	}
+);
+const identicalCrossStart = identicalTableDom.window.document.querySelectorAll("tbody tr")[1].cells[1].firstChild;
+const identicalCrossEnd = identicalTableDom.window.document.querySelectorAll("tbody tr")[1].cells[3].firstChild;
+const identicalCrossRange = identicalTableDom.window.document.createRange();
+identicalCrossRange.setStart(identicalCrossStart, 1);
+identicalCrossRange.setEnd(identicalCrossEnd, 3);
+const identicalCrossSourceRange = findSourceRangeForReadingTableSelection(
+	identicalTableSource,
+	identicalCrossRange.toString().trim(),
+	[identicalTableSection],
+	identicalCrossRange,
+	{ sourceStartOffset: 0, sourceEndOffset: identicalTableSource.length }
+);
+const identicalCrossStartSource = identicalSecondTarget + 1;
+const identicalFourthTarget = identicalTableSource.indexOf("测试数据", identicalTargetSourceStart + "测试数据".length);
+assert.deepEqual(identicalCrossSourceRange, {
+	from: identicalCrossStartSource,
+	to: identicalFourthTarget + 3
 });
 
 const noOuterSource = [

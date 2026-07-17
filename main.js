@@ -155,6 +155,38 @@ function clampOffset(offset, docLength) {
   return Math.max(0, Math.min(offset, docLength));
 }
 
+// src/editor-selection-rect.ts
+function resolveEditorSelectionRect(editorDom, selection, placement = "bounding") {
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  const element = common.nodeType === 1 ? common : common.parentElement;
+  if (!element || !editorDom.contains(element)) {
+    return null;
+  }
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
+  }
+  if (placement === "start") {
+    return cloneRect(rects[0]);
+  }
+  if (placement === "end") {
+    return cloneRect(rects[rects.length - 1]);
+  }
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+function cloneRect(rect) {
+  return rect ? new DOMRect(rect.left, rect.top, rect.width, rect.height) : null;
+}
+
 // src/editor-table-cell-renderer.ts
 var import_state2 = require("@codemirror/state");
 var import_view2 = require("@codemirror/view");
@@ -269,6 +301,230 @@ function offsetToLineColumn(source, offset) {
   return { line, column };
 }
 
+// src/markdown-table-map.ts
+function buildMarkdownTableMaps(source, searchRange = { from: 0, to: source.length }) {
+  const range = normalizeRange(searchRange, source.length);
+  const lines = splitSourceLines(source, range);
+  const fencedCodeLines = findFencedCodeLines(lines);
+  const tables = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const headerLine = lines[index - 1];
+    const delimiterLine = lines[index];
+    if (!headerLine || !delimiterLine || fencedCodeLines.has(index - 1) || fencedCodeLines.has(index)) {
+      continue;
+    }
+    const header = parseTableRow(headerLine);
+    const delimiter = parseTableRow(delimiterLine);
+    if (!header || !delimiter || header.cells.length !== delimiter.cells.length || !delimiter.cells.every((cell) => /^:?-{3,}:?$/.test(source.slice(cell.from, cell.to)))) {
+      continue;
+    }
+    const rows = [header];
+    let bodyIndex = index + 1;
+    while (bodyIndex < lines.length && !fencedCodeLines.has(bodyIndex)) {
+      const line = lines[bodyIndex];
+      const row = line ? parseTableRow(line) : null;
+      if (!row) {
+        break;
+      }
+      rows.push(row);
+      bodyIndex += 1;
+    }
+    const cells = rows.flatMap((row, rowIndex) => row.cells.map((cell, cellIndex) => ({
+      rowIndex,
+      cellIndex,
+      range: cell
+    })));
+    const lastRow = rows[rows.length - 1] || header;
+    tables.push({
+      range: { from: header.line.from, to: lastRow.line.to },
+      cells
+    });
+    index = bodyIndex - 1;
+  }
+  return tables;
+}
+function findMarkdownTableCellRange(source, tableRange, rowIndex, cellIndex) {
+  var _a;
+  const table = buildMarkdownTableMaps(source, tableRange)[0];
+  return ((_a = table == null ? void 0 : table.cells.find((cell) => cell.rowIndex === rowIndex && cell.cellIndex === cellIndex)) == null ? void 0 : _a.range) || null;
+}
+function normalizeRange(range, sourceLength) {
+  const from = Math.max(0, Math.min(range.from, sourceLength));
+  const to = Math.max(from, Math.min(range.to, sourceLength));
+  return { from, to };
+}
+function splitSourceLines(source, range) {
+  const lines = [];
+  let lineStart = range.from;
+  for (let index = range.from; index <= range.to; index += 1) {
+    if (index < range.to && source[index] !== "\n") {
+      continue;
+    }
+    const lineEnd = index > lineStart && source[index - 1] === "\r" ? index - 1 : index;
+    lines.push({
+      from: lineStart,
+      to: lineEnd,
+      text: source.slice(lineStart, lineEnd)
+    });
+    lineStart = index + 1;
+  }
+  return lines;
+}
+function findFencedCodeLines(lines) {
+  var _a;
+  const fencedLines = /* @__PURE__ */ new Set();
+  let activeFence = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const content = getTableLineContent(((_a = lines[index]) == null ? void 0 : _a.text) || "").text;
+    if (activeFence) {
+      fencedLines.add(index);
+      if (isClosingFence(content, activeFence)) {
+        activeFence = null;
+      }
+      continue;
+    }
+    const opening = content.match(/^[ \t]{0,3}(`{3,}|~{3,})/);
+    if (opening == null ? void 0 : opening[1]) {
+      activeFence = { marker: opening[1][0] || "", length: opening[1].length };
+      fencedLines.add(index);
+    }
+  }
+  return fencedLines;
+}
+function isClosingFence(line, fence) {
+  var _a;
+  const pattern = fence.marker === "`" ? /^ {0,3}(`{3,})[ \t]*$/ : /^ {0,3}(~{3,})[ \t]*$/;
+  const closing = (_a = line.match(pattern)) == null ? void 0 : _a[1];
+  return Boolean(closing && closing.length >= fence.length);
+}
+function parseTableRow(line) {
+  const content = getTableLineContent(line.text);
+  if (/^(?: {4}|\t)/.test(content.text)) {
+    return null;
+  }
+  const delimiters = scanMarkdownTablePipes(content.text).structuralPipes;
+  if (delimiters.length === 0) {
+    return null;
+  }
+  const firstContentIndex = findFirstNonWhitespaceIndex(content.text);
+  const lastContentIndex = findLastNonWhitespaceIndex(content.text);
+  const hasLeadingDelimiter = delimiters[0] === firstContentIndex;
+  const lastDelimiter = delimiters[delimiters.length - 1];
+  const hasTrailingDelimiter = lastDelimiter !== void 0 && lastDelimiter === lastContentIndex;
+  const internalStart = hasLeadingDelimiter ? 1 : 0;
+  const internalEnd = hasTrailingDelimiter ? delimiters.length - 1 : delimiters.length;
+  const cells = [];
+  let cellStart = hasLeadingDelimiter ? (delimiters[0] || 0) + 1 : 0;
+  for (let index = internalStart; index < internalEnd; index += 1) {
+    const delimiter = delimiters[index];
+    if (delimiter === void 0) {
+      continue;
+    }
+    cells.push(trimCellRange(content.text, line.from + content.offset, cellStart, delimiter));
+    cellStart = delimiter + 1;
+  }
+  const cellEnd = hasTrailingDelimiter ? lastDelimiter || 0 : content.text.length;
+  cells.push(trimCellRange(content.text, line.from + content.offset, cellStart, cellEnd));
+  return { line, cells };
+}
+function getTableLineContent(line) {
+  var _a;
+  let text = line;
+  let offset = 0;
+  while (true) {
+    const prefix = (_a = text.match(/^[ \t]{0,3}>[ \t]?/)) == null ? void 0 : _a[0];
+    if (!prefix) {
+      return { text, offset };
+    }
+    text = text.slice(prefix.length);
+    offset += prefix.length;
+  }
+}
+function scanMarkdownTablePipes(line) {
+  const structuralPipes = [];
+  const escapedPipeBackslashes = [];
+  let codeRunLength = 0;
+  let index = 0;
+  while (index < line.length) {
+    if (line[index] === "`") {
+      const runLength = countCharacterRun(line, index, "`");
+      if (codeRunLength === 0 && countPrecedingBackslashes(line, index) % 2 === 0 && hasClosingCodeRun(line, index + runLength, runLength)) {
+        codeRunLength = runLength;
+      } else if (codeRunLength === runLength) {
+        codeRunLength = 0;
+      }
+      index += runLength;
+      continue;
+    }
+    if (line[index] === "|" && codeRunLength === 0) {
+      const backslashCount = countPrecedingBackslashes(line, index);
+      if (backslashCount % 2 === 1) {
+        escapedPipeBackslashes.push(index - 1);
+      } else {
+        structuralPipes.push(index);
+      }
+    }
+    index += 1;
+  }
+  return { structuralPipes, escapedPipeBackslashes };
+}
+function hasClosingCodeRun(text, start, runLength) {
+  let index = start;
+  while (index < text.length) {
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    const candidateLength = countCharacterRun(text, index, "`");
+    if (candidateLength === runLength) {
+      return true;
+    }
+    index += candidateLength;
+  }
+  return false;
+}
+function countCharacterRun(text, start, character) {
+  let length = 0;
+  while (text[start + length] === character) {
+    length += 1;
+  }
+  return length;
+}
+function countPrecedingBackslashes(text, index) {
+  let count = 0;
+  while (text[index - count - 1] === "\\") {
+    count += 1;
+  }
+  return count;
+}
+function trimCellRange(line, lineOffset, start, end) {
+  let from = start;
+  let to = Math.max(start, end);
+  while (from < to && /[\t ]/.test(line[from] || "")) {
+    from += 1;
+  }
+  while (to > from && /[\t ]/.test(line[to - 1] || "")) {
+    to -= 1;
+  }
+  return { from: lineOffset + from, to: lineOffset + to };
+}
+function findFirstNonWhitespaceIndex(line) {
+  for (let index = 0; index < line.length; index += 1) {
+    if (!/[\t ]/.test(line[index] || "")) {
+      return index;
+    }
+  }
+  return -1;
+}
+function findLastNonWhitespaceIndex(line) {
+  for (let index = line.length - 1; index >= 0; index -= 1) {
+    if (!/[\t ]/.test(line[index] || "")) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 // src/editor-table-cell-renderer.ts
 var ACTIVE_CELL_EDITOR_SELECTOR = ".table-cell-wrapper .cm-editor";
 var emptyDecorationLayers = {
@@ -320,105 +576,20 @@ function renderActiveTableCellMarks(table, source, widgetRange, marks) {
   return sourceRanges;
 }
 function findCellSourceRange(source, widgetRange, rowIndex, cellIndex, cellSource) {
-  const sourceLines = getSourceLines(source, widgetRange);
-  const sourceLineIndex = rowIndex === 0 ? 0 : rowIndex + 1;
-  const sourceLine = sourceLines[sourceLineIndex];
-  if (!sourceLine) {
-    return null;
-  }
-  const cellRanges = findTableCellRanges(sourceLine.text, sourceLine.from);
-  const sourceRange = cellRanges[cellIndex];
+  const sourceRange = findMarkdownTableCellRange(source, widgetRange, rowIndex, cellIndex);
   if (!sourceRange || source.slice(sourceRange.from, sourceRange.to) !== cellSource) {
     return null;
   }
   return sourceRange;
 }
-function getSourceLines(source, range) {
-  const lines = [];
-  let lineStart = range.from;
-  for (let index = range.from; index <= range.to; index += 1) {
-    if (index < range.to && source[index] !== "\n") {
-      continue;
-    }
-    lines.push({
-      from: lineStart,
-      to: index,
-      text: source.slice(lineStart, index)
-    });
-    lineStart = index + 1;
-  }
-  return lines;
-}
-function findTableCellRanges(line, lineOffset) {
-  const delimiters = [];
-  for (let index = 0; index < line.length; index += 1) {
-    if (line[index] === "|" && !isEscaped(line, index)) {
-      delimiters.push(index);
-    }
-  }
-  const firstContentIndex = findFirstNonWhitespaceIndex(line);
-  const lastContentIndex = findLastNonWhitespaceIndex(line);
-  const hasLeadingDelimiter = delimiters[0] === firstContentIndex;
-  const lastDelimiter = delimiters[delimiters.length - 1];
-  const hasTrailingDelimiter = lastDelimiter !== void 0 && lastDelimiter === lastContentIndex;
-  const internalStart = hasLeadingDelimiter ? 1 : 0;
-  const internalEnd = hasTrailingDelimiter ? delimiters.length - 1 : delimiters.length;
-  const ranges = [];
-  let cellStart = hasLeadingDelimiter ? (delimiters[0] || 0) + 1 : 0;
-  for (let index = internalStart; index < internalEnd; index += 1) {
-    const delimiter = delimiters[index];
-    if (delimiter === void 0) {
-      continue;
-    }
-    ranges.push(trimCellRange(line, lineOffset, cellStart, delimiter));
-    cellStart = delimiter + 1;
-  }
-  const cellEnd = hasTrailingDelimiter ? lastDelimiter || 0 : line.length;
-  ranges.push(trimCellRange(line, lineOffset, cellStart, cellEnd));
-  return ranges;
-}
-function trimCellRange(line, lineOffset, start, end) {
-  let trimmedStart = start;
-  let trimmedEnd = Math.max(start, end);
-  while (trimmedStart < trimmedEnd && /[\t ]/.test(line[trimmedStart] || "")) {
-    trimmedStart += 1;
-  }
-  while (trimmedEnd > trimmedStart && /[\t ]/.test(line[trimmedEnd - 1] || "")) {
-    trimmedEnd -= 1;
-  }
-  return {
-    from: lineOffset + trimmedStart,
-    to: lineOffset + trimmedEnd
-  };
-}
-function findFirstNonWhitespaceIndex(line) {
-  for (let index = 0; index < line.length; index += 1) {
-    if (!/[\t ]/.test(line[index] || "")) {
-      return index;
-    }
-  }
-  return -1;
-}
-function findLastNonWhitespaceIndex(line) {
-  for (let index = line.length - 1; index >= 0; index -= 1) {
-    if (!/[\t ]/.test(line[index] || "")) {
-      return index;
-    }
-  }
-  return -1;
-}
-function isEscaped(line, index) {
-  let backslashCount = 0;
-  for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 1;
-}
 function localizeMarks(source, cellSource, sourceRange, marks) {
   return marks.flatMap((mark) => {
-    const from = mark.anchor.startOffset;
-    const to = mark.anchor.endOffset;
-    if (from < sourceRange.from || to > sourceRange.to || source.slice(from, to) !== mark.anchor.selectedText) {
+    if (source.slice(mark.anchor.startOffset, mark.anchor.endOffset) !== mark.anchor.selectedText) {
+      return [];
+    }
+    const from = Math.max(mark.anchor.startOffset, sourceRange.from);
+    const to = Math.min(mark.anchor.endOffset, sourceRange.to);
+    if (from >= to) {
       return [];
     }
     const localFrom = from - sourceRange.from;
@@ -483,12 +654,84 @@ function renderReadingMarks(container, source, marks, onClick, options = {}) {
   })).filter(({ mark }) => mark.status !== "orphaned" && mark.status !== "resolved" && mark.anchor.selectedText);
   const ranges = collectTextNodes(container, options.excludedContainerSelector);
   const fullText = ranges.map((range) => range.separatorBefore + range.node.data).join("");
-  const plannedMarks = activeMarks.map(({ mark, sourceIndex, specificityMark }) => {
+  const tableRenderState = options.tableSourceRange ? buildReadingTableRenderState(container, source, options.tableSourceRange) : null;
+  const plannedMarks = activeMarks.flatMap(({ mark, sourceIndex, specificityMark }) => {
+    const matchTargets = tableRenderState ? findReadingTableMatchTargets(source, tableRenderState, mark) : void 0;
+    if (matchTargets === null) {
+      return [];
+    }
+    if (matchTargets) {
+      return matchTargets.flatMap((target) => {
+        const match2 = findRenderedMatchInContainer(ranges, target);
+        return match2 ? [{ mark, match: match2, sourceIndex, specificityMark }] : [];
+      });
+    }
     const match = findBestRenderedMatch(fullText, mark);
-    return match ? { mark, match, sourceIndex, specificityMark } : null;
-  }).filter((item) => item !== null);
+    return match ? [{ mark, match, sourceIndex, specificityMark }] : [];
+  });
   applyReadingMarkFragments(ranges, plannedMarks, onClick);
   promoteFullyMarkedInlineCodeElements(container);
+}
+function buildReadingTableRenderState(container, source, sourceRange) {
+  const renderedTables = [
+    ...container.matches("table") ? [container] : [],
+    ...Array.from(container.querySelectorAll("table"))
+  ];
+  const sourceMaps = buildMarkdownTableMaps(source, sourceRange);
+  return {
+    maps: sourceMaps.map((sourceMap, index) => ({
+      table: renderedTables[index] || null,
+      sourceMap
+    })),
+    hasRenderedTables: renderedTables.length > 0,
+    hasCompletePairing: renderedTables.length === sourceMaps.length,
+    sourceRange
+  };
+}
+function findReadingTableMatchTargets(source, state, mark) {
+  const overlappingMaps = state.maps.filter(({ sourceMap }) => markOverlapsRange(mark, sourceMap.range));
+  if (overlappingMaps.length === 0) {
+    return state.hasRenderedTables && !state.hasCompletePairing && markOverlapsRange(mark, state.sourceRange) ? null : void 0;
+  }
+  const targets = [];
+  for (const { table, sourceMap } of overlappingMaps) {
+    if (!table) {
+      return null;
+    }
+    for (const cell of sourceMap.cells) {
+      const from = Math.max(mark.anchor.startOffset, cell.range.from);
+      const to = Math.min(mark.anchor.endOffset, cell.range.to);
+      if (from >= to) {
+        continue;
+      }
+      const row = table.rows.item(cell.rowIndex);
+      const container = row == null ? void 0 : row.cells.item(cell.cellIndex);
+      if (!container) {
+        return null;
+      }
+      const cellSource = source.slice(cell.range.from, cell.range.to);
+      const localizedMark = {
+        ...mark,
+        anchor: createTextAnchor(cellSource, from - cell.range.from, to - cell.range.from)
+      };
+      originalReadingMarks.set(localizedMark, originalReadingMarks.get(mark) || mark);
+      targets.push({ container, mark: localizedMark });
+    }
+  }
+  return targets.length > 0 ? targets : null;
+}
+function markOverlapsRange(mark, range) {
+  return mark.anchor.startOffset < range.to && mark.anchor.endOffset > range.from;
+}
+function findRenderedMatchInContainer(ranges, target) {
+  const localRanges = ranges.filter((range) => target.container.contains(range.node));
+  const first = localRanges[0];
+  if (!first) {
+    return null;
+  }
+  const localText = localRanges.map((range, index) => `${index === 0 ? "" : range.separatorBefore}${range.node.data}`).join("");
+  const localMatch = findBestRenderedMatch(localText, target.mark);
+  return localMatch ? { start: first.start + localMatch.start, end: first.start + localMatch.end } : null;
 }
 function getReadingMarkElements(root, markId) {
   return Array.from(root.querySelectorAll(READING_MARK_SELECTOR)).filter((element) => element.dataset.sideMarkReadingId === markId);
@@ -753,16 +996,21 @@ function buildSourceLineStarts(source) {
   return lineStarts;
 }
 function getReadingMarksForSection(source, marks, sectionLineStart, sectionLineEnd, lineStarts = buildSourceLineStarts(source)) {
-  const sectionStartOffset = getLineStartOffset(source, lineStarts, sectionLineStart);
-  const sectionEndOffset = getLineStartOffset(source, lineStarts, sectionLineEnd + 1);
+  const sectionRange = getReadingSectionSourceRange(source, sectionLineStart, sectionLineEnd, lineStarts);
   return marks.map((mark) => clipMarkToSection(
     source,
     lineStarts,
     mark,
-    sectionStartOffset,
-    sectionEndOffset,
+    sectionRange.from,
+    sectionRange.to,
     sectionLineStart
   )).filter((mark) => mark !== null);
+}
+function getReadingSectionSourceRange(source, sectionLineStart, sectionLineEnd, lineStarts = buildSourceLineStarts(source)) {
+  return {
+    from: getLineStartOffset(source, lineStarts, sectionLineStart),
+    to: getLineStartOffset(source, lineStarts, sectionLineEnd + 1)
+  };
 }
 function clipMarkToSection(source, lineStarts, mark, sectionStartOffset, sectionEndOffset, sectionLineStart) {
   const start = Math.max(mark.anchor.startOffset, sectionStartOffset);
@@ -1235,12 +1483,10 @@ function renderEditorTableMarks(view, source, lineStarts, marks, onClick) {
     const startLine = view.state.doc.lineAt(range.from).number - 1;
     const endLine = view.state.doc.lineAt(range.to - 1).number - 1;
     const tableMarks = getReadingMarksForSection(source, marks, startLine, endLine, lineStarts);
-    const activeCellRanges = renderActiveTableCellMarks(table, source, range, tableMarks);
-    const staticMarks = tableMarks.filter((mark) => !activeCellRanges.some(
-      (activeRange) => mark.anchor.startOffset < activeRange.to && mark.anchor.endOffset > activeRange.from
-    ));
-    renderReadingMarks(table, source, staticMarks, onClick, {
-      excludedContainerSelector: ACTIVE_CELL_EDITOR_SELECTOR2
+    renderActiveTableCellMarks(table, source, range, tableMarks);
+    renderReadingMarks(table, source, tableMarks, onClick, {
+      excludedContainerSelector: ACTIVE_CELL_EDITOR_SELECTOR2,
+      tableSourceRange: range
     });
   }
 }
@@ -1411,7 +1657,7 @@ function createSideMarkEditorExtension(plugin) {
         }, 120);
       }
       getSelectionRect(from, to) {
-        const domRect = getDomSelectionRect(this.view.dom);
+        const domRect = resolveEditorSelectionRect(this.view.dom, getActiveSelection(), "start");
         if (domRect) {
           return domRect;
         }
@@ -1555,28 +1801,6 @@ function getLineLabel(lineText) {
   }
   return "T";
 }
-function getDomSelectionRect(editorDom) {
-  const selection = getActiveSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-    return null;
-  }
-  const range = selection.getRangeAt(0);
-  const common = range.commonAncestorContainer;
-  const element = isHtmlElement(common) ? common : common.parentElement;
-  if (!element || !editorDom.contains(element)) {
-    return null;
-  }
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-  if (rects.length === 0) {
-    const rect = range.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 ? rect : null;
-  }
-  const first = rects[0];
-  if (!first) {
-    return null;
-  }
-  return new DOMRect(first.left, first.top, first.width, first.height);
-}
 
 // src/editor-anchor-tracker.ts
 function mergePendingEditorAnchorUpdates(pending, previousMarks, nextMarks) {
@@ -1619,17 +1843,33 @@ function hasSameAnchorState(left, right) {
 
 // src/comment-popover.ts
 var import_obsidian2 = require("obsidian");
+
+// src/popover-position.ts
+var POPOVER_GAP = 6;
+var VIEWPORT_PADDING = 8;
+function calculatePopoverPosition(anchor, popover, viewport) {
+  const preferredLeft = anchor.right + POPOVER_GAP;
+  const fallbackLeft = anchor.left - popover.width - POPOVER_GAP;
+  const maxLeft = viewport.width - popover.width - VIEWPORT_PADDING;
+  const left = preferredLeft <= maxLeft ? preferredLeft : fallbackLeft >= VIEWPORT_PADDING ? fallbackLeft : clamp(preferredLeft, VIEWPORT_PADDING, maxLeft);
+  const maxTop = viewport.height - popover.height - VIEWPORT_PADDING;
+  return {
+    left,
+    top: clamp(anchor.top, VIEWPORT_PADDING, maxTop)
+  };
+}
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, Math.max(min, max)));
+}
+
+// src/comment-popover.ts
 var CommentPopover = class {
   constructor(t) {
     this.t = t;
     this.onSave = null;
     this.onHide = null;
-    this.hideTimer = null;
-    this.outsideMouseDownHandler = (event) => this.handleOutsideMouseDown(event);
     this.el = getActiveBody().createDiv({ cls: "side-mark-comment-popover" });
     this.el.hide();
-    this.el.addEventListener("mouseenter", () => this.cancelHide());
-    this.el.addEventListener("mouseleave", () => this.scheduleHide());
     const header = this.el.createDiv({ cls: "side-mark-comment-popover-header" });
     header.createSpan({ text: this.t("popover.commentTitle") });
     const closeButton = header.createEl("button", {
@@ -1670,17 +1910,21 @@ var CommentPopover = class {
     });
   }
   show(rect, onSave, onHide, options) {
-    this.cancelHide();
+    if (this.onSave !== null) {
+      this.finishSession();
+    }
     this.onSave = onSave;
     this.onHide = onHide || null;
     this.textarea.value = "";
     this.el.show();
     this.el.removeClass("is-visible");
-    this.el.doc.addEventListener("mousedown", this.outsideMouseDownHandler);
     const width = this.el.offsetWidth;
     const height = this.el.offsetHeight;
-    const left = getPopoverAxisPosition(rect.right + 12, width, rect.left - width - 12, window.innerWidth);
-    const top = getPopoverAxisPosition(rect.bottom + 12, height, rect.top - height - 12, window.innerHeight);
+    const { left, top } = calculatePopoverPosition(
+      rect,
+      { width, height },
+      { width: window.innerWidth, height: window.innerHeight }
+    );
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -1689,13 +1933,8 @@ var CommentPopover = class {
     }
   }
   hide() {
-    var _a;
-    this.cancelHide();
-    this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
     this.el.removeClass("is-visible");
-    this.onSave = null;
-    (_a = this.onHide) == null ? void 0 : _a.call(this);
-    this.onHide = null;
+    this.finishSession();
     window.setTimeout(() => {
       if (!this.el.hasClass("is-visible")) {
         this.el.hide();
@@ -1703,44 +1942,16 @@ var CommentPopover = class {
     }, 150);
   }
   destroy() {
-    this.cancelHide();
-    this.el.doc.removeEventListener("mousedown", this.outsideMouseDownHandler);
+    this.finishSession();
     this.el.remove();
   }
-  scheduleHide() {
-    if (this.textarea.value.trim()) {
-      return;
-    }
-    this.cancelHide();
-    this.hideTimer = window.setTimeout(() => this.hide(), 420);
-  }
-  cancelHide() {
-    if (this.hideTimer !== null) {
-      window.clearTimeout(this.hideTimer);
-      this.hideTimer = null;
-    }
-  }
-  handleOutsideMouseDown(event) {
-    if (this.el.contains(event.target)) {
-      return;
-    }
-    this.hide();
+  finishSession() {
+    this.onSave = null;
+    const onHide = this.onHide;
+    this.onHide = null;
+    onHide == null ? void 0 : onHide();
   }
 };
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(value, Math.max(min, max)));
-}
-function getPopoverAxisPosition(preferred, size, fallback, viewportSize) {
-  const padding = 8;
-  const max = viewportSize - size - padding;
-  if (preferred <= max) {
-    return clamp(preferred, padding, max);
-  }
-  if (fallback >= padding) {
-    return fallback;
-  }
-  return clamp(preferred, padding, max);
-}
 
 // src/hover-block-toolbar.ts
 var import_obsidian3 = require("obsidian");
@@ -2103,8 +2314,11 @@ var MarkStylePopover = class {
     this.el.removeClass("is-visible");
     this.el.doc.addEventListener("mousedown", this.outsideMouseDownHandler);
     const width = this.el.offsetWidth;
-    const left = clamp3(rect.right + 12, 8, window.innerWidth - width - 8);
-    const top = clamp3(rect.top, 8, window.innerHeight - this.el.offsetHeight - 8);
+    const { left, top } = calculatePopoverPosition(
+      rect,
+      { width, height: this.el.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight }
+    );
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -2211,9 +2425,6 @@ var MarkStylePopover = class {
     this.hide();
   }
 };
-function clamp3(value, min, max) {
-  return Math.max(min, Math.min(value, Math.max(min, max)));
-}
 
 // src/reading-selection-toolbar.ts
 var import_obsidian5 = require("obsidian");
@@ -2264,13 +2475,13 @@ var ReadingSelectionToolbar = class {
     const height = this.el.offsetHeight;
     const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
     const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
-    const left = clamp4(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const left = clamp3(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
     const aboveTop = rect.top - height - 10;
     const belowTop = rect.bottom + 10;
     const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
     const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
     const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
-    const top = clamp4(preferredTop, minTop, maxTop);
+    const top = clamp3(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     this.showAnimationFrame = window.requestAnimationFrame(() => {
@@ -2319,7 +2530,7 @@ var ReadingSelectionToolbar = class {
     }
   }
 };
-function clamp4(value, min, max) {
+function clamp3(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
 }
 
@@ -2480,13 +2691,13 @@ var SelectionToolbar = class {
     const height = this.el.offsetHeight;
     const minLeft = Math.max(8, (_a = boundary == null ? void 0 : boundary.left) != null ? _a : 8);
     const maxLeft = Math.min(window.innerWidth - width - 8, ((_b = boundary == null ? void 0 : boundary.right) != null ? _b : window.innerWidth - 8) - width);
-    const left = clamp5(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
+    const left = clamp4(rect.left + rect.width / 2 - width / 2, minLeft, maxLeft);
     const aboveTop = rect.top - height - 10;
     const belowTop = rect.bottom + 10;
     const minTop = Math.max(8, (_c = boundary == null ? void 0 : boundary.top) != null ? _c : 8);
     const maxTop = Math.min(window.innerHeight - height - 8, ((_d = boundary == null ? void 0 : boundary.bottom) != null ? _d : window.innerHeight - 8) - height);
     const preferredTop = aboveTop >= minTop ? aboveTop : belowTop;
-    const top = clamp5(preferredTop, minTop, maxTop);
+    const top = clamp4(preferredTop, minTop, maxTop);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
     window.requestAnimationFrame(() => this.el.addClass("is-visible"));
@@ -2612,8 +2823,8 @@ var SelectionToolbar = class {
     this.cancelHide();
     const rect = this.el.getBoundingClientRect();
     this.menu.show();
-    this.menu.style.left = `${clamp5(rect.left, 8, window.innerWidth - this.menu.offsetWidth - 8)}px`;
-    this.menu.style.top = `${clamp5(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
+    this.menu.style.left = `${clamp4(rect.left, 8, window.innerWidth - this.menu.offsetWidth - 8)}px`;
+    this.menu.style.top = `${clamp4(rect.bottom + 8, 8, window.innerHeight - this.menu.offsetHeight - 8)}px`;
     window.requestAnimationFrame(() => this.menu.addClass("is-open"));
   }
   openSubmenu(row) {
@@ -2624,8 +2835,8 @@ var SelectionToolbar = class {
     const preferredLeft = rowRect.right + 8;
     const fallbackLeft = rowRect.left - submenuWidth - 8;
     const left = preferredLeft + submenuWidth <= window.innerWidth - 8 ? preferredLeft : fallbackLeft;
-    this.submenu.style.left = `${clamp5(left, 8, window.innerWidth - submenuWidth - 8)}px`;
-    this.submenu.style.top = `${clamp5(rowRect.top, 8, window.innerHeight - submenuHeight - 8)}px`;
+    this.submenu.style.left = `${clamp4(left, 8, window.innerWidth - submenuWidth - 8)}px`;
+    this.submenu.style.top = `${clamp4(rowRect.top, 8, window.innerHeight - submenuHeight - 8)}px`;
     window.requestAnimationFrame(() => this.submenu.addClass("is-open"));
   }
   closeSubmenu() {
@@ -2637,7 +2848,7 @@ var SelectionToolbar = class {
     }, 120);
   }
 };
-function clamp5(value, min, max) {
+function clamp4(value, min, max) {
   return Math.max(min, Math.min(value, Math.max(min, max)));
 }
 function isSelectionFormatAction(action) {
@@ -2801,6 +3012,8 @@ var TRANSLATIONS = {
     "error.noLarkBinding": "\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709 lark_doc_url \u6216 lark_doc_token\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u8FD9\u7BC7\u6587\u6863\u3002",
     "error.noLarkBlockMap": "\u6CA1\u6709\u627E\u5230\u98DE\u4E66 block \u6620\u5C04\u3002\u8BF7\u5148\u7528 Feishu Lark CLI Sync \u540C\u6B65\u4E00\u6B21\u5F53\u524D\u6587\u6863\u3002",
     "error.noLarkBlock": "\u6CA1\u6709\u627E\u5230\u8BE5\u6807\u6CE8\u547D\u4E2D\u7684\u7B2C\u4E00\u4E2A\u98DE\u4E66 block\u3002",
+    "error.noLarkTableCellBlock": "\u6CA1\u6709\u627E\u5230\u8BE5\u8868\u683C\u5355\u5143\u683C\u5BF9\u5E94\u7684\u98DE\u4E66\u6587\u672C block\u3002\u8BF7\u91CD\u65B0\u540C\u6B65\u6587\u6863\u540E\u91CD\u8BD5\u3002",
+    "error.larkFetchTableFailed": "\u8BFB\u53D6\u98DE\u4E66\u8868\u683C block \u5931\u8D25\u3002",
     "error.larkCreateCommentFailed": "lark-cli \u6DFB\u52A0\u8BC4\u8BBA\u5931\u8D25\u3002",
     "error.larkCreateReplyFailed": "lark-cli \u6DFB\u52A0\u56DE\u590D\u5931\u8D25\u3002",
     "error.larkUpdateCommentFailed": "lark-cli \u66F4\u65B0\u8BC4\u8BBA\u72B6\u6001\u5931\u8D25\u3002",
@@ -2974,6 +3187,8 @@ var TRANSLATIONS = {
     "error.noLarkBinding": "The current note has no lark_doc_url or lark_doc_token. Sync this document with Feishu Lark CLI Sync first.",
     "error.noLarkBlockMap": "No Feishu block map was found. Sync the current document once with Feishu Lark CLI Sync first.",
     "error.noLarkBlock": "No Feishu block was found for this mark.",
+    "error.noLarkTableCellBlock": "No Feishu text block was found for this table cell. Sync the document again and retry.",
+    "error.larkFetchTableFailed": "Failed to fetch the Feishu table block.",
     "error.larkCreateCommentFailed": "lark-cli failed to add the comment.",
     "error.larkCreateReplyFailed": "lark-cli failed to add the reply.",
     "error.larkUpdateCommentFailed": "lark-cli failed to update the comment status.",
@@ -4147,7 +4362,7 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
     }
     card.addEventListener("click", (event) => {
       const target = isHtmlElement(event.target) ? event.target : null;
-      const interactive = target == null ? void 0 : target.closest("button, textarea, input, a, .side-mark-card-menu, .side-mark-marker-note");
+      const interactive = target == null ? void 0 : target.closest("button, textarea, input, a, .side-mark-marker-note");
       if (interactive) {
         return;
       }
@@ -4166,24 +4381,6 @@ var SideMarkSidebarView = class extends import_obsidian8.ItemView {
       this.renderMarkerNoteEditor(card, mark);
     });
     this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
-    const more = toolbar.createEl("button", {
-      cls: "side-mark-card-icon-button",
-      attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
-    });
-    (0, import_obsidian8.setIcon)(more, "more-horizontal");
-    const menu = card.createDiv({ cls: "side-mark-card-menu" });
-    menu.hide();
-    this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
-    more.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (menu.isShown()) {
-        menu.hide();
-      } else {
-        menu.show();
-      }
-    });
-    card.addEventListener("mouseleave", () => menu.hide());
     const quote = card.createDiv({
       cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`
     });
@@ -4757,16 +4954,17 @@ var LARK_BINDING_KEYS = /* @__PURE__ */ new Set([
   "lark_remote_root",
   "lark_remote_parent_path"
 ]);
-function findRemoteBlockId(markdown, units, startOffset, endOffset, titleBlockId) {
+function findRemoteBlockTarget(markdown, units, startOffset, endOffset, titleBlockId) {
   var _a;
   const block = findFirstHitRemoteBlock(markdown, startOffset, endOffset);
   if (!block) {
     return null;
   }
   if (block.kind === "title") {
-    return titleBlockId || null;
+    return titleBlockId ? { blockId: titleBlockId, kind: block.kind } : null;
   }
-  return ((_a = units[block.index]) == null ? void 0 : _a.blockId) || null;
+  const blockId = ((_a = units[block.index]) == null ? void 0 : _a.blockId) || "";
+  return blockId ? { blockId, kind: block.kind } : null;
 }
 function findFirstHitRemoteBlock(markdown, startOffset, endOffset) {
   const start = Math.min(startOffset, endOffset);
@@ -4967,9 +5165,58 @@ function assertLarkCommandOk(result, fallbackMessage) {
   }
 }
 
+// src/lark-table-cell.ts
+function buildLarkTableFetchArgs(doc, tableBlockId) {
+  return [
+    "docs",
+    "+fetch",
+    "--as",
+    "user",
+    "--doc",
+    doc,
+    "--scope",
+    "range",
+    "--start-block-id",
+    tableBlockId,
+    "--end-block-id",
+    tableBlockId,
+    "--detail",
+    "with-ids",
+    "--format",
+    "json"
+  ];
+}
+function findMarkdownTableCellCoordinate(source, startOffset, endOffset) {
+  for (const table of buildMarkdownTableMaps(source)) {
+    const cell = table.cells.find(
+      (candidate) => candidate.range.from < endOffset && candidate.range.to > startOffset
+    );
+    if (cell) {
+      return { rowIndex: cell.rowIndex, cellIndex: cell.cellIndex };
+    }
+  }
+  return null;
+}
+function findRemoteTableCellBlockId(xml, rowIndex, cellIndex) {
+  var _a, _b;
+  const rows = Array.from(xml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi));
+  const rowContent = (_a = rows[rowIndex]) == null ? void 0 : _a[1];
+  if (!rowContent) {
+    return null;
+  }
+  const cells = Array.from(rowContent.matchAll(/<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi));
+  const cellContent = (_b = cells[cellIndex]) == null ? void 0 : _b[2];
+  if (!cellContent) {
+    return null;
+  }
+  const block = cellContent.match(/<(?:p|h[1-9]|li|code|quote|blockquote|todo|checkbox)\b[^>]*\bid=(['"])([^'"]+)\1/i);
+  return (block == null ? void 0 : block[2]) || null;
+}
+
 // src/lark-bridge.ts
 var LARK_SYNC_PLUGIN_ID = "feishu-lark-cli-sync";
 var SYNC_STATE_FILE = "lark-sync-state.json";
+var remoteTableXmlCache = /* @__PURE__ */ new Map();
 async function syncMarkToLark(plugin, file, source, mark) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const binding = readLarkBinding(source);
@@ -4985,16 +5232,24 @@ async function syncMarkToLark(plugin, file, source, mark) {
   if (!docState || !docState.titleBlockId && !docState.units.length) {
     throw new Error(plugin.t("error.noLarkBlockMap"));
   }
-  const blockId = findRemoteBlockId(
+  const blockTarget = findRemoteBlockTarget(
     source,
     docState.units,
     mark.anchor.startOffset,
     mark.anchor.endOffset,
     docState.titleBlockId
   );
-  if (!blockId) {
+  if (!blockTarget) {
     throw new Error(plugin.t("error.noLarkBlock"));
   }
+  const blockId = await resolveLarkCommentBlockId(
+    plugin,
+    binding.doc,
+    docState.revisionId,
+    source,
+    mark,
+    blockTarget
+  );
   const [firstReply, ...restReplies] = replies.length ? replies : [{ content: plugin.t("lark.emptyComment") }];
   const result = await runLarkCreateComment(plugin, {
     doc: binding.doc,
@@ -5032,6 +5287,54 @@ async function syncMarkToLark(plugin, file, source, mark) {
     syncedHash: buildSyncedHash(mark.anchor.selectedText, replies),
     syncedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+async function resolveLarkCommentBlockId(plugin, doc, revisionId, source, mark, target) {
+  if (target.kind !== "table") {
+    return target.blockId;
+  }
+  const coordinate = findMarkdownTableCellCoordinate(
+    source,
+    mark.anchor.startOffset,
+    mark.anchor.endOffset
+  );
+  if (!coordinate) {
+    throw new Error(plugin.t("error.noLarkTableCellBlock"));
+  }
+  const xml = await getRemoteTableXml(plugin, doc, revisionId, target.blockId);
+  const blockId = findRemoteTableCellBlockId(xml, coordinate.rowIndex, coordinate.cellIndex);
+  if (!blockId) {
+    throw new Error(plugin.t("error.noLarkTableCellBlock"));
+  }
+  return blockId;
+}
+async function getRemoteTableXml(plugin, doc, revisionId, tableBlockId) {
+  const cacheKey = `${extractDocumentToken(doc)}:${revisionId != null ? revisionId : "latest"}:${tableBlockId}`;
+  const cached = remoteTableXmlCache.get(cacheKey);
+  if (cached) {
+    return await cached;
+  }
+  const load = loadRemoteTableXml(plugin, doc, tableBlockId);
+  remoteTableXmlCache.set(cacheKey, load);
+  try {
+    return await load;
+  } catch (error) {
+    if (remoteTableXmlCache.get(cacheKey) === load) {
+      remoteTableXmlCache.delete(cacheKey);
+    }
+    throw error;
+  }
+}
+async function loadRemoteTableXml(plugin, doc, tableBlockId) {
+  var _a, _b, _c, _d;
+  const result = await runLarkCliViaSyncPlugin(plugin, buildLarkTableFetchArgs(doc, tableBlockId));
+  if (result.ok === false) {
+    throw new Error(((_a = result.error) == null ? void 0 : _a.message) || ((_b = result.error) == null ? void 0 : _b.hint) || plugin.t("error.larkFetchTableFailed"));
+  }
+  const content = ((_d = (_c = result.data) == null ? void 0 : _c.document) == null ? void 0 : _d.content) || "";
+  if (!content) {
+    throw new Error(plugin.t("error.larkFetchTableFailed"));
+  }
+  return content;
 }
 async function setLarkCommentResolved(plugin, mark, isSolved) {
   const { doc, commentId } = getRemoteCommentReference(plugin, mark);
@@ -5498,6 +5801,112 @@ function getReadingSelectionContext(containers, range) {
     suffix: normalizeReadingSelection(afterText).slice(0, READING_CONTEXT_LENGTH)
   };
 }
+function findSourceRangeForReadingTableSelection(source, selectedText, containers, range, scope) {
+  const normalizedRange = range.cloneRange();
+  let startCell = findSelectionTableCell(range.startContainer);
+  let endCell = findSelectionTableCell(range.endContainer);
+  if (!startCell && !endCell) {
+    return void 0;
+  }
+  if (!startCell || !endCell) {
+    return null;
+  }
+  if (range.startContainer === startCell && range.startOffset === startCell.childNodes.length) {
+    startCell = getAdjacentTableCell(startCell, 1);
+    if (!startCell) {
+      return null;
+    }
+    normalizedRange.setStart(startCell, 0);
+  }
+  if (range.endContainer === endCell && range.endOffset === 0) {
+    endCell = getAdjacentTableCell(endCell, -1);
+    if (!endCell) {
+      return null;
+    }
+    normalizedRange.setEnd(endCell, endCell.childNodes.length);
+  }
+  const startTable = startCell.closest("table");
+  const endTable = endCell.closest("table");
+  if (!startTable || startTable !== endTable) {
+    return void 0;
+  }
+  const renderedTables = collectSelectionTables(containers);
+  const tableIndex = renderedTables.indexOf(startTable);
+  const sourceMaps = buildMarkdownTableMaps(source, {
+    from: scope.sourceStartOffset,
+    to: scope.sourceEndOffset
+  });
+  if (tableIndex < 0 || renderedTables.length !== sourceMaps.length) {
+    return null;
+  }
+  const sourceMap = sourceMaps[tableIndex];
+  const startRow = startCell.parentElement;
+  const endRow = endCell.parentElement;
+  const startSourceCell = sourceMap == null ? void 0 : sourceMap.cells.find(
+    (cell) => cell.rowIndex === (startRow == null ? void 0 : startRow.rowIndex) && cell.cellIndex === startCell.cellIndex
+  );
+  const endSourceCell = sourceMap == null ? void 0 : sourceMap.cells.find(
+    (cell) => cell.rowIndex === (endRow == null ? void 0 : endRow.rowIndex) && cell.cellIndex === endCell.cellIndex
+  );
+  if (!startSourceCell || !endSourceCell || startSourceCell.range.from > endSourceCell.range.to) {
+    return null;
+  }
+  if (startCell === endCell) {
+    return findSourceRangeForReadingSelection(source, selectedText, {
+      sourceStartOffset: startSourceCell.range.from,
+      sourceEndOffset: startSourceCell.range.to,
+      ...getReadingSelectionContext([startCell], normalizedRange)
+    });
+  }
+  const document = normalizedRange.startContainer.ownerDocument || getActiveDocument();
+  const startFragment = document.createRange();
+  startFragment.selectNodeContents(startCell);
+  startFragment.setStart(normalizedRange.startContainer, normalizedRange.startOffset);
+  const endFragment = document.createRange();
+  endFragment.selectNodeContents(endCell);
+  endFragment.setEnd(normalizedRange.endContainer, normalizedRange.endOffset);
+  const startRange = findSourceRangeForReadingSelection(source, startFragment.toString().trim(), {
+    sourceStartOffset: startSourceCell.range.from,
+    sourceEndOffset: startSourceCell.range.to,
+    ...getReadingSelectionContext([startCell], startFragment)
+  });
+  const endRange = findSourceRangeForReadingSelection(source, endFragment.toString().trim(), {
+    sourceStartOffset: endSourceCell.range.from,
+    sourceEndOffset: endSourceCell.range.to,
+    ...getReadingSelectionContext([endCell], endFragment)
+  });
+  return startRange && endRange ? { from: startRange.from, to: endRange.to } : null;
+}
+function findSelectionTableCell(node) {
+  const element = node.nodeType === 1 ? node : node.parentElement;
+  return (element == null ? void 0 : element.closest("td, th")) || null;
+}
+function getAdjacentTableCell(cell, direction) {
+  const table = cell.closest("table");
+  if (!table) {
+    return null;
+  }
+  const cells = Array.from(table.rows).flatMap((row) => Array.from(row.cells));
+  const index = cells.indexOf(cell);
+  return index >= 0 ? cells[index + direction] || null : null;
+}
+function collectSelectionTables(containers) {
+  const tables = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const container of containers) {
+    const candidates = [
+      ...container.matches("table") ? [container] : [],
+      ...Array.from(container.querySelectorAll("table"))
+    ];
+    for (const table of candidates) {
+      if (!seen.has(table)) {
+        seen.add(table);
+        tables.push(table);
+      }
+    }
+  }
+  return tables;
+}
 function findSourceCandidates(source, sectionSource, sourceIndex, selectedText, scope) {
   const sourceSelection = sanitizeReadingSelection(selectedText);
   const renderedSelection = normalizeReadingSelection(sourceSelection);
@@ -5592,13 +6001,22 @@ function findTextStarts(text, selectedText) {
   }
   return starts;
 }
-function getReadingSelectionRect(range) {
+function getReadingSelectionRect(range, placement = "bounding") {
   const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
   if (rects.length === 0) {
     const rect = range.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 ? rect : null;
   }
+  if (placement === "start") {
+    return cloneRect2(rects[0]);
+  }
+  if (placement === "end") {
+    return cloneRect2(rects[rects.length - 1]);
+  }
   return getBoundingRect(rects);
+}
+function cloneRect2(rect) {
+  return rect ? new DOMRect(rect.left, rect.top, rect.width, rect.height) : null;
 }
 function getBoundingRect(rects) {
   const first = rects[0];
@@ -5643,7 +6061,7 @@ function buildRenderedSourceIndex(source, sourceStartOffset = 0) {
     }
     const char = source[index] || "";
     if (char === "`") {
-      const runLength = countCharacterRun(source, index, "`");
+      const runLength = countCharacterRun2(source, index, "`");
       if (inlineCodeRunLength === 0) {
         inlineCodeRunLength = runLength;
       } else if (inlineCodeRunLength === runLength) {
@@ -5712,7 +6130,7 @@ function findMarkdownLinkSyntaxOffsets(source) {
   let index = 0;
   while (index < source.length) {
     if (source[index] === "`") {
-      const runLength = countCharacterRun(source, index, "`");
+      const runLength = countCharacterRun2(source, index, "`");
       if (inlineCodeRunLength === 0) {
         inlineCodeRunLength = runLength;
       } else if (inlineCodeRunLength === runLength) {
@@ -5760,7 +6178,7 @@ function findMarkdownInlineLink(source, start) {
     return null;
   }
   const imageMarkerIndex = start - 1;
-  const imageMarker = source[imageMarkerIndex] === "!" && countPrecedingBackslashes(source, imageMarkerIndex) % 2 === 0 ? imageMarkerIndex : null;
+  const imageMarker = source[imageMarkerIndex] === "!" && countPrecedingBackslashes2(source, imageMarkerIndex) % 2 === 0 ? imageMarkerIndex : null;
   return { labelEnd, destinationStart, end, imageMarker };
 }
 function findClosingMarkdownDelimiter(source, start, opening, closing) {
@@ -5773,7 +6191,7 @@ function findClosingMarkdownDelimiter(source, start, opening, closing) {
       continue;
     }
     if (source[index] === "`") {
-      const runLength = countCharacterRun(source, index, "`");
+      const runLength = countCharacterRun2(source, index, "`");
       if (inlineCodeRunLength === 0) {
         inlineCodeRunLength = runLength;
       } else if (inlineCodeRunLength === runLength) {
@@ -5819,8 +6237,8 @@ function findMarkdownAutolinkEnd(source, start) {
   return isUrl || isEmail ? end : null;
 }
 function findTableSyntaxOffsets(source) {
-  const lines = splitSourceLines(source);
-  const fencedCodeLines = findFencedCodeLines(lines);
+  const lines = splitSourceLines2(source);
+  const fencedCodeLines = findFencedCodeLines2(lines);
   const offsets = /* @__PURE__ */ new Set();
   for (let index = 1; index < lines.length; index += 1) {
     const delimiter = lines[index];
@@ -5847,7 +6265,7 @@ function findTableSyntaxOffsets(source) {
   }
   return offsets;
 }
-function splitSourceLines(source) {
+function splitSourceLines2(source) {
   const lines = [];
   let startOffset = 0;
   for (let index = 0; index <= source.length; index += 1) {
@@ -5860,7 +6278,7 @@ function splitSourceLines(source) {
   }
   return lines;
 }
-function findFencedCodeLines(lines) {
+function findFencedCodeLines2(lines) {
   var _a;
   const fencedLines = /* @__PURE__ */ new Set();
   let activeFence = null;
@@ -5868,7 +6286,7 @@ function findFencedCodeLines(lines) {
     const line = stripBlockquotePrefixes(((_a = lines[index]) == null ? void 0 : _a.text) || "");
     if (activeFence) {
       fencedLines.add(index);
-      if (isClosingFence(line, activeFence)) {
+      if (isClosingFence2(line, activeFence)) {
         activeFence = null;
       }
       continue;
@@ -5881,7 +6299,7 @@ function findFencedCodeLines(lines) {
   }
   return fencedLines;
 }
-function isClosingFence(line, fence) {
+function isClosingFence2(line, fence) {
   var _a;
   const pattern = fence.marker === "`" ? /^ {0,3}(`{3,})[ \t]*$/ : /^ {0,3}(~{3,})[ \t]*$/;
   const closing = (_a = line.match(pattern)) == null ? void 0 : _a[1];
@@ -5895,7 +6313,7 @@ function isTableBodyLine(line, fencedLines, lineIndex) {
 }
 function getTableCells(line) {
   const tableContent = stripBlockquotePrefixes(line);
-  const pipes = scanTablePipes(tableContent).structuralPipes;
+  const pipes = scanMarkdownTablePipes(tableContent).structuralPipes;
   if (pipes.length === 0) {
     return [];
   }
@@ -5925,7 +6343,7 @@ function isTableDelimiterCells(cells) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 function addTableRowSyntaxOffsets(line, offsets) {
-  const pipeScan = scanTablePipes(line.text);
+  const pipeScan = scanMarkdownTablePipes(line.text);
   for (const pipe of pipeScan.structuralPipes) {
     offsets.add(line.startOffset + pipe);
   }
@@ -5938,42 +6356,14 @@ function addLineOffsets(line, offsets) {
     offsets.add(line.startOffset + index);
   }
 }
-function scanTablePipes(line) {
-  const structuralPipes = [];
-  const escapedPipeBackslashes = [];
-  let codeRunLength = 0;
-  let index = 0;
-  while (index < line.length) {
-    if (line[index] === "`") {
-      const runLength = countCharacterRun(line, index, "`");
-      if (codeRunLength === 0) {
-        codeRunLength = runLength;
-      } else if (codeRunLength === runLength) {
-        codeRunLength = 0;
-      }
-      index += runLength;
-      continue;
-    }
-    if (line[index] === "|" && codeRunLength === 0) {
-      const backslashCount = countPrecedingBackslashes(line, index);
-      if (backslashCount % 2 === 1) {
-        escapedPipeBackslashes.push(index - 1);
-      } else {
-        structuralPipes.push(index);
-      }
-    }
-    index += 1;
-  }
-  return { structuralPipes, escapedPipeBackslashes };
-}
-function countCharacterRun(text, start, char) {
+function countCharacterRun2(text, start, char) {
   let length = 0;
   while (text[start + length] === char) {
     length += 1;
   }
   return length;
 }
-function countPrecedingBackslashes(text, index) {
+function countPrecedingBackslashes2(text, index) {
   let count = 0;
   while (text[index - count - 1] === "\\") {
     count += 1;
@@ -6812,12 +7202,22 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
     const lineStarts = this.getSourceLineStarts(file, source);
     const firstSection = sections[0];
     const lastSection = sections[sections.length - 1];
-    const context = getReadingSelectionContext(sections.map((section) => section.el), range);
-    const sourceRange = findSourceRangeForReadingSelection(source, selectedText, {
+    const sectionElements = sections.map((section) => section.el);
+    const sourceScope = {
       sourceStartOffset: (_b = (_a = firstSection.sourceStartOffset) != null ? _a : lineStarts[firstSection.lineStart]) != null ? _b : source.length,
-      sourceEndOffset: (_d = (_c = lastSection.sourceEndOffset) != null ? _c : lineStarts[lastSection.lineEnd + 1]) != null ? _d : source.length,
-      ...context
-    });
+      sourceEndOffset: (_d = (_c = lastSection.sourceEndOffset) != null ? _c : lineStarts[lastSection.lineEnd + 1]) != null ? _d : source.length
+    };
+    const tableSourceRange = findSourceRangeForReadingTableSelection(
+      source,
+      selectedText,
+      sectionElements,
+      range,
+      sourceScope
+    );
+    const sourceRange = tableSourceRange === void 0 ? findSourceRangeForReadingSelection(source, selectedText, {
+      ...sourceScope,
+      ...getReadingSelectionContext(sectionElements, range)
+    }) : tableSourceRange;
     if (!sourceRange) {
       this.showUnresolvedReadingSelection(rect, view.contentEl.getBoundingClientRect());
       return;
@@ -6882,7 +7282,8 @@ var SideMarkPlugin = class extends import_obsidian10.Plugin {
       return;
     }
     const hasPersistentHighlight = this.showReadingSelectionHighlight(selection);
-    this.commentPopover.show(selection.rect, (content) => {
+    const popoverRect = getReadingSelectionRect(selection.range, "end") || selection.rect;
+    this.commentPopover.show(popoverRect, (content) => {
       if (!content.trim()) {
         return;
       }
@@ -7027,7 +7428,7 @@ ${stripped}
   }
   showCommentPopover(view) {
     const selection = view.state.selection.main;
-    const rect = getEditorSelectionRect(view) || view.coordsAtPos(selection.to);
+    const rect = getEditorSelectionRect(view, "end") || view.coordsAtPos(selection.to);
     const file = this.getActiveMarkdownFile();
     if (!rect || selection.empty || !file) return;
     const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
@@ -7047,7 +7448,7 @@ ${stripped}
   }
   showMarkStylePopoverForView(view) {
     const selection = view.state.selection.main;
-    const rect = view.coordsAtPos(selection.to);
+    const rect = getEditorSelectionRect(view, "end") || view.coordsAtPos(selection.to);
     if (!rect || selection.empty) return;
     const popoverRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
     this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createMarkFromOffsets(
@@ -7061,7 +7462,8 @@ ${stripped}
     ));
   }
   showMarkStylePopoverForReadingSelection(selection) {
-    this.showMarkStylePopoverForNewMark(selection.rect, (choice) => this.createReadingMark(
+    const popoverRect = getReadingSelectionRect(selection.range, "end") || selection.rect;
+    this.showMarkStylePopoverForNewMark(popoverRect, (choice) => this.createReadingMark(
       selection,
       "highlight",
       "",
@@ -7260,7 +7662,9 @@ ${stripped}
     }
     const section = context == null ? void 0 : context.getSectionInfo(container);
     const marks = section ? getReadingMarksForSection(source, document.marks, section.lineStart, section.lineEnd, lineStarts) : [];
-    renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect));
+    renderReadingMarks(container, source, marks, (markId, rect) => void this.openMark(markId, rect), section ? {
+      tableSourceRange: getReadingSectionSourceRange(source, section.lineStart, section.lineEnd, lineStarts)
+    } : {});
   }
   getReadingRenderSnapshot(file) {
     const sourceVersion = `${file.stat.mtime}:${file.stat.size}`;
@@ -7430,7 +7834,14 @@ ${stripped}
             section.lineEnd,
             lineStarts
           );
-          renderReadingMarks(section.el, source, marks, onClick);
+          renderReadingMarks(section.el, source, marks, onClick, {
+            tableSourceRange: getReadingSectionSourceRange(
+              source,
+              section.lineStart,
+              section.lineEnd,
+              lineStarts
+            )
+          });
         }
         return;
       }
@@ -7599,34 +8010,8 @@ function getSelectionFormat(view) {
   }
   return "paragraph";
 }
-function getEditorSelectionRect(view) {
-  const selection = getActiveSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-    return null;
-  }
-  const range = selection.getRangeAt(0);
-  const common = range.commonAncestorContainer;
-  const element = isHtmlElement(common) ? common : common.parentElement;
-  if (!element || !view.dom.contains(element)) {
-    return null;
-  }
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-  if (rects.length === 0) {
-    const rect = range.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 ? rect : null;
-  }
-  return getBoundingRect2(rects);
-}
-function getBoundingRect2(rects) {
-  const first = rects[0];
-  if (!first) {
-    return null;
-  }
-  const left = Math.min(...rects.map((rect) => rect.left));
-  const top = Math.min(...rects.map((rect) => rect.top));
-  const right = Math.max(...rects.map((rect) => rect.right));
-  const bottom = Math.max(...rects.map((rect) => rect.bottom));
-  return new DOMRect(left, top, right - left, bottom - top);
+function getEditorSelectionRect(view, placement = "bounding") {
+  return resolveEditorSelectionRect(view.dom, getActiveSelection(), placement);
 }
 function defaultHighlightAppearance() {
   return {

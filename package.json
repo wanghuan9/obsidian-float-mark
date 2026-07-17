@@ -11,7 +11,7 @@
 		"release:flow": "node scripts/release-flow.mjs",
 		"release:official": "node scripts/release-official.mjs",
 		"release:publish": "node scripts/release.mjs --publish",
-		"test": "node test/test-i18n.mjs && node test/test-storage.mjs && node test/test-main-file-reference.mjs && node test/test-sidebar-vault.mjs && node test/test-anchors.mjs && node test/test-editor-anchor-tracker.mjs && node test/test-block-map.mjs && node test/test-block-menu-position.mjs && node test/test-mark-appearance.mjs && node test/test-mark-click-guard.mjs && node test/test-editor-decorations.mjs && node test/test-editor-table-renderer.mjs && node test/test-reading-selection.mjs && node test/test-reading-selection-toolbar.mjs && node test/test-preview-sections.mjs && node test/test-reading-view-renderer.mjs && node test/test-release-notes.mjs && node test/test-review-warnings.mjs"
+		"test": "node test/test-i18n.mjs && node test/test-storage.mjs && node test/test-main-file-reference.mjs && node test/test-sidebar-vault.mjs && node test/test-anchors.mjs && node test/test-editor-anchor-tracker.mjs && node test/test-block-map.mjs && node test/test-lark-table-cell.mjs && node test/test-block-menu-position.mjs && node test/test-popover-position.mjs && node test/test-mark-appearance.mjs && node test/test-mark-click-guard.mjs && node test/test-editor-decorations.mjs && node test/test-editor-selection-rect.mjs && node test/test-editor-table-renderer.mjs && node test/test-reading-selection.mjs && node test/test-reading-selection-toolbar.mjs && node test/test-comment-popover.mjs && node test/test-preview-sections.mjs && node test/test-reading-view-renderer.mjs && node test/test-release-notes.mjs && node test/test-review-warnings.mjs"
 	},
 	"keywords": [
 		"obsidian",

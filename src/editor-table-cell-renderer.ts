@@ -2,7 +2,10 @@ import { StateEffect, StateField, type Text } from "@codemirror/state";
 import { Decoration, EditorView } from "@codemirror/view";
 import { createTextAnchor } from "./anchors";
 import { buildEditorDecorationLayers, type EditorDecorationLayers } from "./editor-decorations";
+import { findMarkdownTableCellRange, type SourceRange } from "./markdown-table-map";
 import type { SideMark } from "./types";
+
+export type { SourceRange } from "./markdown-table-map";
 
 const ACTIVE_CELL_EDITOR_SELECTOR = ".table-cell-wrapper .cm-editor";
 const emptyDecorationLayers: EditorDecorationLayers = {
@@ -33,11 +36,6 @@ const activeCellLayersField = StateField.define<EditorDecorationLayers>({
 });
 const configuredCellViews = new WeakSet<EditorView>();
 const cellRenderStates = new WeakMap<EditorView, { document: Text; markSignature: string }>();
-
-export interface SourceRange {
-	from: number;
-	to: number;
-}
 
 export function renderActiveTableCellMarks(
 	table: HTMLElement,
@@ -74,112 +72,21 @@ function findCellSourceRange(
 	cellIndex: number,
 	cellSource: string
 ): SourceRange | null {
-	const sourceLines = getSourceLines(source, widgetRange);
-	const sourceLineIndex = rowIndex === 0 ? 0 : rowIndex + 1;
-	const sourceLine = sourceLines[sourceLineIndex];
-	if (!sourceLine) {
-		return null;
-	}
-	const cellRanges = findTableCellRanges(sourceLine.text, sourceLine.from);
-	const sourceRange = cellRanges[cellIndex];
+	const sourceRange = findMarkdownTableCellRange(source, widgetRange, rowIndex, cellIndex);
 	if (!sourceRange || source.slice(sourceRange.from, sourceRange.to) !== cellSource) {
 		return null;
 	}
 	return sourceRange;
 }
 
-function getSourceLines(source: string, range: SourceRange): Array<SourceRange & { text: string }> {
-	const lines: Array<SourceRange & { text: string }> = [];
-	let lineStart = range.from;
-	for (let index = range.from; index <= range.to; index += 1) {
-		if (index < range.to && source[index] !== "\n") {
-			continue;
-		}
-		lines.push({
-			from: lineStart,
-			to: index,
-			text: source.slice(lineStart, index)
-		});
-		lineStart = index + 1;
-	}
-	return lines;
-}
-
-function findTableCellRanges(line: string, lineOffset: number): SourceRange[] {
-	const delimiters: number[] = [];
-	for (let index = 0; index < line.length; index += 1) {
-		if (line[index] === "|" && !isEscaped(line, index)) {
-			delimiters.push(index);
-		}
-	}
-	const firstContentIndex = findFirstNonWhitespaceIndex(line);
-	const lastContentIndex = findLastNonWhitespaceIndex(line);
-	const hasLeadingDelimiter = delimiters[0] === firstContentIndex;
-	const lastDelimiter = delimiters[delimiters.length - 1];
-	const hasTrailingDelimiter = lastDelimiter !== undefined && lastDelimiter === lastContentIndex;
-	const internalStart = hasLeadingDelimiter ? 1 : 0;
-	const internalEnd = hasTrailingDelimiter ? delimiters.length - 1 : delimiters.length;
-	const ranges: SourceRange[] = [];
-	let cellStart = hasLeadingDelimiter ? (delimiters[0] || 0) + 1 : 0;
-	for (let index = internalStart; index < internalEnd; index += 1) {
-		const delimiter = delimiters[index];
-		if (delimiter === undefined) {
-			continue;
-		}
-		ranges.push(trimCellRange(line, lineOffset, cellStart, delimiter));
-		cellStart = delimiter + 1;
-	}
-	const cellEnd = hasTrailingDelimiter ? lastDelimiter || 0 : line.length;
-	ranges.push(trimCellRange(line, lineOffset, cellStart, cellEnd));
-	return ranges;
-}
-
-function trimCellRange(line: string, lineOffset: number, start: number, end: number): SourceRange {
-	let trimmedStart = start;
-	let trimmedEnd = Math.max(start, end);
-	while (trimmedStart < trimmedEnd && /[\t ]/.test(line[trimmedStart] || "")) {
-		trimmedStart += 1;
-	}
-	while (trimmedEnd > trimmedStart && /[\t ]/.test(line[trimmedEnd - 1] || "")) {
-		trimmedEnd -= 1;
-	}
-	return {
-		from: lineOffset + trimmedStart,
-		to: lineOffset + trimmedEnd
-	};
-}
-
-function findFirstNonWhitespaceIndex(line: string): number {
-	for (let index = 0; index < line.length; index += 1) {
-		if (!/[\t ]/.test(line[index] || "")) {
-			return index;
-		}
-	}
-	return -1;
-}
-
-function findLastNonWhitespaceIndex(line: string): number {
-	for (let index = line.length - 1; index >= 0; index -= 1) {
-		if (!/[\t ]/.test(line[index] || "")) {
-			return index;
-		}
-	}
-	return -1;
-}
-
-function isEscaped(line: string, index: number): boolean {
-	let backslashCount = 0;
-	for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) {
-		backslashCount += 1;
-	}
-	return backslashCount % 2 === 1;
-}
-
 function localizeMarks(source: string, cellSource: string, sourceRange: SourceRange, marks: SideMark[]): SideMark[] {
 	return marks.flatMap((mark) => {
-		const from = mark.anchor.startOffset;
-		const to = mark.anchor.endOffset;
-		if (from < sourceRange.from || to > sourceRange.to || source.slice(from, to) !== mark.anchor.selectedText) {
+		if (source.slice(mark.anchor.startOffset, mark.anchor.endOffset) !== mark.anchor.selectedText) {
+			return [];
+		}
+		const from = Math.max(mark.anchor.startOffset, sourceRange.from);
+		const to = Math.min(mark.anchor.endOffset, sourceRange.to);
+		if (from >= to) {
 			return [];
 		}
 		const localFrom = from - sourceRange.from;

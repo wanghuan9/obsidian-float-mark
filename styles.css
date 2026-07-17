@@ -1770,7 +1770,8 @@ body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark
 	color: var(--text-normal);
 }
 
-.side-mark-card-icon-button.is-confirming {
+.side-mark-card-icon-button.is-confirming,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button.is-confirming {
 	width: auto;
 	min-width: 36px;
 	padding: 0 7px;
@@ -1783,7 +1784,10 @@ body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark
 }
 
 .side-mark-card-icon-button.is-confirming:hover,
-.side-mark-card-icon-button.is-confirming:focus-visible {
+.side-mark-card-icon-button.is-confirming:focus-visible,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button.is-confirming:hover,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button.is-confirming:focus-visible,
+body .side-mark-sidebar .side-mark-card .side-mark-card-toolbar button.side-mark-card-icon-button.is-confirming:active {
 	background: rgba(214, 76, 76, 0.16);
 	color: var(--text-error);
 }

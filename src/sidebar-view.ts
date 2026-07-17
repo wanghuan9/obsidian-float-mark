@@ -624,7 +624,7 @@ export class SideMarkSidebarView extends ItemView {
 		}
 		card.addEventListener("click", (event) => {
 			const target = isHtmlElement(event.target) ? event.target : null;
-			const interactive = target?.closest("button, textarea, input, a, .side-mark-card-menu, .side-mark-marker-note");
+			const interactive = target?.closest("button, textarea, input, a, .side-mark-marker-note");
 			if (interactive) {
 				return;
 			}
@@ -643,24 +643,6 @@ export class SideMarkSidebarView extends ItemView {
 			this.renderMarkerNoteEditor(card, mark);
 		});
 		this.addDeleteIconAction(toolbar, this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
-		const more = toolbar.createEl("button", {
-			cls: "side-mark-card-icon-button",
-			attr: { type: "button", title: this.t("sidebar.more"), "aria-label": this.t("sidebar.more") }
-		});
-		setIcon(more, "more-horizontal");
-		const menu = card.createDiv({ cls: "side-mark-card-menu" });
-		menu.hide();
-		this.addMenuAction(menu, "trash-2", this.t("toolbar.delete"), () => void this.deleteMark(mark.id));
-		more.addEventListener("click", (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			if (menu.isShown()) {
-				menu.hide();
-			} else {
-				menu.show();
-			}
-		});
-		card.addEventListener("mouseleave", () => menu.hide());
 
 		const quote = card.createDiv({
 			cls: `side-mark-card-quote side-mark-marker-preview side-mark--highlight side-mark--text-${mark.mark.textColor} side-mark--background-${background.color}`

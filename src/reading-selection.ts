@@ -1,4 +1,5 @@
 import { getActiveDocument } from "./dom-utils";
+import { buildMarkdownTableMaps, scanMarkdownTablePipes } from "./markdown-table-map";
 
 const READING_CONTEXT_LENGTH = 40;
 const MIN_CONTEXT_SCORE = 1.4;
@@ -46,11 +47,6 @@ interface SourceLine {
 	text: string;
 }
 
-interface TablePipeScan {
-	structuralPipes: number[];
-	escapedPipeBackslashes: number[];
-}
-
 interface MarkdownInlineLink {
 	labelEnd: number;
 	destinationStart: number;
@@ -87,6 +83,125 @@ export function getReadingSelectionContext(containers: HTMLElement[], range: Ran
 		prefix: normalizeReadingSelection(beforeText).slice(-READING_CONTEXT_LENGTH),
 		suffix: normalizeReadingSelection(afterText).slice(0, READING_CONTEXT_LENGTH)
 	};
+}
+
+export function findSourceRangeForReadingTableSelection(
+	source: string,
+	selectedText: string,
+	containers: HTMLElement[],
+	range: Range,
+	scope: Pick<ReadingSelectionScope, "sourceStartOffset" | "sourceEndOffset">
+): { from: number; to: number } | null | undefined {
+	const normalizedRange = range.cloneRange();
+	let startCell = findSelectionTableCell(range.startContainer);
+	let endCell = findSelectionTableCell(range.endContainer);
+	if (!startCell && !endCell) {
+		return undefined;
+	}
+	if (!startCell || !endCell) {
+		return null;
+	}
+	if (range.startContainer === startCell && range.startOffset === startCell.childNodes.length) {
+		startCell = getAdjacentTableCell(startCell, 1);
+		if (!startCell) {
+			return null;
+		}
+		normalizedRange.setStart(startCell, 0);
+	}
+	if (range.endContainer === endCell && range.endOffset === 0) {
+		endCell = getAdjacentTableCell(endCell, -1);
+		if (!endCell) {
+			return null;
+		}
+		normalizedRange.setEnd(endCell, endCell.childNodes.length);
+	}
+	const startTable = startCell.closest("table");
+	const endTable = endCell.closest("table");
+	if (!startTable || startTable !== endTable) {
+		return undefined;
+	}
+	const renderedTables = collectSelectionTables(containers);
+	const tableIndex = renderedTables.indexOf(startTable as HTMLTableElement);
+	const sourceMaps = buildMarkdownTableMaps(source, {
+		from: scope.sourceStartOffset,
+		to: scope.sourceEndOffset
+	});
+	if (tableIndex < 0 || renderedTables.length !== sourceMaps.length) {
+		return null;
+	}
+	const sourceMap = sourceMaps[tableIndex];
+	const startRow = startCell.parentElement as HTMLTableRowElement | null;
+	const endRow = endCell.parentElement as HTMLTableRowElement | null;
+	const startSourceCell = sourceMap?.cells.find((cell) =>
+		cell.rowIndex === startRow?.rowIndex && cell.cellIndex === startCell.cellIndex
+	);
+	const endSourceCell = sourceMap?.cells.find((cell) =>
+		cell.rowIndex === endRow?.rowIndex && cell.cellIndex === endCell.cellIndex
+	);
+	if (!startSourceCell || !endSourceCell || startSourceCell.range.from > endSourceCell.range.to) {
+		return null;
+	}
+	if (startCell === endCell) {
+		return findSourceRangeForReadingSelection(source, selectedText, {
+			sourceStartOffset: startSourceCell.range.from,
+			sourceEndOffset: startSourceCell.range.to,
+			...getReadingSelectionContext([startCell], normalizedRange)
+		});
+	}
+	const document = normalizedRange.startContainer.ownerDocument || getActiveDocument();
+	const startFragment = document.createRange();
+	startFragment.selectNodeContents(startCell);
+	startFragment.setStart(normalizedRange.startContainer, normalizedRange.startOffset);
+	const endFragment = document.createRange();
+	endFragment.selectNodeContents(endCell);
+	endFragment.setEnd(normalizedRange.endContainer, normalizedRange.endOffset);
+	const startRange = findSourceRangeForReadingSelection(source, startFragment.toString().trim(), {
+		sourceStartOffset: startSourceCell.range.from,
+		sourceEndOffset: startSourceCell.range.to,
+		...getReadingSelectionContext([startCell], startFragment)
+	});
+	const endRange = findSourceRangeForReadingSelection(source, endFragment.toString().trim(), {
+		sourceStartOffset: endSourceCell.range.from,
+		sourceEndOffset: endSourceCell.range.to,
+		...getReadingSelectionContext([endCell], endFragment)
+	});
+	return startRange && endRange ? { from: startRange.from, to: endRange.to } : null;
+}
+
+function findSelectionTableCell(node: Node): HTMLTableCellElement | null {
+	const element = node.nodeType === 1 ? node as Element : node.parentElement;
+	return element?.closest<HTMLTableCellElement>("td, th") || null;
+}
+
+function getAdjacentTableCell(
+	cell: HTMLTableCellElement,
+	direction: -1 | 1
+): HTMLTableCellElement | null {
+	const table = cell.closest("table");
+	if (!table) {
+		return null;
+	}
+	const cells = Array.from(table.rows).flatMap((row) => Array.from(row.cells));
+	const index = cells.indexOf(cell);
+	return index >= 0 ? cells[index + direction] || null : null;
+}
+
+function collectSelectionTables(containers: HTMLElement[]): HTMLTableElement[] {
+	const tables: HTMLTableElement[] = [];
+	const seen = new Set<HTMLTableElement>();
+	for (const container of containers) {
+		const candidates = [
+			...(container.matches("table") ? [container as HTMLTableElement] : []),
+			...Array.from(container.querySelectorAll<HTMLTableElement>("table"))
+		];
+		for (const table of candidates) {
+			if (!seen.has(table)) {
+				seen.add(table);
+				tables.push(table);
+			}
+		}
+	}
+	return tables;
 }
 
 function findSourceCandidates(
@@ -222,13 +337,28 @@ export function getReadingSelectionRenderedOffset(container: HTMLElement, range:
 	return offset;
 }
 
-export function getReadingSelectionRect(range: Range): DOMRect | null {
+export type ReadingSelectionRectPlacement = "start" | "end" | "bounding";
+
+export function getReadingSelectionRect(
+	range: Range,
+	placement: ReadingSelectionRectPlacement = "bounding"
+): DOMRect | null {
 	const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
 	if (rects.length === 0) {
 		const rect = range.getBoundingClientRect();
 		return rect.width > 0 && rect.height > 0 ? rect : null;
 	}
+	if (placement === "start") {
+		return cloneRect(rects[0]);
+	}
+	if (placement === "end") {
+		return cloneRect(rects[rects.length - 1]);
+	}
 	return getBoundingRect(rects);
+}
+
+function cloneRect(rect: DOMRect | undefined): DOMRect | null {
+	return rect ? new DOMRect(rect.left, rect.top, rect.width, rect.height) : null;
 }
 
 function getBoundingRect(rects: DOMRect[]): DOMRect | null {
@@ -552,7 +682,7 @@ function isTableBodyLine(line: SourceLine | undefined, fencedLines: Set<number>,
 
 function getTableCells(line: string): string[] {
 	const tableContent = stripBlockquotePrefixes(line);
-	const pipes = scanTablePipes(tableContent).structuralPipes;
+	const pipes = scanMarkdownTablePipes(tableContent).structuralPipes;
 	if (pipes.length === 0) {
 		return [];
 	}
@@ -585,7 +715,7 @@ function isTableDelimiterCells(cells: string[]): boolean {
 }
 
 function addTableRowSyntaxOffsets(line: SourceLine, offsets: Set<number>): void {
-	const pipeScan = scanTablePipes(line.text);
+	const pipeScan = scanMarkdownTablePipes(line.text);
 	for (const pipe of pipeScan.structuralPipes) {
 		offsets.add(line.startOffset + pipe);
 	}
@@ -598,35 +728,6 @@ function addLineOffsets(line: SourceLine, offsets: Set<number>): void {
 	for (let index = 0; index < line.text.length; index += 1) {
 		offsets.add(line.startOffset + index);
 	}
-}
-
-function scanTablePipes(line: string): TablePipeScan {
-	const structuralPipes: number[] = [];
-	const escapedPipeBackslashes: number[] = [];
-	let codeRunLength = 0;
-	let index = 0;
-	while (index < line.length) {
-		if (line[index] === "`") {
-			const runLength = countCharacterRun(line, index, "`");
-			if (codeRunLength === 0) {
-				codeRunLength = runLength;
-			} else if (codeRunLength === runLength) {
-				codeRunLength = 0;
-			}
-			index += runLength;
-			continue;
-		}
-		if (line[index] === "|" && codeRunLength === 0) {
-			const backslashCount = countPrecedingBackslashes(line, index);
-			if (backslashCount % 2 === 1) {
-				escapedPipeBackslashes.push(index - 1);
-			} else {
-				structuralPipes.push(index);
-			}
-		}
-		index += 1;
-	}
-	return { structuralPipes, escapedPipeBackslashes };
 }
 
 function countCharacterRun(text: string, start: number, char: string): number {
